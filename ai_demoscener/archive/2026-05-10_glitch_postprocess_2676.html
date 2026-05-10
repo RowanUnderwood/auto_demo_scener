@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Three.js Glitch Effect</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+
+<script type="importmap">
+{
+    "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+
+/** 
+ * Custom Glitch Shader
+ */
+const GlitchShader = {
+    uniforms: {
+        'tDiffuse': { value: null },
+        'uTime': { value: 0.0 }
+    },
+    vertexShader: `
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `,
+    fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform float uTime;
+        varying vec2 vUv;
+
+        // Pseudo-random function
+        float hash(float n) { return fract(sin(n) * 43758.5453123); }
+
+        void main() {
+            vec2 uv = vUv;
+
+            // --- Glitch Effect: Random horizontal slices replacement ---
+            float glitchSpeed = 8.0;
+            float timeStep = floor(uTime * glitchSpeed);
+            float glitchIntensity = hash(timeStep);
+            
+            if (glitchIntensity > 0.85) {
+                float numSlices = 12.0;
+                float sliceIdx = floor(hash(timeStep + 0.1) * numSlices);
+
+                if (floor(uv.y * numSlices) == sliceIdx) {
+                    float yOffset = hash(timeStep + 0.2) * 0.15 - 0.075;
+                    uv.y += yOffset;
+                }
+            }
+
+            // --- Chromatic Aberration: R and B channel horizontal shifts ---
+            float shiftR = sin(uTime * 2.5) * 0.015;
+            float shiftB = cos(uTime * 3.2) * 0.015;
+
+            float r = texture2D(tDiffuse, vec2(uv.x + shiftR, uv.y)).r;
+            float g = texture2D(tDiffuse, uv).g;
+            float b = texture2D(tDiffuse, vec2(uv.x + shiftB, uv.y)).b;
+
+            gl_FragColor = vec4(r, g, b, 1.0);
+        }
+    `
+};
+
+// Scene Setup
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+camera.position.z = 3;
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+// Geometry
+const geometry = new THREE.TorusKnotGeometry(1, 0.35, 200, 32);
+const material = new THREE.MeshNormalMaterial();
+const torusKnot = new THREE.Mesh(geometry, material);
+scene.add(torusKnot);
+
+// Post-processing
+const composer = new EffectComposer(renderer);
+const renderPass = new RenderPass(scene, camera);
+composer.addPass(renderPass);
+
+const glitchPass = new ShaderPass(GlitchShader);
+composer.addPass(glitchPass);
+
+// Resize Handler
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    composer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// Animation Loop
+const clock = new THREE.Clock();
+
+function animate() {
+    requestAnimationFrame(animate);
+    
+    const delta = clock.getDelta();
+    const elapsed = clock.getElapsedTime();
+
+    // Rotate the mesh
+    torusKnot.rotation.x += delta * 0.5;
+    torusKnot.rotation.y += delta * 0.3;
+
+    // Update Shader Uniforms
+    glitchPass.uniforms['uTime'].value = elapsed;
+
+    composer.render();
+}
+
+animate();
+
+</script>
+</body>
+</html>

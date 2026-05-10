@@ -139,7 +139,12 @@ function handleState(msg) {
     case 'DISCARD':
       showMockOS();
       hideDemoFrame();
-      setStatus('DISCARDING — no valid demo produced');
+      if (msg.kind) {
+        setStatus(`DISCARDING — ${msg.kind}`);
+        showErrorOverlay(msg.kind, msg.error || '', 5);
+      } else {
+        setStatus('DISCARDING — no valid demo produced');
+      }
       break;
   }
 }
@@ -336,6 +341,32 @@ function wiggleGauges() {
   memPct.textContent = `${memVal.toFixed(0)}%`;
 }
 setInterval(wiggleGauges, 1200);
+
+// ── Error overlay ─────────────────────────────────────────────────────────────
+const errorOverlay   = document.getElementById('errorOverlay');
+const errorKind      = document.getElementById('errorKind');
+const errorMsg       = document.getElementById('errorMsg');
+const errorCountdown = document.getElementById('errorCountdown');
+let _errorTimer = null;
+
+function showErrorOverlay(kind, msg, seconds) {
+  errorKind.textContent = kind === 'BLANK' ? 'BLANK FRAME' : 'CRASHED';
+  errorMsg.textContent  = msg || '';
+  errorCountdown.textContent = `NEXT CYCLE IN ${seconds}`;
+  errorOverlay.classList.remove('hidden');
+
+  let remaining = seconds;
+  if (_errorTimer) clearInterval(_errorTimer);
+  _errorTimer = setInterval(() => {
+    remaining--;
+    errorCountdown.textContent = `NEXT CYCLE IN ${remaining}`;
+    if (remaining <= 0) {
+      clearInterval(_errorTimer);
+      _errorTimer = null;
+      errorOverlay.classList.add('hidden');
+    }
+  }, 1000);
+}
 
 // ── Delete confirm ────────────────────────────────────────────────────────────
 const deleteConfirm  = document.getElementById('deleteConfirm');

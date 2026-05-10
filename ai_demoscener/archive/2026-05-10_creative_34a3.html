@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+</script>
+<script type="module">
+    import * as THREE from 'three';
+
+    /**
+     * IDEA: "NEURAL SYNAPSE ARCHITECTURE"
+     * A hybrid of Raymarching, Particle Systems, and L-Systems.
+     * We simulate a growing 3D fractal structure made of light filaments (L-System) 
+     * that are connected by pulsing electrical discharges (Raymarched SDF/Metaballs).
+     * Particles act as "information packets" traveling along the geometry.
+     */
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    document.body.appendChild(renderer.domElement);
+
+    // --- 1. THE NEURAL CORE (Raymarched SDF in Background) ---
+    const fs = `
+        uniform float time;
+        uniform vec2 resolution;
+
+        mat2 rot(float a) { return mat2(cos(a), -sin(a), sin(a), cos(a)); }
+
+        float smin(float a, float b, float k) {
+            float h = clamp(0.5 + 0.5*(b-a)/k, 0.0, 1.0);
+            return mix(b, a, h) - k*h*(1.0-h);
+        }
+
+        float map(vec3 p) {
+            p.z -= time * 0.5;
+            p.xy *= rot(time * 0.2);
+            vec3 q = mod(p + 2.0, 4.0) - 2.0;
+            
+            float d1 = length(q) - 0.6;
+            float d2 = length(mod(q.xy*2.0, 2.0)-1.0) - 0.3; // Boxy logic
+            float d3 = length(q.yz*2.0-1.0) - 0.1;
+
+            float sphere = length(p) - 1.5;
+            float torus = length(vec2(length(p.xz)-1.5, p.y)) - 0.1;
+
+            return smin(sphere, torus, 1.0);
+        }
+
+        void main() {
+            vec2 uv = (gl_FragCoord.xy - 0.5 * resolution.xy) / min(resolution.y, resolution.x);
+            vec3 ro = vec3(0, 0, 4);
+            vec3 rd = normalize(vec3(uv, -1.5));
+
+            float t = 0.0;
+            for(int i=0; i<64; i++) {
+                float d = map(ro + rd * t);
+                if(d < 0.001 || t > 20.0) break;
+                t += d;
+            }
+
+            vec3 col = vec3(0.0);
+            if(t < 20.0) {
+                vec3 p = ro + rd * t;
+                vec3 n = normalize(vec3(map(p+vec3(0.01,0,0))-map(p-vec3(0.01,0,0)),
+                                        map(p+vec3(0,0.01,0))-map(p-vec3(0,0.01,0)),
+                                        map(p+vec3(0,0,0.01))-map(p-vec3(0,0,0.01))));
+                float diff = max(dot(n, normalize(vec3(1,2,3))), 0.0);
+                col = mix(vec3(0.1, 0.0, 0.2), vec3(0.0, 0.8, 1.0), diff);
+                col *= exp(-0.1 * t); // Fog
+            }
+
+            gl_FragColor = vec4(col, 1.0);
+        }
+    `;
+
+    const vs = `
+        void main() { gl_Position = vec4(position, 1.0); }
+    `;
+
+    const geometry = new THREE.PlaneGeometry(2, 2);
+    const backgroundMaterial = new THREE.ShaderMaterial({
+        uniforms: {
+            time: { value: 0 },
+            resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+        },
+        vertexShader: vs,
+        fragmentShader: fs
+    });
+    const bgQuad = new THREE.Mesh(geometry, backgroundMaterial);
+    scene.add(bgQuad);
+
+    // --- 2. THE FILAMENT STRUCTURE (L-System inspired geometry) ---
+    const filamentGroup = new THREE.Group();
+    scene.add(filamentGroup);
+
+    const createFilament = () => {
+        const points = [];
+        let curr = new THREE.Vector3(0, 0, 0);
+        for(let i=0; i<40; i++) {
+            points.push(curr.clone());
+            curr.x += (Math.random() - 0.5) * 2;
+            curr.y += (Math.random() - 0.5) * 2;
+            curr.z -= Math.random() * 1.5;
+        }
+        const curve = new THREE.CatmullRomCurve3(points);
+        const tubeGeo = new THREE.TubeGeometry(curve, 40, 0.02, 8, false);
+        const mat = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.4 });
+        return new THREE.Mesh(tubeGeo, mat);
+    };
+
+    for(let i=0; i<15; i++) {
+        const f = createFilament();
+        f.position.set((Math.random()-0.5)*10, (Math.random()-0.5)*10, (Math.random()-0.5)*5);
+        filamentGroup.add(f);
+    }
+
+    // --- 3. THE SIGNAL PARTICLES ---
+    const particleCount = 1000;
+    const pGeo = new THREE.BufferGeometry();
+    const pPos = new Float32Array(particleCount * 3);
+    const pVel = new Float32Array(particleCount * 3);
+    const pLife = new Float32Array(particleCount);
+
+    for(let i=0; i<particleCount; i++) {
+        pPos[i*3] = (Math.random()-0.5)*15;
+        pPos[i*3+1] = (Math.random()-0.5)*15;
+        pPos[i*3+2] = (Math.random()-0.5)*10;
+        pVel[i*3] = 0; pVel[i*3+1] = 0; pVel[i*3+2] = -0.05;
+        pLife[i] = Math.random();
+    }
+
+    pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+    const pMat = new THREE.PointsMaterial({
+        size: 0.08,
+        color: 0xffffff,
+        transparent: true,
+        blending: THREE.AdditiveBlending
+    });
+    const particles = new THREE.Points(pGeo, pMat);
+    scene.add(particles);
+
+    // --- ANIMATION LOOP ---
+    camera.position.z = 8;
+    let time = 0;
+
+    function animate() {
+        requestAnimationFrame(animate);
+        time += 0.016;
+
+        backgroundMaterial.uniforms.time.value = time;
+        filamentGroup.rotation.y = Math.sin(time * 0.2) * 0.5;
+        filamentGroup.rotation.x = Math.cos(time * 0.3) * 0.2;
+
+        // Update Particles
+        const positions = pGeo.attributes.position.array;
+        for(let i=0; i<particleCount; i++) {
+            positions[i*3+2] -= 0.1; // Move forward
+            pLife[i] -= 0.005;
+
+            if(pLife[i] <= 0 || positions[i*3+2] < -10) {
+                pLife[i] = 1.0;
+                positions[i*3] = (Math.random()-0.5)*15;
+                positions[i*3+1] = (Math.random()-0.5)*15;
+                positions[i*3+2] = 5;
+            }
+        }
+        pGeo.attributes.position.needsUpdate = true;
+
+        // Subtle camera drift
+        camera.position.x = Math.sin(time * 0.5) * 2;
+        camera.lookAt(0, 0, -5);
+
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        backgroundMaterial.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+</script>
+</body>
+</html>

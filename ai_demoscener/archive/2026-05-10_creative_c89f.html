@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>NEURAL_FRACTAL_VOID</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+/**
+ * CONCEPT: "NEURAL FRACTAL VOID"
+ * A hybrid of Raymarching, Fractal IFS (Iterated Function Systems), 
+ * and Chromatic Aberration. It renders a morphing infinite structure 
+ * that feels like a biological machine or a digital hallucination.
+ */
+
+const vertexShader = `
+    varying vec2 vUv;
+    void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+`;
+
+const fragmentShader = `
+    precision highp float;
+    uniform float time;
+    uniform vec2 resolution;
+    varying vec2 vUv;
+
+    #define MAX_STEPS 100
+    #define SURF_DIST .001
+    #define MAX_DIST 20.
+
+    // Rotation matrix
+    mat2 rot(float a) {
+        float s = sin(a), c = cos(a);
+        return mat2(c, -s, s, c);
+    }
+
+    // Smooth minimum for organic blending
+    float smin(float a, float b, float k) {
+        float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+        return mix(b, a, h) - k * h * (1.0 - h);
+    }
+
+    // The fractal SDF: A morphing combination of spheres and folded space
+    float map(vec3 p) {
+        p.z += time * 0.5; // Constant forward motion
+        
+        // Fractal folding logic (IFS-lite)
+        for(int i = 0; i < 4; i++) {
+            p = abs(p) - vec3(0.5, 1.2, 0.8);
+            p.xy *= rot(time * 0.1 + float(i));
+            p.yz *= rot(time * 0.15);
+        }
+
+        float sphere = length(p) - 0.6;
+        float box = length(max(abs(p) - vec3(0.4), 0.0));
+        
+        // Combine using smooth min for "metaball" fractal feel
+        return smin(sphere, box, 0.5);
+    }
+
+    vec3 getNormal(vec3 p) {
+        vec2 e = vec2(.01, 0);
+        float d = map(p);
+        vec3 n = d - vec3(
+            map(p-e.xyy),
+            map(p-e.yxy),
+            map(p-e.yyx)
+        );
+        return normalize(n);
+    }
+
+    void main() {
+        vec2 uv = (gl_FragCoord.xy - 0.5 * resolution.xy) / min(resolution.y, resolution.x);
+        
+        // Chromatic aberration effect on UVs
+        float ca = 0.01 * sin(time * 0.5);
+        vec3 col = vec3(0.0);
+        
+        // Render three channels with slight offsets for chromatic aberration
+        for(int i=0; i<3; i++) {
+            float offset = float(i-1) * ca;
+            vec2 curUv = uv + offset;
+            
+            vec3 ro = vec3(0, 0, -2); // Ray Origin
+            vec3 rd = normalize(vec3(curUv, 1.5)); // Ray Direction
+            
+            float dO = 0.0;
+            float dS;
+            vec3 p;
+
+            // Raymarching loop
+            for(int j=0; j<MAX_STEPS; j++) {
+                p = ro + rd * dO;
+                dS = map(p);
+                dO += dS;
+                if(dO > MAX_DIST || abs(dS) < SURF_DIST) break;
+            }
+
+            float channelVal = 0.0;
+            if(dO < MAX_DIST) {
+                vec3 n = getNormal(p);
+                float diff = dot(n, normalize(vec3(1,2,-3))) * 0.5 + 0.5;
+                // Lighting based on depth and normal
+                channelVal = diff * (1.0 / (1.0 + dO * 0.2));
+            }
+
+            // Color mapping per channel
+            if(i == 0) col.r = channelVal * 0.8; // Red channel
+            if(i == 1) col.g = channelVal * 0.5; // Green channel
+            if(i == 2) col.b = channelVal * 1.2; // Blue channel (cyan/purple bias)
+        }
+
+        // Add some "nebula" background noise based on UV and time
+        float noise = sin(uv.x*10. + time) * cos(uv.y*10. + time);
+        col += vec3(0.05, 0.02, 0.1) * (1.0 - length(uv));
+        col += noise * 0.03;
+
+        // Fog / Depth fade
+        col *= exp(-0.1 * length(uv));
+
+        gl_FragColor = vec4(col, 1.0);
+    }
+`;
+
+function init() {
+    const scene = new THREE.Scene();
+    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    const geometry = new THREE.PlaneGeometry(2, 2);
+    const uniforms = {
+        time: { value: 0 },
+        resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+    };
+
+    const material = new THREE.ShaderMaterial({
+        uniforms: uniforms,
+        vertexShader: vertexShader,
+        fragmentShader: fragmentShader
+    });
+
+    const mesh = new THREE.Mesh(geometry, material);
+    scene.add(mesh);
+
+    function animate(t) {
+        requestAnimationFrame(animate);
+        uniforms.time.value = t * 0.001;
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+    });
+
+    animate(0);
+}
+
+init();
+</script>
+</body>
+</html>

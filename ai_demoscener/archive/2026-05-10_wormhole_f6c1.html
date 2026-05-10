@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="module">
+    import * as THREE from 'https://cdn.skypack.dev/three@0.136.0';
+
+    // 1. Scene Setup
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // 2. Create Winding Path (12 Control Points)
+    const points = [];
+    for (let i = 0; i < 12; i++) {
+        points.push(new THREE.Vector3(
+            Math.sin(i * 0.7) * 20,
+            Math.cos(i * 1.3) * 10,
+            Math.sin(i * 0.5) * 20
+        ));
+    }
+    const curve = new THREE.CatmullRomCurve3(points);
+
+    // 3. Create Procedural Canvas Texture (Stripes)
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+    
+    // Background
+    ctx.fillStyle = '#111';
+    ctx.fillRect(0, 0, 256, 256);
+    
+    // Stripes
+    ctx.strokeStyle = '#00ff88';
+    ctx.lineWidth = 10;
+    for (let i = 0; i < 10; i++) {
+        ctx.beginPath();
+        ctx.moveTo(i * 32, 0);
+        ctx.lineTo(i * 32, 256);
+        ctx.stroke();
+    }
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+
+    // 4. Create Tube Geometry
+    // Using BackSide so we see the inside of the tube as we travel through it
+    const geometry = new THREE.TubeGeometry(curve, 200, 1, 32, false);
+    const material = new THREE.MeshBasicMaterial({ 
+        map: texture, 
+        side: THREE.BackSide 
+    });
+    const tube = new THREE.Mesh(geometry, material);
+    scene.add(tube);
+
+    // Lighting (Optional for BasicMaterial, but good practice if switching to Standard)
+    const light = new THREE.PointLight(0xffffff, 1, 100);
+    scene.add(light);
+
+    // 5. Animation Loop
+    function animate(time) {
+        requestAnimationFrame(animate);
+        const t_seconds = time * 0.001;
+
+        // Texture scrolling: offset.x by time * 0.5
+        texture.offset.x = t_seconds * 0.5;
+
+        // Camera movement: getPointAt(t) with t = (time*0.05) % 1
+        // Note: prompt says (time*0.05)%1, we assume time is in seconds or normalized units
+        // To make it smooth, we use the passed timestamp converted to a progression factor
+        const progress = (t_seconds * 0.05) % 1;
+        
+        const pos = curve.getPointAt(progress);
+        camera.position.copy(pos);
+
+        // Look slightly ahead on the curve to maintain orientation
+        const lookAtPos = curve.getPointAt((progress + 0.01) % 1);
+        camera.lookAt(lookAtPos);
+
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    requestAnimationFrame(animate);
+</script>
+</body>
+</html>

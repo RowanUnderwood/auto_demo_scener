@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Cybernetic Pulsar Stream</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #050506; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+</script>
+<script type="module">
+    import * as THREE from 'three';
+
+    // --- Configuration ---
+    const CONFIG = {
+        colorPrimary: 0xffaa00,   // Gold
+        colorSecondary: 0xff2200, // Crimson
+        colorAccent: 0x444444,    // Dark Steel
+        knotTorus: { radius: 1.8, tube: 0.5, tubularSegments: 160, radialSegments: 20 },
+        beamCount: 8,
+        particleCount: 8000
+    };
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 3, 6);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    document.body.appendChild(renderer.domElement);
+
+    // --- Geometry Construction ---
+    const knotGeo = new THREE.TorusKnotGeometry(
+        CONFIG.knotTorus.radius, 
+        CONFIG.knotTorus.tube, 
+        CONFIG.knotTorus.tubularSegments, 
+        CONFIG.knotTorus.radialSegments
+    );
+
+    // Main Particle Field for the Knot
+    const particleGeo = new THREE.BufferGeometry();
+    const positions = new Float32Array(CONFIG.particleCount * 3);
+    const colors = new Float32Array(CONFIG.particleCount * 3);
+    const sizes = new Float32Array(CONFIG.particleCount);
+
+    // Distribute particles along the knot surface (approximate via vertex sampling)
+    const knotVertices = knotGeo.attributes.position.array;
+    for (let i = 0; i < CONFIG.particleCount; i++) {
+        const idx = Math.floor(Math.random() * (knotVertices.length / 3)) * 3;
+        positions[i * 3] = knotVertices[idx];
+        positions[i * 3 + 1] = knotVertices[idx + 1];
+        positions[i * 3 + 2] = knotVertices[idx + 2];
+
+        const col = new THREE.Color(CONFIG.colorAccent).lerp(
+            new THREE.Color(CONFIG.colorPrimary), 
+            Math.random()
+        );
+        colors[i * 3] = col.r;
+        colors[i * 3 + 1] = col.g;
+        colors[i * 3 + 2] = col.b;
+
+        sizes[i] = Math.random() * 0.04;
+    }
+
+    particleGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    particleGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    particleGeo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+    const particleMat = new THREE.PointsMaterial({
+        size: 0.03,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.8,
+        blending: THREE.AdditiveBlending
+    });
+    const pointCloud = new THREE.Points(particleGeo, particleMat);
+    scene.add(pointCloud);
+
+    // Subtle Wireframe structure
+    const wireframe = new THREE.Mesh(
+        knotGeo,
+        new THREE.MeshBasicMaterial({ 
+            color: CONFIG.colorAccent, 
+            wireframe: true, 
+            transparent: true, 
+            opacity: 0.05 
+        })
+    );
+    scene.add(wireframe);
+
+    // --- Projection Beams (The "Data Streams") ---
+    const beamGroup = new THREE.Group();
+    const beamLines = [];
+    const beamGeometries = [];
+
+    for (let i = 0; i < CONFIG.beamCount; i++) {
+        const lineGeo = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(0, 0, 0), // Start (will update to camera)
+            new THREE.Vector3(0, 0, 0)  // End (target)
+        ]);
+        const lineMat = new THREE.LineBasicMaterial({
+            color: i % 2 === 0 ? CONFIG.colorPrimary : CONFIG.colorSecondary,
+            transparent: true,
+            opacity: 0.4,
+            blending: THREE.AdditiveBlending
+        });
+        const line = new THREE.Line(lineGeo, lineMat);
+        beamLines.push(line);
+        beamGeometries.push(lineGeo);
+        beamGroup.add(line);
+    }
+    scene.add(beamGroup);
+
+    // --- Target Logic ---
+    const targetAnchor = new THREE.Object3D(); // Used to orbit the point relative to knot
+    scene.add(targetAnchor);
+    
+    const targetMarkerGeo = new THREE.SphereGeometry(0.08, 16, 16);
+    const targetMarkerMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const targetMarker = new THREE.Mesh(targetMarkerGeo, targetMarkerMat);
+    // Offset marker to sit on the knot surface roughly
+    targetMarker.position.set(CONFIG.knotTorus.radius + CONFIG.knotTorus.tube, 0, 0);
+    targetAnchor.add(targetMarker);
+
+    const targetPos = new THREE.Vector3();
+    const beamStart = new THREE.Vector3();
+
+    // --- Animation Loop ---
+    const clock = new THREE.Clock();
+
+    function animate() {
+        requestAnimationFrame(animate);
+        const elapsed = clock.getElapsedTime();
+
+        // Rotate the whole structure
+        pointCloud.rotation.y += 0.0015;
+        pointCloud.rotation.z += 0.001;
+        wireframe.rotation.copy(pointCloud.rotation);
+
+        // Move the target anchor in an orbital/complex pattern
+        targetAnchor.position.copy(pointCloud.position); // Keep it centered with knot
+        targetAnchor.rotation.x = Math.sin(elapsed * 0.5) * 2;
+        targetAnchor.rotation.y = elapsed * 0.8;
+
+        // Get global target position
+        targetMarker.getWorldPosition(targetPos);
+
+        // Update Beams: From Camera to Target
+        for (let i = 0; i < CONFIG.beamCount; i++) {
+            const line = beamLines[i];
+            const geo = beamGeometries[i];
+            const mat = line.material;
+
+            // Calculate a slightly offset start point for each beam for a "fan" effect
+            const angleOffset = (i / CONFIG.beamCount) * Math.PI * 2;
+            beamStart.copy(camera.position);
+            
+            // Add some jitter/offset to the beams so they aren't all identical
+            const jitter = Math.sin(elapsed * 10 + i) * 0.05;
+            beamStart.add(new THREE.Vector3(Math.cos(angleOffset)*jitter, Math.sin(angleOffset)*jitter, 0));
+
+            geo.setFromPoints([beamStart, targetPos]);
+
+            // Pulse opacity and thickness effect
+            const pulse = (Math.sin(elapsed * 4 + i) * 0.5 + 0.5);
+            mat.opacity = 0.1 + (pulse * 0.6);
+        }
+
+        // Interaction: Camera subtle movement
+        camera.position.x = Math.sin(elapsed * 0.3) * 2;
+        camera.lookAt(0, 0, 0);
+
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+</script>
+</body>
+</html>

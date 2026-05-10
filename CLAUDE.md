@@ -53,14 +53,16 @@ Orchestrator (daemon thread)
 | File | Role |
 |---|---|
 | `app.py` | Flask entry point; WebSocket registry; route wiring |
-| `orchestrator.py` | State machine; calls lm_client, archive, validator |
+| `orchestrator.py` | State machine; calls lm_client, archive, validator, stats |
 | `lm_client.py` | LM Studio API: `list_models()`, `chat_stream()` (streaming SSE) |
 | `validator.py` | Probe script injection into demo HTML; fence-stripping; validation sync primitives |
 | `archive.py` | Save/version/list/prune/delete archived demos; `archive_index.json` |
+| `stats.py` | Per-prompt failure tracking; `load()`, `save()`, `record_failure(effect, kind)` → `prompt_stats.json` |
 | `config.py` | `load()` / `save()` with deep-merge defaults; atomic write |
 | `logging_setup.py` | Rotating file handler (5 MB × 5) + stdout |
 | `download_vendor.py` | One-shot script to fetch three.js into `static/three/` |
 | `prompts.csv` | 26+ effect specs fed to LLM; columns: `Effect`, `Three.js prompt` |
+| `archive/index.html` | Self-contained static archive player (no backend); reads `archive_index.json`, cycles demos; hostable on GitHub Pages |
 
 ### Validation flow (the tricky part)
 
@@ -83,7 +85,10 @@ z=1   <iframe id="demoFrame">   always rendering; opacity:0 during mock-OS
 z=2   #mockOS overlay           grid: title bar / editor / status bar; opacity:0 during DISPLAY
 z=3   #idleOverlay              shown only on startup
 z=20  #deleteConfirm            delete confirmation dialog; shown on 'd' keypress in replay mode
+z=21  #errorOverlay             crash/blank overlay; auto-dismisses after 5s countdown
 ```
+
+The error overlay appears on `DISCARD` state messages that include a `kind` field (`"CRASHED"` or `"BLANK"`). LLM-failure DISCARDs (no `kind`) show plain status text only. Only stock-mode validation failures are recorded in `prompt_stats.json` (crashes can't be attributed to a specific prompt for creative/update modes).
 
 State transitions (sent via WebSocket `{type:"state", state:"GENERATE", ...}`) control which layers are visible.
 
@@ -97,6 +102,15 @@ On reconnect, the server replays `orc.last_state_msg` (the full last state dict 
 | `Escape` | Dismiss delete confirmation | Overlay open |
 
 Keys are captured via both the parent `document.keydown` listener and the probe's `probe_keydown` relay (handles iframe focus stealing).
+
+### Keyboard shortcuts (static archive player)
+
+| Key | Effect |
+|---|---|
+| `→` / `Space` | Next demo |
+| `←` | Previous demo |
+
+Same probe_keydown relay used — the static player also listens for `postMessage({type:"probe_keydown"})` from inside the iframe.
 
 ### Config
 

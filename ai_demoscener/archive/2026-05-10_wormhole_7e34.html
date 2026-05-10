@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Three.js Tube Path</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        // 1. Scene Setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.01, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        // Modern Three.js color management
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        renderer.toneMapping = THREE.ReinhardToneMapping;
+        document.body.appendChild(renderer.domElement);
+
+        // 2. Create Winding Path (CatmullRomCurve3)
+        const controlPoints = [];
+        for (let i = 0; i < 12; i++) {
+            controlPoints.push(new THREE.Vector3(
+                Math.sin(i * 0.8) * 25,
+                Math.cos(i * 1.2) * 25,
+                Math.sin(i * 0.5) * 25
+            ));
+        }
+        const curve = new THREE.CatmullRomCurve3(controlPoints);
+
+        // 3. Create Procedural CanvasTexture (Stripes)
+        const canvas = document.createElement('canvas');
+        canvas.width = 256;
+        canvas.height = 256;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, 256, 256);
+        ctx.fillStyle = '#ff3300';
+        for (let i = 0; i < 256; i += 32) {
+            ctx.fillRect(i, 0, 16, 256);
+        }
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.wrapT = THREE.RepeatWrapping;
+
+        // 4. Create TubeGeometry
+        // Increased segments for smoothness and set radius to 1
+        const geometry = new THREE.TubeGeometry(curve, 200, 1, 32, false);
+        const material = new THREE.MeshStandardMaterial({ 
+            map: texture,
+            roughness: 0.3,
+            metalness: 0.4,
+            side: THREE.BackSide // Since camera is inside the tube, render the back side of faces
+        });
+        const tube = new THREE.Mesh(geometry, material);
+        scene.add(tube);
+
+        // Lighting - Using much higher intensities for physically-based lighting (r160+)
+        const ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
+        scene.add(ambientLight);
+        
+        const pointLight = new THREE.PointLight(0xffffff, 5000); 
+        pointLight.position.set(0, 20, 0);
+        scene.add(pointLight);
+
+        // 5. Animation Loop
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const time = clock.getElapsedTime();
+
+            // Scroll texture offset
+            texture.offset.x = time * 0.2;
+
+            // Camera movement logic
+            let t = (time * 0.05) % 1;
+            
+            // Position camera on the curve
+            const pos = curve.getPointAt(t);
+            camera.position.copy(pos);
+
+            // Look ahead slightly for smooth directionality
+            const lookAtT = (t + 0.02) % 1;
+            const lookTarget = curve.getPointAt(lookAtT);
+            camera.lookAt(lookTarget);
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

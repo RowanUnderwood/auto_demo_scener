@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AETHER_CORE // KINETIC_GEOMETRY</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #050505; font-family: 'Courier New', monospace; }
+        #ui { position: absolute; bottom: 30px; left: 30px; color: #ffffff; pointer-events: none; opacity: 0.6; font-size: 12px; letter-spacing: 4px; border-left: 1px solid #fff; padding-left: 15px; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <div id="ui">SEQUENCE_04 // KINETIC_FIELD<br>STATUS: STABLE</div>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        /**
+         * CONCEPT: "KINETIC MONOLITH"
+         * A shift from the chaotic nebula to a structured, brutalist geometric dance.
+         * Uses a raymarched Signed Distance Field (SDF) of intersecting prisms and rings,
+         * paired with a high-speed particle drift that behaves like liquid mercury.
+         */
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.body.appendChild(renderer.domElement);
+
+        // --- SHADER MATERIAL (The Geometric Monolith) ---
+        const monolithShader = {
+            uniforms: {
+                uTime: { value: 0 },
+                uResolution: { value: new THREE.Vector2() },
+                uColorPrimary: { value: new THREE.Color(0xffffff) },
+                uColorSecondary: { value: new THREE.Color(0x333333) },
+                uIntensity: { value: 1.0 }
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float uTime;
+                uniform vec2 uResolution;
+                uniform vec3 uColorPrimary;
+                uniform vec3 uColorSecondary;
+                varying vec2 vUv;
+
+                #define MAX_STEPS 80
+                #define SURFACE_DIST 0.001
+                #define MAX_DIST 40.0
+
+                mat2 rot(float a) { return mat2(cos(a), -sin(a), sin(a), cos(a)); }
+
+                float sdBox(vec3 p, vec3 b) {
+                    vec3 q = abs(p) - b;
+                    return length(max(q,0.0)) + min(max(q.x,max(q.y,q.z)),0.0);
+                }
+
+                float sdTorus(vec3 p, vec2 t) {
+                    vec2 q = vec2(length(p.xz)-t.x, p.y);
+                    return length(q)-t.y;
+                }
+
+                float getDist(vec3 p) {
+                    // Global rotation and movement
+                    p.yz *= rot(uTime * 0.3);
+                    p.xz *= rot(uTime * 0.2);
+                    
+                    // Structural folding
+                    for(int i=0; i<4; i++) {
+                        p = abs(p) - vec3(1.5, 2.0, 1.5);
+                        p.xy *= rot(uTime * 0.1 + float(i));
+                    }
+
+                    float box = sdBox(p, vec3(0.8));
+                    float torus = sdTorus(p, vec2(2.5, 0.05));
+                    float ring = sdTorus(p * rot(uTime*0.5), vec2(1.2, 0.02));
+
+                    return min(box, min(torus, ring));
+                }
+
+                vec3 getNormal(vec3 p) {
+                    vec2 e = vec2(0.01, 0);
+                    float d = getDist(p);
+                    vec3 n = d - vec3(
+                        getDist(p-e.xyy),
+                        getDist(p-e.yxy),
+                        getDist(p-e.yyx)
+                    );
+                    return normalize(n);
+                }
+
+                void main() {
+                    vec2 uv = (gl_FragCoord.xy * 2.0 - uResolution.xy) / min(uResolution.y, uResolution.x);
+                    vec3 ro = vec3(0, 0, -6); // Camera position
+                    vec3 rd = normalize(vec3(uv, 1.5));
+
+                    float dO = 0.0;
+                    float dS;
+                    vec3 p;
+
+                    for(int i=0; i<MAX_STEPS; i++) {
+                        p = ro + rd * dO;
+                        dS = getDist(p);
+                        dO += dS;
+                        if(dO > MAX_DIST || abs(dS) < SURFACE_DIST) break;
+                    }
+
+                    vec3 color = vec3(0.02); // Deep void background
+
+                    if(dO < MAX_DIST) {
+                        vec3 n = getNormal(p);
+                        float diffuse = dot(n, normalize(vec3(1, 2, -3))) * 0.5 + 0.5;
+                        
+                        // Edge highlight effect
+                        float edge = 1.0 - max(0.0, dot(n, -rd));
+                        edge = pow(edge, 4.0);
+
+                        color = mix(uColorSecondary, uColorPrimary, diffuse);
+                        color += edge * uColorPrimary * 0.5;
+                        
+                        // Fog/Depth
+                        color *= exp(-0.05 * dO);
+                    }
+
+                    // Post-process grain and vignette
+                    float vignette = 1.0 - length(uv) * 0.5;
+                    color *= vignette;
+                    
+                    gl_FragColor = vec4(color, 1.0);
+                }
+            `
+        };
+
+        const quadGeom = new THREE.PlaneGeometry(2, 2);
+        const quadMat = new THREE.ShaderMaterial({
+            uniforms: monolithShader.uniforms,
+            vertexShader: monolithShader.vertexShader,
+            fragmentShader: monolithShader.fragmentShader
+        });
+        const quad = new THREE.Mesh(quadGeom, quadMat);
+        scene.add(quad);
+
+        // --- MERCURY PARTICLES (The Fluid Drift) ---
+        const particleCount = 15000;
+        const partGeo = new THREE.BufferGeometry();
+        const posArray = new Float32Array(particleCount * 3);
+        const scaleArray = new Float32Array(particleCount);
+
+        for(let i=0; i < particleCount; i++) {
+            posArray[i*3] = (Math.random() - 0.5) * 20;
+            posArray[i*3+1] = (Math.random() - 0.5) * 20;
+            posArray[i*3+2] = (Math.random() - 0.5) * 20;
+            scaleArray[i] = Math.random();
+        }
+
+        partGeo.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+        // We use a custom attribute for individual particle sizing in the shader if we wanted, 
+        // but sticking to standard PointsMaterial for simplicity and speed here.
+
+        const partMat = new THREE.PointsMaterial({
+            size: 0.025,
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0.4,
+            blending: THREE.AdditiveBlending
+        });
+
+        const particles = new THREE.Points(partGeo, partMat);
+        scene.add(particles);
+
+        // --- ANIMATION LOOP ---
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const elapsed = clock.getElapsedTime();
+
+            // Update Shader
+            quadMat.uniforms.uTime.value = elapsed;
+            quadMat.uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+
+            // Animate Particles (Flowing motion)
+            const positions = partGeo.attributes.position.array;
+            for(let i=0; i < particleCount; i++) {
+                const idx = i * 3;
+                // Circular orbit + slow drift
+                positions[idx] += Math.sin(elapsed * 0.5 + positions[idx+1] * 0.2) * 0.005;
+                positions[idx+1] += Math.cos(elapsed * 0.3 + positions[idx] * 0.2) * 0.005;
+                positions[idx+2] += 0.01; // Constant forward flow
+
+                if(positions[idx+2] > 5) positions[idx+2] = -15;
+            }
+            partGeo.attributes.position.needsUpdate = true;
+
+            // Camera: Subtle breathing movement
+            camera.position.z = Math.sin(elapsed * 0.4) * 0.5 - 0.5;
+            camera.rotation.y = Math.sin(elapsed * 0.2) * 0.1;
+            camera.rotation.x = Math.cos(elapsed * 0.3) * 0.1;
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

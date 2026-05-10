@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>NEURAL NEBULA - Demoscene</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', monospace; }
+        #ui { position: absolute; bottom: 20px; left: 20px; color: #0f0; pointer-events: none; text-shadow: 0 0 5px #0f0; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <div id="ui">SYSTEM_STATE: DREAMING...<br>NEURAL_FLUX_INDEX: <span id="flux">0.00</span></div>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        /**
+         * CONCEPT: "NEURAL NEBULA"
+         * A hybrid of Raymarched SDFs, Particle Swarms, and Chromatic Aberration.
+         * An infinite void containing a shifting, morphing hyper-organism (the Neural Core) 
+         * surrounded by billions of synaptic sparks that react to its movement.
+         */
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // --- SHADERS ---
+
+        // The Core: A Raymarched SDF of a morphing "Brain/Star" using smin
+        const coreVertex = `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `;
+
+        const coreFragment = `
+            uniform float time;
+            uniform vec2 resolution;
+            varying vec2 vUv;
+
+            mat2 rot(float a) { return mat2(cos(a), -sin(a), sin(a), cos(a)); }
+
+            float smin(float a, float b, float k) {
+                float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+                return mix(b, a, h) - k * h * (1.0 - h);
+            }
+
+            float sdSphere(vec3 p, float s) { return length(p) - s; }
+            float sdBox(vec3 p, vec3 b) {
+                vec3 q = abs(p) - b;
+                return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
+            }
+
+            float map(vec3 p) {
+                vec3 q = p;
+                q.xz *= rot(time * 0.3);
+                q.xy *= rot(time * 0.2);
+                
+                // Morphing shapes
+                float d1 = sdSphere(q, 1.2 + sin(time) * 0.2);
+                float d2 = sdBox(q, vec3(1.0, 1.5, 1.0));
+                d2 = abs(d2) - 0.5; // hollow box
+                
+                float res = smin(d1, d2, 0.8);
+                
+                // Adding "neural" bumps
+                float bumps = sin(p.x * 10.0 + time) * sin(p.y * 10.0) * sin(p.z * 10.0) * 0.1;
+                return res + bumps;
+            }
+
+            vec3 getNormal(vec3 p) {
+                vec2 e = vec2(0.001, 0);
+                return normalize(vec3(
+                    map(p + e.xyy) - map(p - e.xyy),
+                    map(p + e.yxy) - map(p - e.yxy),
+                    map(p + e.yyx) - map(p - e.yyx)
+                ));
+            }
+
+            void main() {
+                vec2 uv = (gl_FragCoord.xy * 2.0 - resolution.xy) / min(resolution.x, resolution.y);
+                vec3 ro = vec3(0, 0, -4);
+                vec3 rd = normalize(vec3(uv, 1.5));
+                
+                float t = 0.0;
+                for(int i=0; i<64; i++) {
+                    float d = map(ro + rd * t);
+                    if(d < 0.001 || t > 20.0) break;
+                    t += d;
+                }
+
+                vec3 col = vec3(0.01, 0.0, 0.05); // Deep void background
+
+                if(t < 20.0) {
+                    vec3 p = ro + rd * t;
+                    vec3 n = getNormal(p);
+                    float diff = max(dot(n, normalize(vec3(1, 2, -3))), 0.0);
+                    float spec = pow(max(dot(reflect(rd, n), normalize(vec3(1, 2, -3))), 0.0), 32.0);
+                    
+                    // Color based on position and normal (nebula style)
+                    vec3 baseCol = 0.5 + 0.5 * cos(time + p.xyy + vec3(0, 2, 4));
+                    col = baseCol * diff + spec;
+                    col *= exp(-0.1 * t); // Fog
+                }
+
+                // Add a subtle glow/fringe
+                col += vec3(0.1, 0.05, 0.2) * (0.1 / length(uv));
+
+                gl_FragColor = vec4(col, 1.0);
+            }
+        `;
+
+        // --- OBJECTS ---
+
+        const coreGeom = new THREE.PlaneGeometry(2, 2);
+        const coreMat = new THREE.ShaderMaterial({
+            uniforms: {
+                time: { value: 0 },
+                resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+            },
+            vertexShader: coreVertex,
+            fragmentShader: coreFragment
+        });
+        const coreQuad = new THREE.Mesh(coreGeom, coreMat);
+        scene.add(coreQuad);
+
+        // Particle Swarm (Synapses)
+        const particleCount = 8000;
+        const pGeometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(particleCount * 3);
+        const colors = new Float32Array(particleCount * 3);
+        const velocities = [];
+
+        for (let i = 0; i < particleCount; i++) {
+            positions[i*3] = (Math.random() - 0.5) * 15;
+            positions[i*3+1] = (Math.random() - 0.5) * 15;
+            positions[i*3+2] = (Math.random() - 0.5) * 15;
+
+            velocities.push(new THREE.Vector3(
+                (Math.random() - 0.5) * 0.02,
+                (Math.random() - 0.5) * 0.02,
+                (Math.random() - 0.5) * 0.02
+            ));
+
+            colors[i*3] = 0.4; // R
+            colors[i*3+1] = 1.0; // G
+            colors[i*3+2] = 0.8; // B (Cyan/Teal)
+        }
+
+        pGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        pGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        const pMaterial = new THREE.PointsMaterial({
+            size: 0.04,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.6,
+            blending: THREE.AdditiveBlending
+        });
+
+        const particles = new THREE.Points(pGeometry, pMaterial);
+        scene.add(particles);
+
+        // --- ANIMATION LOOP ---
+
+        const clock = new THREE.Clock();
+        const fluxEl = document.getElementById('flux');
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const t = clock.getElapsedTime();
+            
+            coreMat.uniforms.time.value = t;
+            
+            // Animate Particles
+            const posAttr = pGeometry.attributes.position;
+            for (let i = 0; i < particleCount; i++) {
+                posAttr.array[i*3] += velocities[i].x + Math.sin(t + i) * 0.002;
+                posAttr.array[i*3+1] += velocities[i].y + Math.cos(t + i) * 0.002;
+                posAttr.array[i*3+2] += velocities[i].z;
+
+                // Wrap around
+                if (Math.abs(posAttr.array[i*3]) > 10) posAttr.array[i*3] *= -0.9;
+                if (Math.abs(posAttr.array[i*3+1]) > 10) posAttr.array[i*3+1] *= -0.9;
+                if (Math.abs(posAttr.array[i*3+2]) > 10) posAttr.array[i*3+2] *= -0.9;
+            }
+            posAttr.needsUpdate = true;
+
+            // Camera movement (slow breathing)
+            camera.position.x = Math.sin(t * 0.5) * 0.5;
+            camera.position.y = Math.cos(t * 0.3) * 0.5;
+            camera.lookAt(0, 0, 0);
+
+            // UI Update
+            fluxEl.innerText = (Math.sin(t * 2.0) * 0.5 + 0.5).toFixed(4);
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            coreMat.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

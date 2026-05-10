@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Ethereal Void Singularity</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #020205; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+</script>
+<script type="module">
+    import * as THREE from 'three';
+
+    // --- Configuration: Cosmic/Nebula Aesthetic ---
+    const CONFIG = {
+        coreColor: 0x44aaff,      // Electric Cyan
+        voidColor: 0x8800ff,      // Deep Violet
+        particleCount: 12000,
+        ringCount: 6,
+        bloomStrength: 1.5
+    };
+
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x020205, 0.08);
+
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.z = 8;
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    document.body.appendChild(renderer.domElement);
+
+    // --- The Singularity (Central Torus Knot) ---
+    const knotGeo = new THREE.TorusKnotGeometry(1.5, 0.4, 256, 64, 3, 7);
+    
+    // Custom Shader Material for the "Liquid Light" effect
+    const singularityMat = new THREE.ShaderMaterial({
+        uniforms: {
+            uTime: { value: 0 },
+            uColor1: { value: new THREE.Color(CONFIG.coreColor) },
+            uColor2: { value: new THREE.Color(CONFIG.voidColor) }
+        },
+        vertexShader: `
+            varying vec2 vUv;
+            varying vec3 vNormal;
+            varying vec3 vPosition;
+            uniform float uTime;
+            void main() {
+                vUv = uv;
+                vNormal = normalize(normalMatrix * normal);
+                // Subtle wave distortion based on time and position
+                vec3 pos = position;
+                pos.x += sin(pos.y * 2.0 + uTime) * 0.1;
+                pos.z += cos(pos.x * 2.0 + uTime) * 0.1;
+                vPosition = pos;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+            }
+        `,
+        fragmentShader: `
+            varying vec3 vNormal;
+            varying vec3 vPosition;
+            uniform float uTime;
+            uniform vec3 uColor1;
+            uniform vec3 uColor2;
+            void main() {
+                float fresnel = pow(1.0 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 3.0);
+                float pulse = sin(uTime * 1.5) * 0.5 + 0.5;
+                vec3 color = mix(uColor1, uColor2, vPosition.y * 0.5 + 0.5);
+                color += fresnel * uColor1 * pulse;
+                gl_FragColor = vec4(color, 0.85);
+            }
+        `,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide
+    });
+
+    const singularity = new THREE.Mesh(knotGeo, singularityMat);
+    scene.add(singularity);
+
+    // --- Particle Starfield / Dust ---
+    const starGeo = new THREE.BufferGeometry();
+    const starPos = new Float32Array(CONFIG.particleCount * 3);
+    const starVel = new Float32Array(CONFIG.particleCount * 3);
+    const starColors = new Float32Array(CONFIG.particleCount * 3);
+
+    for (let i = 0; i < CONFIG.particleCount; i++) {
+        // Distribute in a large sphere/cloud around center
+        const r = 5 + Math.random() * 10;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(Math.random() * 2 - 1);
+
+        starPos[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+        starPos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+        starPos[i * 3 + 2] = r * Math.cos(phi);
+
+        starVel[i * 3] = (Math.random() - 0.5) * 0.01;
+        starVel[i * 3 + 1] = (Math.random() - 0.5) * 0.01;
+        starVel[i * 3 + 2] = (Math.random() - 0.5) * 0.01;
+
+        const col = new THREE.Color().setHSL(0.6, 0.8, Math.random() * 0.5);
+        starColors[i * 3] = col.r;
+        starColors[i * 3 + 1] = col.g;
+        starColors[i * 3 + 2] = col.b;
+    }
+
+    starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+    starGeo.setAttribute('color', new THREE.BufferAttribute(starColors, 3));
+    
+    const starMat = new THREE.PointsMaterial({
+        size: 0.015,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.6,
+        blending: THREE.AdditiveBlending
+    });
+
+    const stars = new THREE.Points(starGeo, starMat);
+    scene.add(stars);
+
+    // --- Orbital Rings (The Gravitational Waves) ---
+    const rings = [];
+    for (let i = 0; i < CONFIG.ringCount; i++) {
+        const ringGeo = new THREE.TorusGeometry(2 + i * 0.8, 0.01, 16, 100);
+        const ringMat = new THREE.MeshBasicMaterial({
+            color: i % 2 === 0 ? CONFIG.coreColor : CONFIG.voidColor,
+            transparent: true,
+            opacity: 0.2 - (i * 0.03),
+            blending: THREE.AdditiveBlending
+        });
+        const ring = new THREE.Mesh(ringGeo, ringMat);
+        ring.rotation.x = Math.random() * Math.PI;
+        ring.rotation.y = Math.random() * Math.PI;
+        scene.add(ring);
+        rings.push(ring);
+    }
+
+    // --- Animation Logic ---
+    const clock = new THREE.Clock();
+
+    function animate() {
+        requestAnimationFrame(animate);
+        const delta = clock.getDelta();
+        const elapsed = clock.getElapsedTime();
+
+        singularityMat.uniforms.uTime.value = elapsed;
+        
+        // Rotate Singularity
+        singularity.rotation.y += 0.1 * delta;
+        singularity.rotation.z += 0.05 * delta;
+
+        // Animate Rings
+        rings.forEach((ring, i) => {
+            ring.rotation.x += (0.2 + i * 0.05) * delta;
+            ring.rotation.y += (0.1 + i * 0.02) * delta;
+            const scale = 1.0 + Math.sin(elapsed * (i + 1)) * 0.05;
+            ring.scale.set(scale, scale, scale);
+        });
+
+        // Animate Stars (Drift toward center)
+        const positions = starGeo.attributes.position.array;
+        for (let i = 0; i < CONFIG.particleCount; i++) {
+            positions[i * 3] += starVel[i * 3];
+            positions[i * 3 + 1] += starVel[i * 3 + 1];
+            positions[i * 3 + 2] += starVel[i * 3 + 2];
+
+            // Boundary check: reset stars that drift too far or get too close
+            const dist = Math.sqrt(positions[i*3]**2 + positions[i*3+1]**2 + positions[i*3+2]**2);
+            if (dist > 20 || dist < 0.5) {
+                const r = 10;
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos(Math.random() * 2 - 1);
+                positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+                positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+                positions[i * 3 + 2] = r * Math.cos(phi);
+            }
+        }
+        starGeo.attributes.position.needsUpdate = true;
+
+        // Camera floating movement
+        camera.position.x = Math.sin(elapsed * 0.4) * 1.5;
+        camera.position.y = Math.cos(elapsed * 0.3) * 1.0;
+        camera.lookAt(0, 0, 0);
+
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+</script>
+</body>
+</html>

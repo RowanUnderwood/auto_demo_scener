@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SNES Mode 7 Simulator</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; width: 100vw; height: 100vh; image-rendering: pixelated; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+</script>
+<script type="module">
+    import * as THREE from 'three';
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    const renderer = new THREE.WebGLRenderer({ antialias: false });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    const geometry = new THREE.PlaneGeometry(2, 2);
+    const material = new THREE.ShaderMaterial({
+        uniforms: {
+            uTime: { value: 0 },
+            uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+        },
+        vertexShader: `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = vec4(position, 1.0);
+            }
+        `,
+        fragmentShader: `
+            uniform float uTime;
+            uniform vec2 uResolution;
+            varying vec2 vUv;
+
+            // Pseudo-random hash
+            float hash(vec2 p) {
+                return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+            }
+
+            void main() {
+                // Normalize coordinates to [-1, 1] range with aspect ratio correction
+                vec2 uv = (gl_FragCoord.xy - 0.5 * uResolution.xy) / min(uResolution.y, uResolution.x);
+                
+                // Mode 7 logic: Y coordinate determines the perspective scale/depth
+                // We map UV.y from [0, 1] to a depth factor. 
+                // Top of screen (uv.y ~ 1) is horizon, Bottom (uv.y ~ -1) is near plane.
+                float horizon = 0.05; 
+                
+                if (uv.y > horizon) {
+                    // Sky Gradient
+                    vec3 skyTop = vec3(0.2, 0.4, 0.8);
+                    vec3 skyBottom = vec3(0.6, 0.8, 1.0);
+                    float t = smoothstep(-horizon, horizon, uv.y);
+                    gl_FragColor = vec4(mix(skyBottom, skyTop, t), 1.0);
+                } else {
+                    // Ground Plane (Mode 7 effect)
+                    // Transform y to represent distance/depth scale
+                    // As uv.y goes from horizon (0) to bottom (-1), depth increases
+                    float depth = 1.0 / (abs(uv.y - horizon) + 0.01);
+                    
+                    // X coordinate scales with depth for perspective
+                    float aspect = uResolution.x / uResolution.y;
+                    float worldX = uv.x * depth * aspect;
+                    float worldZ = depth * 2.0; // Z is the forward direction
+
+                    // Scrolling movement
+                    float scrollSpeed = uTime * 1.5;
+                    worldX += sin(uTime * 0.5) * 0.5; // slight sway
+                    worldZ -= scrollSpeed;
+                    
+                    // Apply translation for "walking" effect
+                    vec2 pos = vec2(worldX, worldZ);
+                    pos.x += floor(pos.x / 2.0) * 2.0; // Wrap logic if needed or just offset
+                    
+                    // Procedural Checkerboard
+                    float gridSize = 4.0;
+                    vec2 gridUv = floor(pos * gridSize);
+                    float checker = mod(gridUv.x + gridUv.y, 2.0);
+                    
+                    // Colors (SNES palette style)
+                    vec3 color1 = vec3(0.2, 0.5, 0.2); // Dark Green
+                    vec3 color2 = vec3(0.4, 0.7, 0.3); // Light Green
+                    
+                    // Add some "grain" or noise for retro feel
+                    float noise = hash(pos * 100.0) * 0.05;
+                    vec3 groundColor = mix(color1, color2, checker);
+                    groundColor += noise;
+
+                    // Fog/Distance shading
+                    float fog = smoothstep(horizon, -1.0, uv.y);
+                    groundColor *= (fog * 0.8 + 0.2);
+
+                    gl_FragColor = vec4(groundColor, 1.0);
+                }
+            }
+
+            // Helper for noise inside shader if needed
+            float hash(vec2 p) {
+                return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+            }
+        `
+    });
+
+    // Overwrite fragment shader to use a cleaner implementation for the checker
+    material.fragmentShader = `
+        uniform float uTime;
+        uniform vec2 uResolution;
+        varying vec2 vUv;
+
+        float hash(vec2 p) {
+            return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+        }
+
+        void main() {
+            vec2 uv = (gl_FragCoord.xy - 0.5 * uResolution.xy) / min(uResolution.y, uResolution.x);
+            float horizon = 0.0;
+
+            if (uv.y > horizon) {
+                // Sky
+                vec3 skyTop = vec3(0.1, 0.2, 0.5);
+                vec3 skyBot = vec3(0.4, 0.6, 0.9);
+                float t = smoothstep(horizon, horizon + 0.1, uv.y);
+                gl_FragColor = vec4(mix(skyBot, skyTop, t), 1.0);
+            } else {
+                // Mode 7 Ground
+                // Use a non-linear mapping for perspective: height is proportional to 1/y
+                float h = horizon - uv.y;
+                float scale = 0.2 / (h + 0.05);
+                
+                float aspect = uResolution.x / uResolution.y;
+                
+                // World coords calculation
+                vec2 worldPos = vec2(uv.x * scale * aspect, h * scale);
+                
+                // Scroll movement
+                worldPos.y -= uTime * 1.5;
+                worldPos.x += sin(uTime * 0.3) * 0.5;
+
+                // Checkerboard pattern
+                float checkSize = 2.0;
+                vec2 grid = floor(worldPos * checkSize);
+                float checker = mod(grid.x + grid.y, 2.0);
+                
+                vec3 col1 = vec3(0.1, 0.4, 0.1);
+                vec3 col2 = vec3(0.2, 0.5, 0.2);
+                vec3 baseColor = mix(col1, col2, checker);
+
+                // Add fake lighting/shading based on depth
+                float fog = smoothstep(horizon, -1.0, uv.y);
+                baseColor *= (fog * 0.6 + 0.4);
+
+                // Pixelation effect simulation via rounding coords slightly
+                // Actually just rendering at low res helps but let's add subtle noise
+                float n = hash(worldPos) * 0.1;
+                baseColor += n;
+
+                gl_FragColor = vec4(baseColor, 1.0);
+            }
+        }
+    `;
+
+    const plane = new THREE.Mesh(geometry, material);
+    scene.add(plane);
+
+    function animate(time) {
+        material.uniforms.uTime.value = time / 1000;
+        renderer.render(scene, camera);
+        requestAnimationFrame(animate);
+    }
+
+    window.addEventListener('resize', () => {
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        material.uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+    });
+
+    requestAnimationFrame(animate);
+</script>
+</body>
+</html>

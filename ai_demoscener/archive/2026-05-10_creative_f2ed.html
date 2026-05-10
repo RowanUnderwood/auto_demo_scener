@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEON_CHRONOS // SYNC_DRIVE</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', monospace; }
+        #ui { position: absolute; top: 20px; left: 20px; color: #0ff; pointer-events: none; text-shadow: 0 0 5px #0ff; font-size: 12px; letter-spacing: 2px; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        [ SYSTEM_STATUS: OPERATIONAL ]<br>
+        [ CHRONOS_ENGINE: ACTIVE ]<br>
+        [ SIGNAL_STRENGTH: 98.4% ]
+    </div>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        /**
+         * IDEA: "NEON CHRONOS"
+         * A hybrid of a 4D Tesseract projection and a Kinetic Clockwork mechanism.
+         * The scene features a massive, hyper-dimensional clock face constructed from 
+         * rotating tesseract edges that morph into a radial particle nebula based on 
+         * their 4D rotation phases.
+         */
+
+        let scene, camera, renderer, clock;
+        let tesseractLines, particleSystem;
+        const pointsCount = 15000;
+
+        // 4D Tesseract Vertices (16 vertices)
+        const v4 = [];
+        for (let i = 0; i < 16; i++) {
+            v4.push(new THREE.Vector4(
+                i & 1 ? 1 : -1,
+                i & 2 ? 1 : -1,
+                i & 4 ? 1 : -1,
+                i & 8 ? 1 : -1
+            ));
+        }
+
+        // 32 Edges of a Tesseract
+        const edges = [];
+        for (let i = 0; i < 16; i++) {
+            for (let j = i + 1; j < 16; j++) {
+                let diff = 0;
+                let val = i ^ j;
+                while(val > 0) { if(val & 1) diff++; val >>= 1; }
+                if (diff === 1) edges.push(i, j);
+            }
+        }
+
+        const edgeGeometry = new THREE.BufferGeometry();
+        const edgePositions = new Float32Array(edges.length * 2 * 3);
+        edgeGeometry.setAttribute('position', new THREE.BufferAttribute(edgePositions, 3));
+        const edgeMaterial = new THREE.LineBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.5 });
+        tesseractLines = new THREE.LineSegments(edgeGeometry, edgeMaterial);
+
+        // Particle Nebula (The "Chronos" dust)
+        const pGeo = new THREE.BufferGeometry();
+        const pPos = new Float32Array(pointsCount * 3);
+        const pCol = new Float32Array(pointsCount * 3);
+        for (let i = 0; i < pointsCount; i++) {
+            pPos[i*3] = (Math.random() - 0.5) * 10;
+            pPos[i*3+1] = (Math.random() - 0.5) * 10;
+            pPos[i*3+2] = (Math.random() - 0.5) * 10;
+            pCol[i*3] = 0; pCol[i*3+1] = Math.random(); pCol[i*3+2] = 1;
+        }
+        pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+        pGeo.setAttribute('color', new THREE.BufferAttribute(pCol, 3));
+        const pMat = new THREE.PointsMaterial({ size: 0.02, vertexColors: true, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending });
+        particleSystem = new THREE.Points(pGeo, pMat);
+
+        init();
+        animate();
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 5;
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            document.body.appendChild(renderer.domElement);
+
+            clock = new THREE.Clock();
+
+            scene.add(tesseractLines);
+            scene.add(particleSystem);
+
+            window.addEventListener('resize', onWindowResize, false);
+        }
+
+        function rotate4D(v, t) {
+            // Rotation in XW plane
+            const x = v.x * Math.cos(t) - v.w * Math.sin(t);
+            const w = v.x * Math.sin(t) + v.w * Math.cos(t);
+            // Rotation in YZ plane
+            const y = v.y * Math.cos(t * 0.7) - v.z * Math.sin(t * 0.7);
+            const z = v.y * Math.sin(t * 0.7) + v.z * Math.cos(t * 0.7);
+            
+            // Projection to 3D
+            const scale = 2 / (3 - w); // W-perspective projection
+            return new THREE.Vector3(x * scale, y * scale, z * scale);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const t = clock.getElapsedTime();
+
+            // Update Tesseract
+            const posAttr = tesseractLines.geometry.attributes.position;
+            for (let i = 0; i < edges.length; i++) {
+                const vIdx = edges[i];
+                const projected = rotate4D(v4[vIdx], t * 0.5);
+                posAttr.setXYZ(i, projected.x * 2, projected.y * 2, projected.z * 2);
+            }
+            posAttr.needsUpdate = true;
+
+            // Update Particles (Orbiting the hypercube)
+            const pPosAttr = particleSystem.geometry.attributes.position;
+            for (let i = 0; i < pointsCount; i++) {
+                const ix = i * 3;
+                // Slow orbital drift
+                pPosAttr.array[ix] += Math.sin(t + i) * 0.002;
+                pPosAttr.array[ix+1] += Math.cos(t + i) * 0.002;
+                
+                if (Math.abs(pPosAttr.array[ix]) > 8) pPosAttr.array[ix] *= -0.9;
+                if (Math.abs(pPosAttr.array[ix+1]) > 8) pPosAttr.array[ix+1] *= -0.9;
+            }
+            pPosAttr.needsUpdate = true;
+
+            // Camera Movement
+            camera.position.x = Math.sin(t * 0.3) * 2;
+            camera.position.y = Math.cos(t * 0.5) * 1;
+            camera.lookAt(0, 0, 0);
+
+            // Pulse effect
+            const pulse = (Math.sin(t * 4) + 1) * 0.5;
+            tesseractLines.material.opacity = 0.3 + pulse * 0.4;
+            particleSystem.material.size = 0.01 + pulse * 0.02;
+
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+    </script>
+</body>
+</html>

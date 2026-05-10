@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEON NEBULA - Demoscene</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: monospace; }
+        #overlay { position: absolute; top: 20px; left: 20px; color: #0ff; pointer-events: none; text-shadow: 0 0 5px #0ff; letter-spacing: 2px; }
+    </style>
+</head>
+<body>
+    <div id="overlay">SYSTEM_CORE // NEON_NEBULA.EXE</div>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        /**
+         * CONCEPT: "CHRONOS FRACTAL VOID"
+         * A hybrid of raymarched SDFs, particle swarms, and kaleidoscopic folding.
+         * It features a central fractal structure that morphs between geometric states,
+         * surrounded by an "event horizon" of particles reacting to the fractal's geometry.
+         */
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.body.appendChild(renderer.domElement);
+
+        // --- SHADER MATERIAL (The Fractal Void) ---
+        const fractalShader = {
+            uniforms: {
+                uTime: { value: 0 },
+                uResolution: { value: new THREE.Vector2() },
+                uColorA: { value: new THREE.Color(0x00ffff) },
+                uColorB: { value: new THREE.Color(0xff00ff) }
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float uTime;
+                uniform vec2 uResolution;
+                uniform vec3 uColorA;
+                uniform vec3 uColorB;
+                varying vec2 vUv;
+
+                mat2 rot(float a) { return mat2(cos(a), -sin(a), sin(a), cos(a)); }
+
+                float sdBox(vec3 p, vec3 b) {
+                    vec3 q = abs(p) - b;
+                    return length(max(q,0.0)) + min(max(q.x,max(q.y,q.z)),0.0);
+                }
+
+                float smin(float a, float b, float k) {
+                    float h = clamp(0.5 + 0.5*(b-a)/k, 0.0, 1.0);
+                    return mix(b, a, h) - k*h*(1.0-h);
+                }
+
+                float map(vec3 p) {
+                    p.z += uTime * 0.5;
+                    p.xy *= rot(uTime * 0.2 + p.z * 0.1);
+                    
+                    // Infinite repetition
+                    vec3 q = mod(p + 2.0, 4.0) - 2.0;
+                    
+                    float d = sdBox(q, vec3(0.5));
+                    d = smin(d, sdBox(q - vec3(1.0, 0.5, 0.0), vec3(0.4)), 0.5);
+                    d = smin(d, length(q) - 1.2, 0.4); // Sphere element
+                    
+                    return d;
+                }
+
+                void main() {
+                    vec2 uv = (gl_FragCoord.xy * 2.0 - uResolution.xy) / min(uResolution.y, uResolution.x);
+                    vec3 ro = vec3(0.0, 0.0, -5.0);
+                    vec3 rd = normalize(vec3(uv, 1.5));
+                    
+                    // Kaleidoscope fold
+                    float angle = atan(uv.y, uv.x);
+                    float radius = length(uv);
+                    angle = mod(angle, PI/4.0) - PI/8.0;
+                    rd.xy *= rot(angle);
+                    rd.xy *= vec2(cos(angle), sin(angle)); // Fake polar mapping logic
+
+                    // Actually let's just do simple folding for stability
+                    float fold = 1.0;
+                    for(int i=0; i<3; i++) {
+                        uv = abs(uv) - 0.5;
+                        uv.xy *= rot(uTime * 0.1);
+                    }
+
+                    // Raymarching
+                    float t = 0.0;
+                    vec3 p;
+                    int i;
+                    for(i=0; i<64; i++) {
+                        p = ro + rd * t;
+                        float d = map(p);
+                        if(d < 0.001 || t > 20.0) break;
+                        t += d;
+                    }
+
+                    vec3 color = vec3(0.0);
+                    if(t < 20.0) {
+                        // Basic shading
+                        float fog = 1.0 / (1.0 + t * t * 0.1);
+                        vec3 normal = normalize(vec3(
+                            map(p + vec3(0.01, 0, 0)) - map(p - vec3(0.01, 0, 0)),
+                            map(p + vec3(0, 0.01, 0)) - map(p - vec3(0, 0.01, 0)),
+                            map(p + vec3(0, 0, 0.01)) - map(p - vec3(0, 0, 0.01))
+                        ));
+                        float diff = max(dot(normal, normalize(vec3(1,2,-1))), 0.0);
+                        color = mix(uColorA, uColorB, clamp(t*0.2, 0.0, 1.0));
+                        color *= (diff + 0.2) * fog;
+                    }
+
+                    // Add scanlines/glitch
+                    color *= sin(gl_FragCoord.y * 1.5) * 0.1 + 0.9;
+                    
+                    gl_FragColor = vec4(color, 1.0);
+                }
+            `
+        };
+
+        const quadGeom = new THREE.PlaneGeometry(2, 2);
+        const quadMat = new THREE.ShaderMaterial({
+            uniforms: fractalShader.uniforms,
+            vertexShader: fractalShader.vertexShader,
+            fragmentShader: fractalShader.fragmentShader
+        });
+        const quad = new THREE.Mesh(quadGeom, quadMat);
+        scene.add(quad);
+
+        // --- PARTICLE SWARM (The Nebula) ---
+        const particleCount = 8000;
+        const particleGeometry = new THREE.BufferGeometry();
+        const posArray = new Float32Array(particleCount * 3);
+        const velArray = new Float32Array(particleCount * 3);
+        const colorArray = new Float32Array(particleCount * 3);
+
+        for(let i=0; i < particleCount * 3; i++) {
+            posArray[i] = (Math.random() - 0.5) * 40;
+            velArray[i] = (Math.random() - 0.5) * 0.05;
+            colorArray[i] = Math.random();
+        }
+
+        particleGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+        particleGeometry.setAttribute('color', new THREE.BufferAttribute(colorArray, 3));
+
+        const particleMaterial = new THREE.PointsMaterial({
+            size: 0.05,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.6,
+            blending: THREE.AdditiveBlending
+        });
+
+        const particles = new THREE.Points(particleGeometry, particleMaterial);
+        scene.add(particles);
+
+        // --- ANIMATION LOOP ---
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            const elapsed = clock.getElapsedTime();
+
+            // Update Shader
+            quadMat.uniforms.uTime.value = elapsed;
+            quadMat.uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+
+            // Animate Particles
+            const positions = particleGeometry.attributes.position.array;
+            for(let i=0; i < particleCount; i++) {
+                const ix = i * 3;
+                const iy = i * 3 + 1;
+                const iz = i * 3 + 2;
+
+                // Swirl effect around the center
+                const dist = Math.sqrt(positions[ix]**2 + positions[iy]**2);
+                positions[ix] += Math.sin(elapsed + positions[iz]*0.1) * 0.02;
+                positions[iy] += Math.cos(elapsed + positions[ix]*0.1) * 0.02;
+                positions[iz] += Math.sin(elapsed * 0.5) * 0.01;
+
+                // Reset particles if they wander too far
+                if(Math.abs(positions[iz]) > 30) positions[iz] = -30;
+            }
+            particleGeometry.attributes.position.needsUpdate = true;
+
+            // Camera movement
+            camera.position.x = Math.sin(elapsed * 0.2) * 2;
+            camera.position.y = Math.cos(elapsed * 0.3) * 1;
+            camera.lookAt(0, 0, 5);
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Infinite Terrain</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+{
+    "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+    }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const vertexShader = `
+    varying float vZ;
+    varying vec2 vUv;
+    uniform float uTime;
+
+    // Perlin-ish noise function
+    vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+    vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+    vec3 permute(vec3 x) { return mod289(((x*34.0)+1.0)*x); }
+
+    float snoise(vec2 v) {
+        const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439);
+        vec2 i  = floor(v + dot(v, C.yy) );
+        vec2 x0 = v -   i + dot(i, C.xx);
+        vec2 i1;
+        i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+        vec4 x12 = x0.xyxy + C.xxzz;
+        x12.xy -= i1;
+        i = mod289(i);
+        vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 )) + i.x + vec3(0.0, i1.x, 1.0 ));
+        vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
+        m = m*m ;
+        m = m*m ;
+        vec3 x = 2.0 * fract(p * C.www) - 1.0;
+        vec3 h = abs(x) - 0.5;
+        vec3 ox = floor(x + 0.5);
+        vec3 a0 = x - ox;
+        m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
+        vec3 g;
+        g.x  = a0.x  * x0.x  + h.x  * x0.y;
+        g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+        return 130.0 * dot(m, g);
+    }
+
+    float fbm(vec2 p) {
+        float value = 0.0;
+        float amplitude = 0.5;
+        for (int i = 0; i < 3; i++) {
+            value += amplitude * snoise(p);
+            p *= 2.0;
+            amplitude *= 0.5;
+        }
+        return value;
+    }
+
+    void main() {
+        vUv = uv;
+        vec2 worldPos = position.xy + vec2(0.0, uTime * 10.0); // Fake motion by shifting noise coord
+        // Note: The requirement asks to move camera along -Z. To make terrain infinite with a single plane, 
+        // we loop the geometry or offset it. Here we use the displacement to simulate movement.
+        // However, since it's one plane, we actually shift the 'world' position by time.
+        
+        float noise = fbm(position.xy * 0.05 + vec2(0.0, uTime * 0.1));
+        vec3 newPos = position;
+        newPos.z += noise * 10.0;
+        vZ = newPos.z;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(newPos, 1.0);
+    }
+`;
+
+const fragmentShader = `
+    varying float vZ;
+    varying vec2 vUv;
+    uniform vec3 uColor;
+
+    void main() {
+        float colorMix = (vZ + 5.0) / 10.0;
+        vec3 top = vec3(0.2, 0.8, 0.4);
+        vec3 bot = vec3(0.1, 0.2, 0.5);
+        gl_FragColor = vec4(mix(bot, top, colorMix), 1.0);
+    }
+`;
+
+let scene, camera, renderer, mesh, material;
+
+init();
+animate();
+
+function init() {
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x87ceeb);
+    scene.fog = new THREE.FogExp2(0x87ceeb, 0.05);
+
+    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 5, 10);
+
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    const geometry = new THREE.PlaneGeometry(200, 200, 256, 256);
+    // Rotate -PI/2 on X to lay flat
+    geometry.rotateX(-Math.PI / 2);
+
+    material = new THREE.ShaderMaterial({
+        uniforms: {
+            uTime: { value: 0 },
+            uColor: { value: new THREE.Color(0x44aa44) }
+        },
+        vertexShader,
+        fragmentShader,
+        side: THREE.DoubleSide
+    });
+
+    mesh = new THREE.Mesh(geometry, material);
+    scene.add(mesh);
+
+    window.addEventListener('resize', onWindowResize, false);
+}
+
+function onWindowResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+function animate() {
+    requestAnimationFrame(animate);
+
+    const speed = 0.15;
+    // Move camera along -Z
+    camera.position.z -= speed;
+
+    // To keep terrain "infinite" with one plane, we teleport the mesh/camera back 
+    // when they pass a certain threshold or offset the vertex shader using time.
+    // The prompt asks to advance noise sample so it appears infinite.
+    // Using uTime in the shader handles the "scrolling" of the texture effectively.
+    
+    // However, the camera physically moves away from the mesh. 
+    // To keep the plane under the camera:
+    if (camera.position.z < -100) {
+        camera.position.z = 100;
+    }
+    
+    // Since we rotate the geometry and move Z, we need to make sure the mesh center
+    // follows or we use a large enough plane. Let's keep mesh at origin and wrap camera.
+    // But for smooth noise, it's better to let uTime drive the "flow".
+    
+    material.uniforms.uTime.value += speed * 0.1; // Relative time scale
+
+    renderer.render(scene, camera);
+}
+</script>
+</body>
+</html>

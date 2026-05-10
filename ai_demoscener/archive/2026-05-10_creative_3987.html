@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CHRONOSYNCLASTIC INFUNDIBULUM</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: monospace; }
+        canvas { display: block; }
+        #ui { position: absolute; bottom: 20px; left: 20px; color: #0ff; pointer-events: none; text-shadow: 0 0 5px #0ff; letter-spacing: 2px; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <div id="ui">NEURAL_FOLD_SEQUENCE // ACTIVE</div>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        /**
+         * CONCEPT: "NEURAL FOLD SEQUENCE"
+         * A hybrid of Raymarched SDFs, Rotozoomer, and Kaleidoscope effects.
+         * It simulates a journey through a fractalized dimension where space folds 
+         * upon itself using recursive polar coordinate transformations within a shader.
+         */
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer({ antialias: false });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                u_time: { value: 0 },
+                u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float u_time;
+                uniform vec2 u_resolution;
+                varying vec2 vUv;
+
+                #define MAX_STEPS 64
+                #define SURF_DIST .001
+                #define MAX_DIST 20.
+
+                mat2 rot(float a) {
+                    float s = sin(a), c = cos(a);
+                    return mat2(c, -s, s, c);
+                }
+
+                // Smooth minimum for organic blending
+                float smin(float a, float b, float k) {
+                    float h = clamp(0.5 + 0.5*(b-a)/k, 0.0, 1.0);
+                    return mix(b, a, h) - k*h*(1.0-h);
+                }
+
+                // SDF for a folding fractal space
+                float map(vec3 p) {
+                    p.z += u_time * 0.5; // Movement forward
+                    
+                    // Kaleidoscope Fold
+                    float angle = atan(p.y, p.x);
+                    float radius = length(p.xy);
+                    float foldAngle = 6.28318 / 6.0; 
+                    angle = mod(angle, foldAngle) - foldAngle * 0.5;
+                    angle = abs(angle);
+                    p.xy = vec2(cos(angle), sin(angle)) * radius;
+
+                    // Recursive folding
+                    for(int i=0; i<3; i++) {
+                        p = abs(p) - 0.5;
+                        p.xy *= rot(u_time * 0.1 + float(i));
+                        p.yz *= rot(u_time * 0.15);
+                    }
+
+                    // The geometry: A mix of spheres and twisted boxes
+                    float sphere = length(p) - 0.6;
+                    float box = length(max(abs(p) - 0.4, 0.0));
+                    float torus = length(vec2(length(p.xz) - 0.5, p.y)) - 0.1;
+
+                    return smin(sphere, smin(box, torus, 0.5), 0.3);
+                }
+
+                vec3 getNormal(vec3 p) {
+                    vec2 e = vec2(0.01, 0);
+                    float d = map(p);
+                    vec3 n = d - vec3(
+                        map(p-e.xyy),
+                        map(p-e.yxy),
+                        map(p-e.yyx)
+                    );
+                    return normalize(n);
+                }
+
+                void main() {
+                    vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / min(u_resolution.y, u_resolution.x);
+                    
+                    // Rotozoom background layer
+                    float zoom = 1.0 + sin(u_time * 0.2) * 0.5;
+                    uv *= zoom;
+                    uv *= rot(u_time * 0.1);
+
+                    vec3 ro = vec3(0, 0, -3); // Ray origin
+                    vec3 rd = normalize(vec3(uv, 1.0)); // Ray direction
+                    
+                    float dO = 0.0;
+                    float dS;
+                    vec3 p;
+
+                    // Raymarching loop
+                    for(int i=0; i<MAX_STEPS; i++) {
+                        p = ro + rd * dO;
+                        dS = map(p);
+                        dO += dS;
+                        if(dO > MAX_DIST || abs(dS) < SURF_DIST) break;
+                    }
+
+                    vec3 color = vec3(0.0);
+
+                    if(dO < MAX_DIST) {
+                        vec3 n = getNormal(p);
+                        float diff = dot(n, normalize(vec3(1,2,-3))) * 0.5 + 0.5;
+                        
+                        // Color palette based on depth and normal
+                        vec3 baseCol = 0.5 + 0.5 * cos(u_time * 0.2 + p.zxy * 0.5 + vec3(0, 2, 4));
+                        color = baseCol * diff;
+                        
+                        // Specular highlight
+                        vec3 ref = reflect(rd, n);
+                        float spec = pow(max(dot(ref, normalize(vec3(1,2,-3))), 0.0), 32.0);
+                        color += vec3(1.0, 0.8, 0.6) * spec;
+
+                        // Fog/Depth effect
+                        color *= exp(-0.15 * dO);
+                    } else {
+                        // Background: Starfield + Plasma hybrid
+                        float stars = pow(fract(sin(dot(uv, vec2(12.9898, 78.233))) * 43758.5453), 100.0);
+                        vec3 bgCol = 0.5 + 0.5 * cos(u_time * 0.1 + uv.xyx + vec3(0,1,2));
+                        color = bgCol * 0.1 + stars;
+                    }
+
+                    // Post-process: Vignette & Chromatic Aberration hint
+                    float vignette = smoothstep(1.5, 0.4, length(uv));
+                    color *= vignette;
+
+                    gl_FragColor = vec4(color, 1.0);
+                }
+            `
+        });
+
+        material.uniforms.u_time.value = 0;
+
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        function animate(t) {
+            requestAnimationFrame(animate);
+            material.uniforms.u_time.value = t * 0.001;
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            material.uniforms.u_resolution.value.set(window.innerWidth, window.innerHeight);
+        });
+
+        animate(0);
+    </script>
+</body>
+</html>

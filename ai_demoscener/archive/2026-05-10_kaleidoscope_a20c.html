@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+</script>
+<script type="module">
+    import * as THREE from 'three';
+
+    const vertexShader = `
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `;
+
+    const fragmentShader = `
+        uniform float u_time;
+        uniform vec2 u_resolution;
+        varying vec2 vUv;
+
+        #define PI 3.14159265359
+        #define N 8.0
+
+        void main() {
+            // Normalize UV to [-1, 1] aspect corrected
+            vec2 uv = (gl_FragCoord.xy * 2.0 - u_resolution.xy) / min(u_resolution.y, u_resolution.x);
+
+            // Convert to Polar
+            float r = length(uv);
+            float theta = atan(uv.y, uv.x);
+
+            // Fold the angle into a wedge via N-fold symmetry
+            // a = abs(mod(a, 2*PI/N) - PI/N)
+            float segment = (2.0 * PI) / N;
+            float a = abs(mod(theta, segment) - (segment * 0.5));
+
+            // Convert back to Cartesian
+            vec2 p = vec2(r * cos(a), r * sin(a));
+
+            // Procedural pattern: sums of sin(p * freq + time)
+            float val = 0.0;
+            val += sin(p.x * 3.0 + u_time * 1.5);
+            val += sin(p.y * 4.0 - u_time * 2.0);
+            val += sin((p.x + p.y) * 2.0 + u_time);
+            val += sin(length(p) * 8.0 - u_time * 3.0);
+
+            // Create colorful output based on the sine waves
+            vec3 color = vec3(0.0);
+            color.r = sin(val * 2.0 + u_time) * 0.5 + 0.5;
+            color.g = sin(val * 3.14 + u_time * 0.8) * 0.5 + 0.5;
+            color.b = sin(val * 5.2 + u_time * 1.2) * 0.5 + 0.5;
+
+            // Add some brightness based on radius to prevent center clipping
+            color *= smoothstep(1.5, 0.0, r);
+
+            gl_FragColor = vec4(color, 1.0);
+        }
+    `;
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    const geometry = new THREE.PlaneGeometry(2, 2);
+    const uniforms = {
+        u_time: { value: 0.0 },
+        u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+    };
+
+    const material = new THREE.ShaderMaterial({
+        uniforms,
+        vertexShader,
+        fragmentShader
+    });
+
+    const mesh = new THREE.Mesh(geometry, material);
+    scene.add(mesh);
+
+    function onWindowResize() {
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        uniforms.u_resolution.value.set(window.innerWidth, window.innerHeight);
+    }
+
+    window.addEventListener('resize', onWindowResize, false);
+
+    function animate(time) {
+        uniforms.u_time.value = time * 0.001;
+        renderer.render(scene, camera);
+        requestAnimationFrame(animate);
+    }
+
+    requestAnimationFrame(animate);
+</script>
+</body>
+</html>

@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Three.js Boids Instanced</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #050505; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="module">
+    import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
+
+    // --- Configuration ---
+    const BOID_COUNT = 200;
+    const BOUNDS = 15; 
+    const MAX_SPEED = 0.15;
+    const MAX_FORCE = 0.01;
+    
+    const SEPARATION_DIST = 1.5;
+    const ALIGNMENT_DIST = 4.0;
+    const COHESION_DIST = 6.0;
+
+    const WEIGHT_SEP = 1.5;
+    const WEIGHT_ALIGN = 1.0;
+    const WEIGHT_COHES = 1.0;
+
+    // --- Setup Scene ---
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(30, 30, 30);
+    camera.lookAt(0, 0, 0);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // Visual Boundary Helper
+    const boxGeom = new THREE.BoxGeometry(BOUNDS * 2, BOUNDS * 2, BOUNDS * 2);
+    const boxEdges = new THREE.EdgesGeometry(boxGeom);
+    const boxLine = new THREE.LineSegments(boxEdges, new THREE.LineBasicMaterial({ color: 0x444444 }));
+    scene.add(boxLine);
+
+    // --- Boids Data ---
+    const positionsArray = new Float32Array(BOID_COUNT * 3);
+    const velocities = Array.from({ length: BOID_COUNT }, () => new THREE.Vector3(
+        (Math.random() - 0.5) * 2,
+        (Math.random() - 0.5) * 2,
+        (Math.random() - 0.5) * 2
+    ));
+
+    for (let i = 0; i < BOID_COUNT; i++) {
+        positionsArray[i * 3] = (Math.random() - 0.5) * BOUNDS * 1.8;
+        positionsArray[i * 3 + 1] = (Math.random() - 0.5) * BOUNDS * 1.8;
+        positionsArray[i * 3 + 2] = (Math.random() - 0.5) * BOUNDS * 1.8;
+    }
+
+    // --- Instanced Mesh Setup ---
+    const geometry = new THREE.ConeGeometry(0.2, 0.6, 8);
+    // Default Cone is Y-up. We will align local Y with velocity.
+    const material = new THREE.MeshPhongMaterial({ color: 0x00ffcc });
+    const instancedMesh = new THREE.InstancedMesh(geometry, material, BOID_COUNT);
+    scene.add(instancedMesh);
+
+    // Lights
+    const light = new THREE.DirectionalLight(0xffffff, 1.5);
+    light.position.set(10, 20, 10);
+    scene.add(light);
+    scene.add(new THREE.AmbientLight(0x404040));
+
+    // --- Optimization: Vector Pool to prevent GC pressure and crashes ---
+    const _posI = new THREE.Vector3();
+    const _velI = new THREE.Vector3();
+    const _posJ = new THREE.Vector3();
+    const _sepForce = new THREE.Vector3();
+    const _alignForce = new THREE.Vector3();
+    const _cohCenter = new THREE.Vector3();
+    const _steer = new THREE.Vector3();
+    const _acceleration = new THREE.Vector3();
+    const _targetDir = new THREE.Vector3();
+    const dummy = new THREE.Object3D();
+
+    // --- Simulation Logic ---
+    function updateBoids() {
+        for (let i = 0; i < BOID_COUNT; i++) {
+            // Get current boid state
+            _posI.set(positionsArray[i * 3], positionsArray[i * 3 + 1], positionsArray[i * 3 + 2]);
+            _velI.copy(velocities[i]);
+
+            _sepForce.set(0, 0, 0);
+            _alignForce.set(0, 0, 0);
+            _cohCenter.set(0, 0, 0);
+            
+            let sepCount = 0;
+            let alignCount = 0;
+            let cohCount = 0;
+
+            for (let j = 0; j < BOID_COUNT; j++) {
+                if (i === j) continue;
+
+                _posJ.set(positionsArray[j * 3], positionsArray[j * 3 + 1], positionsArray[j * 3 + 2]);
+                const dist = _posI.distanceTo(_posJ);
+
+                // Separation
+                if (dist < SEPARATION_DIST && dist > 0) {
+                    const diff = _posI.clone().sub(_posJ).normalize().divideScalar(dist);
+                    _sepForce.add(diff);
+                    sepCount++;
+                }
+
+                // Alignment
+                if (dist < ALIGNMENT_DIST) {
+                    _alignForce.add(velocities[j]);
+                    alignCount++;
+                }
+
+                // Cohesion
+                if (dist < COHESION_DIST) {
+                    _cohCenter.add(_posJ);
+                    cohCount++;
+                }
+            }
+
+            _acceleration.set(0, 0, 0);
+
+            if (sepCount > 0) {
+                _sepForce.divideScalar(sepCount).clampLength(0, MAX_FORCE).multiplyScalar(WEIGHT_SEP);
+                _acceleration.add(_sepForce);
+            }
+
+            if (alignCount > 0) {
+                // Steering = Desired - Velocity
+                _alignForce.divideScalar(alignCount).normalize().multiplyScalar(MAX_SPEED).sub(_velI).clampLength(0, MAX_FORCE).multiplyScalar(WEIGHT_ALIGN);
+                _acceleration.add(_alignForce);
+            }
+
+            if (cohCount > 0) {
+                _cohCenter.divideScalar(cohCount);
+                // Steering = Desired - Velocity
+                _steer.subVectors(_cohCenter, _posI).normalize().multiplyScalar(MAX_SPEED).sub(_velI).clampLength(0, MAX_FORCE).multiplyScalar(WEIGHT_COHES);
+                _acceleration.add(_steer);
+            }
+
+            // Apply acceleration to velocity
+            _velI.add(_acceleration).clampLength(0, MAX_SPEED);
+            velocities[i].copy(_velI);
+
+            // Update position
+            _posI.add(_velI);
+
+            // Wrap positions in cube
+            if (_posI.x > BOUNDS) _posI.x = -BOUNDS;
+            if (_posI.x < -BOUNDS) _posI.x = BOUNDS;
+            if (_posI.y > BOUNDS) _posI.y = -BOUNDS;
+            if (_posI.y < -BOUNDS) _posI.y = BOUNDS;
+            if (_posI.z > BOUNDS) _posI.z = -BOUNDS;
+            if (_posI.z < -BOUNDS) _posI.z = BOUNDS;
+
+            // Write back to array
+            positionsArray[i * 3] = _posI.x;
+            positionsArray[i * 3 + 1] = _posI.y;
+            positionsArray[i * 3 + 2] = _posI.z;
+
+            // Update Instanced Mesh Matrix
+            dummy.position.copy(_posI);
+            _targetDir.copy(_velI).normalize();
+            
+            if (_targetDir.lengthSq() > 0.001) {
+                // Cone is Y-up, so align local (0,1,0) with velocity direction
+                dummy.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), _targetDir);
+            } else {
+                dummy.quaternion.set(0, 0, 0, 1);
+            }
+
+            dummy.updateMatrix();
+            instancedMesh.setMatrixAt(i, dummy.matrix);
+        }
+        instancedMesh.instanceMatrix.needsUpdate = true;
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+        updateBoids();
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+</script>
+</body>
+</html>

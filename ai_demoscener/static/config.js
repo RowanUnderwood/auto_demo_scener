@@ -2,6 +2,7 @@
 
 let currentCfg = {};
 let promptRows = [];
+let promptStats = {};
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', async () => {
@@ -151,9 +152,12 @@ function populateModelDropdown(models, selected) {
 
 // ── Prompts CSV table ─────────────────────────────────────────────────────────
 async function loadPrompts() {
-  const r = await fetch('/api/prompts');
-  const data = await r.json();
-  promptRows = data.rows || [];
+  const [pr, sr] = await Promise.all([
+    fetch('/api/prompts'),
+    fetch('/api/prompt_stats'),
+  ]);
+  promptRows  = (await pr.json()).rows || [];
+  promptStats = await sr.json();
   renderPromptsTable();
 }
 
@@ -162,10 +166,20 @@ function renderPromptsTable() {
   tbody.innerHTML = '';
   for (let i = 0; i < promptRows.length; i++) {
     const row = promptRows[i];
+    const effect = row.Effect || '';
+    const st = promptStats[effect];
+    const total = st?.total ?? 0;
+    const failColor = total === 0 ? 'var(--c-muted)'
+                    : total <= 2  ? 'var(--c-warn)'
+                    :               'var(--c-err)';
+    const failLabel = total === 0 ? '—' : String(total);
+    const failTitle = st ? `${st.crashes} crashed, ${st.blanks} blank` : '';
+
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><input type="text" value="${esc(row.Effect || '')}" data-i="${i}" data-f="Effect"></td>
+      <td><input type="text" value="${esc(effect)}" data-i="${i}" data-f="Effect"></td>
       <td><input type="text" value="${esc(row['Three.js prompt'] || '')}" data-i="${i}" data-f="Three.js prompt"></td>
+      <td style="text-align:center;color:${failColor};font-weight:bold;cursor:default" title="${esc(failTitle)}">${failLabel}</td>
       <td><button class="btn btn-sm btn-danger" onclick="deleteRow(${i})">✕</button></td>
     `;
     tbody.appendChild(tr);

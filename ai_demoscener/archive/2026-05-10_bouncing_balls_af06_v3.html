@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monolith Kinetic Flow</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #0a0a0c; font-family: 'Courier New', monospace; }
+        canvas { display: block; }
+        #overlay {
+            position: absolute;
+            top: 30px;
+            left: 30px;
+            color: #fff;
+            pointer-events: none;
+            text-transform: uppercase;
+            letter-spacing: 4px;
+            opacity: 0.6;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div id="overlay">Kinetic Protocol // Phase II</div>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+        // --- Configuration ---
+        const CONFIG = {
+            particleCount: 40,
+            bounds: 15,
+            gravity: -6.5,
+            friction: 0.99,
+            restitution: 0.85, // Bounciness
+            sizeRange: [0.2, 0.8],
+            colors: [0xffffff, 0x4444ff, 0x00ffff, 0xff3300],
+            bloom: { strength: 1.2, radius: 0.5, threshold: 0.1 }
+        };
+
+        // --- Setup ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x08080a);
+        scene.fog = new THREE.FogExp2(0x08080a, 0.03);
+
+        const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(25, 20, 25);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.toneMapping = THREE.ReinhardToneMapping;
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.autoRotate = true;
+        controls.autoRotateSpeed = 0.3;
+
+        // --- Post Processing ---
+        const composer = new EffectComposer(renderer);
+        composer.addPass(new RenderPass(scene, camera));
+        const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), CONFIG.bloom.strength, CONFIG.bloom.radius, CONFIG.bloom.threshold);
+        composer.addPass(bloomPass);
+
+        // --- Lights ---
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.2);
+        scene.add(ambientLight);
+
+        const pointLight = new THREE.PointLight(0x44aaff, 50, 100);
+        pointLight.position.set(10, 20, 10);
+        scene.add(pointLight);
+
+        // --- Objects ---
+        
+        // The Monolith (A hollow glass frame)
+        const boxGeo = new THREE.BoxGeometry(CONFIG.bounds * 2, CONFIG.bounds * 2, CONFIG.bounds * 2);
+        const wireframeMat = new THREE.MeshBasicMaterial({
+            color: 0xffffff,
+            wireframe: true,
+            transparent: true,
+            opacity: 0.08
+        });
+        const monolithFrame = new THREE.Mesh(boxGeo, wireframeMat);
+        scene.add(monolithFrame);
+
+        // Floor/Base grid for depth perception
+        const grid = new THREE.GridHelper(100, 40, 0x222222, 0x111111);
+        grid.position.y = -CONFIG.bounds;
+        scene.add(grid);
+
+        // Particles (The Kinetic Orbs)
+        const particles = [];
+        const particleGroup = new THREE.Group();
+        scene.add(particleGroup);
+
+        for (let i = 0; i < CONFIG.particleCount; i++) {
+            const colorVal = new THREE.Color(CONFIG.colors[Math.floor(Math.random() * CONFIG.colors.length)]);
+            const radius = THREE.MathUtils.lerp(CONFIG.sizeRange[0], CONFIG.sizeRange[1], Math.random());
+
+            // High-end material: glowing core + glass shell
+            const group = new THREE.Group();
+            
+            const coreGeo = new THREE.SphereGeometry(radius * 0.4, 16, 16);
+            const coreMat = new THREE.MeshBasicMaterial({ color: colorVal });
+            const core = new THREE.Mesh(coreGeo, coreMat);
+
+            const shellGeo = new THREE.SphereGeometry(radius, 24, 24);
+            const shellMat = new THREE.MeshPhysicalMaterial({
+                color: colorVal,
+                emissive: colorVal,
+                emissiveIntensity: 1.5,
+                metalness: 0.9,
+                roughness: 0.1,
+                transmission: 0.5,
+                transparent: true,
+                opacity: 0.6
+            });
+            const shell = new THREE.Mesh(shellGeo, shellMat);
+
+            group.add(core);
+            group.add(shell);
+
+            // Random start pos inside bounds
+            const margin = radius;
+            group.position.set(
+                (Math.random() - 0.5) * (CONFIG.bounds * 2 - margin * 2),
+                (Math.random() - 0.5) * (CONFIG.bounds * 2 - margin * 2),
+                (Math.random() - 0.5) * (CONFIG.bounds * 2 - margin * 2)
+            );
+
+            const velocity = new THREE.Vector3(
+                (Math.random() - 0.5) * 20,
+                (Math.random() - 0.5) * 20,
+                (Math.random() - 0.5) * 20
+            );
+
+            particleGroup.add(group);
+            particles.push({ group, velocity, radius, color: colorVal });
+        }
+
+        // --- Physics Engine ---
+        const clock = new THREE.Clock();
+        const halfBound = CONFIG.bounds;
+
+        function updatePhysics(dt) {
+            particles.forEach(p => {
+                // Gravity
+                p.velocity.y += CONFIG.gravity * dt;
+                
+                // Air Resistance (Drag)
+                p.velocity.multiplyScalar(1 - 0.3 * dt);
+
+                // Update position
+                p.group.position.addScaledVector(p.velocity, dt);
+
+                const pos = p.group.position;
+                const r = p.radius;
+
+                // Collision detection with bounding box walls
+                ['x', 'y', 'z'].forEach(axis => {
+                    if (Math.abs(pos[axis]) + r > halfBound) {
+                        // Clamp to edge
+                        pos[axis] = Math.sign(pos[axis]) * (halfBound - r);
+                        // Reflect velocity with restitution
+                        p.velocity[axis] *= -CONFIG.restitution;
+                        
+                        // Add a little "kick" on impact for visual chaos
+                        p.velocity.x += (Math.random() - 0.5) * 2;
+                    }
+                });
+
+                // Visual effects tied to kinetic energy
+                const speed = p.velocity.length();
+                p.group.children[1].material.emissiveIntensity = 1 + (speed * 0.3);
+                p.group.scale.setScalar(1 + Math.sin(clock.getElapsedTime() * 5) * 0.02);
+            });
+
+            // Rotate the monolith frame slightly for dynamic feel
+            monolithFrame.rotation.y += dt * 0.05;
+        }
+
+        // --- Main Loop ---
+        function animate() {
+            requestAnimationFrame(animate);
+            const dt = Math.min(clock.getDelta(), 0.1);
+            
+            updatePhysics(dt);
+            controls.update();
+            composer.render();
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

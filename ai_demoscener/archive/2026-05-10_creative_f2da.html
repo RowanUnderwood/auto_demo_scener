@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>CYBER-CHASM // DEMO</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: monospace; }
+        canvas { display: block; }
+        #ui { position: absolute; bottom: 20px; left: 20px; color: #0ff; text-shadow: 0 0 5px #0ff; pointer-events: none; letter-spacing: 2px; }
+    </style>
+</head>
+<body>
+    <div id="ui">SYSTEM_STATUS: DRIFTING...</div>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        /** 
+         * IDEA: "CYBER-CHASM"
+         * A hybrid of Raymarching, Fractal folding (Mandelbox style), and a Glitch-inspired Postprocess.
+         * We march through an infinite corridor of shifting geometric fractals that react to a virtual sine-wave pulse.
+         */
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer({ antialias: false });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+                uMouse: { value: new THREE.Vector2(0, 0) }
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float uTime;
+                uniform vec2 uResolution;
+                varying vec2 vUv;
+
+                #define MAX_STEPS 80
+                #define SURF_DIST 0.001
+                #define MAX_DIST 50.0
+
+                // Rotation matrix
+                mat2 rot(float a) {
+                    float s = sin(a), c = cos(a);
+                    return mat2(c, -s, s, c);
+                }
+
+                // Smooth minimum for organic blending
+                float smin(float a, float b, float k) {
+                    float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+                    return mix(b, a, h) - k * h * (1.0 - h);
+                }
+
+                // Distance Function: The "Chasm" Fractal-ish SDF
+                float map(vec3 p) {
+                    // Infinite repetition via mod
+                    p.z += uTime * 0.5; 
+                    vec3 q = mod(p + 2.0, 4.0) - 2.0;
+
+                    // Fractal folding: Iterative box/sphere mix
+                    for(int i=0; i<4; i++) {
+                        q = abs(q) - 0.5;
+                        q.xy *= rot(uTime * 0.1 + float(i));
+                        q.xz *= rot(uTime * 0.07);
+                    }
+
+                    float box = length(max(abs(q)-0.4, 0.0)) - 0.1;
+                    float spheres = length(q) - 0.6;
+                    
+                    // Create the "tunnel" structure
+                    float scene = smin(box, spheres, 0.5);
+                    return scene;
+                }
+
+                vec3 getNormal(vec3 p) {
+                    vec2 e = vec2(0.01, 0);
+                    float d = map(p);
+                    vec3 n = d - vec3(
+                        map(p-e.xyy),
+                        map(p-e.yxy),
+                        map(p-e.yyx)
+                    );
+                    return normalize(n);
+                }
+
+                void main() {
+                    vec2 uv = (gl_FragCoord.xy - 0.5 * uResolution.xy) / min(uResolution.y, uResolution.x);
+                    
+                    // Glitch effect: Random scanline jitter
+                    float glitch = step(0.98, sin(uTime * 10.0 + uv.y * 20.0)) * 0.05;
+                    uv.x += glitch * fract(sin(uTime));
+
+                    vec3 ro = vec3(0, 0, -2); // Ray Origin
+                    vec3 rd = normalize(vec3(uv, 1.0)); // Ray Direction
+                    
+                    float dO = 0.0;
+                    float dS;
+                    vec3 p;
+
+                    // Raymarching loop
+                    for(int i=0; i<MAX_STEPS; i++) {
+                        p = ro + rd * dO;
+                        dS = map(p);
+                        dO += dS;
+                        if(dO > MAX_DIST || abs(dS) < SURF_DIST) break;
+                    }
+
+                    vec3 color = vec3(0.01, 0.02, 0.05); // Deep space background
+
+                    if(dO < MAX_DIST) {
+                        vec3 n = getNormal(p);
+                        vec3 lightPos = vec3(2.0, 4.0, -3.0);
+                        vec3 l = normalize(lightPos - p);
+                        
+                        float diff = max(dot(n, l), 0.0);
+                        float amb = 0.1;
+                        
+                        // Color based on normal and depth
+                        vec3 baseCol = 0.5 + 0.5 * cos(uTime * 0.2 + p.z * 0.2 + vec3(0, 2, 4));
+                        color = baseCol * (diff + amb);
+                        
+                        // Add rim light/glow
+                        float rim = pow(1.0 - max(dot(n, -rd), 0.0), 3.0);
+                        color += vec3(0.0, 1.0, 0.8) * rim * 0.5;
+
+                        // Distance fog
+                        color *= exp(-0.05 * dO);
+                    }
+
+                    // Post-process: Scanlines & Chromatic Aberration hint
+                    float scanline = sin(gl_FragCoord.y * 1.5) * 0.04;
+                    color -= scanline;
+                    
+                    // Vignette
+                    color *= 1.0 - length(uv) * 0.5;
+
+                    gl_FragColor = vec4(color, 1.0);
+                }
+            `
+        });
+
+        material.onBeforeCompile = (shader) => {
+            // Custom shader injection if needed
+        };
+
+        const quad = new THREE.Mesh(geometry, material);
+        scene.add(quad);
+
+        function resize() {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            material.uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        const clock = new THREE.Clock();
+        function animate() {
+            requestAnimationFrame(animate);
+            const t = clock.getElapsedTime();
+            material.uniforms.uTime.value = t;
+            renderer.render(scene, camera);
+        }
+
+        animate();
+    </script>
+</body>
+</html>

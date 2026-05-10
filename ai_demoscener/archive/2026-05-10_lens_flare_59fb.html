@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Three.js Sprite Projection Effect</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="module">
+    import * as THREE from 'https://cdn.skypack.dev/three@0.136.0';
+
+    // Scene Setup
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.z = 5;
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // Create Soft Circular Texture for Sprites
+    const createCircleTexture = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 128;
+        canvas.height = 128;
+        const ctx = canvas.getContext('2d');
+        const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+        gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+        gradient.addColorStop(0.2, 'rgba(255, 255, 255, 0.8)');
+        gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.2)');
+        gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 128, 128);
+        const texture = new THREE.CanvasTexture(canvas);
+        return texture;
+    };
+
+    const spriteTexture = createCircleTexture();
+
+    // Central Torus Knot
+    const torusKnotGeom = new THREE.TorusKnotGeometry(1, 0.3, 128, 32);
+    const torusMaterial = new THREE.MeshNormalMaterial();
+    const torusKnot = new THREE.Mesh(torusKnotGeom, torusMaterial);
+    scene.add(torusKnot);
+
+    // Main Sprite (The "Source")
+    // We create an invisible mesh to act as the 3D target for projection
+    const targetAnchor = new THREE.Mesh(
+        new THREE.SphereGeometry(0.1, 16, 16),
+        new THREE.MeshBasicMaterial({ visible: false })
+    );
+    scene.add(targetAnchor);
+
+    // The actual bright sprite that follows the projection
+    const mainSpriteMat = new THREE.SpriteMaterial({
+        map: spriteTexture,
+        color: 0xffffff,
+        transparent: true,
+        blending: THREE.AdditiveBlending
+    });
+    const mainSprite = new THREE.Sprite(mainSpriteMat);
+    mainSprite.scale.set(1, 1, 1);
+    scene.add(mainSprite);
+
+    // Smaller Sprites along the line
+    const secondarySprites = [];
+    const colors = [0xff0000, 0x00ff00, 0x00ffff, 0xffff00, 0xff00ff, 0x00ff88];
+    const sizes = [0.5, 0.4, 0.3, 0.2, 0.1, 0.05];
+
+    for (let i = 0; i < 6; i++) {
+        const mat = new THREE.SpriteMaterial({
+            map: spriteTexture,
+            color: colors[i],
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            opacity: 0.7
+        });
+        const s = new THREE.Sprite(mat);
+        scene.add(s);
+        secondarySprites.push({ mesh: s, size: sizes[i] });
+    }
+
+    // Animation Loop
+    function animate() {
+        requestAnimationFrame(animate);
+
+        const time = Date.now() * 0.001;
+
+        // Rotate Knot
+        torusKnot.rotation.x += 0.01;
+        torusKnot.rotation.y += 0.015;
+
+        // Move the target anchor in a circle around the knot
+        targetAnchor.position.set(
+            Math.sin(time) * 2,
+            Math.cos(time * 0.8) * 1.5,
+            Math.sin(time * 0.5) * 1
+        );
+
+        // Projection Logic
+        const screenPos = targetAnchor.position.clone().project(camera);
+        
+        // Convert NDC (-1 to +1) to Screen Space for the main Sprite (Visual trick)
+        // However, sprites are in 3D space. To make a sprite appear at "screen position",
+        // we need to place it on the near plane or use a specific technique.
+        // A simpler way: The user asked for "position projected to screen". 
+        // We will treat the main sprite as a UI-like element by placing it very close to camera.
+        
+        const viewPos = targetAnchor.position.clone().project(camera);
+        // Convert NDC (-1 to +1) back to world space at camera distance for Sprite visibility
+        // or simply use the projection result to move sprites along a line in 2D/3D hybrid logic.
+        
+        // Let's calculate the line from Screen Center (0,0,z) to Projected Point (x,y,z)
+        const centerNDC = new THREE.Vector2(0, 0);
+        const targetNDC = new THREE.Vector2(viewPos.x, viewPos.y);
+
+        // Main Sprite: Place at a fixed distance near camera based on projection
+        // We'll simulate the sprite being "stuck" to that screen coordinate by placing it 
+        // in front of the camera at depth 1.
+        mainSprite.position.set(viewPos.x, viewPos.y, 1); 
+        // Note: In Three.js Sprites are always facing camera. To make them look like they're on screen,
+        // we need to translate NDC back to World space at a specific Z near the camera.
+        
+        const unproject = (x, y, z) => {
+            const vec = new THREE.Vector3(x, y, 0.5).unproject(camera);
+            const dir = vec.sub(camera.position).normalize();
+            return camera.position.clone().add(dir.multiplyScalar(z));
+        };
+
+        const mainWorldPos = unproject(viewPos.x, viewPos.y, 1);
+        mainSprite.position.copy(mainWorldPos);
+        mainSprite.scale.set(0.5, 0.5, 0.5);
+
+        // Secondary Sprites: Interpolate between screen center and projected point
+        for (let i = 0; i < secondarySprites.length; i++) {
+            const t = (i + 1) / (secondarySprites.length + 1);
+            // Linearly interpolate in NDC space for a clean visual line to center
+            const lerpNDC = new THREE.Vector2().lerpVectors(centerNDC, targetNDC, t);
+            const subWorldPos = unproject(lerpNDC.x, lerpNDC.y, 2);
+            
+            secondarySprites[i].mesh.position.copy(subWorldPos);
+            const s = secondarySprites[i].size;
+            secondarySprites[i].mesh.scale.set(s, s, s);
+        }
+
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+</script>
+</body>
+</html>

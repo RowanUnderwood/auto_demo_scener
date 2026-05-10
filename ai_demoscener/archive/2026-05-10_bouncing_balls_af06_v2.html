@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Kinetic Flux</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #050505; font-family: sans-serif; }
+        canvas { display: block; }
+        #ui { position: absolute; bottom: 20px; left: 20px; color: rgba(255,255,255,0.4); pointer-events: none; letter-spacing: 2px; font-size: 10px; text-transform: uppercase; }
+    </style>
+</head>
+<body>
+    <div id="ui">Kinetic Energy Simulation // Neon Flux</div>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+        // --- Configuration ---
+        const CONFIG = {
+            count: 25,
+            boxSize: 12,
+            gravity: -4.0,
+            friction: 0.98,
+            bounce: 0.7,
+            sphereRadius: 0.4,
+            bloomStrength: 1.5,
+            colors: [0x00f2ff, 0x0066ff, 0x7000ff, 0xff007b]
+        };
+
+        // --- Setup ---
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x050505, 0.05);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(18, 14, 18);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.toneMapping = THREE.ReinhardToneMapping;
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.autoRotate = true;
+        controls.autoRotateSpeed = 0.5;
+
+        // --- Post Processing ---
+        const renderScene = new RenderPass(scene, camera);
+        const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
+        bloomPass.threshold = 0.2;
+        bloomPass.strength = CONFIG.bloomStrength;
+
+        const composer = new EffectComposer(renderer);
+        composer.addPass(renderScene);
+        composer.addPass(bloomPass);
+
+        // --- Lights ---
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.1);
+        scene.add(ambientLight);
+
+        const centerLight = new THREE.PointLight(0xffffff, 10, 50);
+        centerLight.position.set(0, 5, 0);
+        scene.add(centerLight);
+
+        // --- Objects ---
+        
+        // The Boundary Box (Glassy/Wireframe)
+        const boxGeo = new THREE.BoxGeometry(CONFIG.boxSize, CONFIG.boxSize, CONFIG.boxSize);
+        const boxMaterial = new THREE.MeshPhysicalMaterial({
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0.1,
+            transmission: 0.9,
+            roughness: 0.05,
+            thickness: 1,
+            side: THREE.BackSide
+        });
+        const boxMesh = new THREE.Mesh(boxGeo, boxMaterial);
+        scene.add(boxMesh);
+
+        const edgeGeo = new THREE.EdgesGeometry(boxGeo);
+        const edgeMat = new THREE.LineBasicMaterial({ color: 0x333333, transparent: true, opacity: 0.5 });
+        const edges = new THREE.LineSegments(edgeGeo, edgeMat);
+        scene.add(edges);
+
+        // The Particles (Spheres)
+        const spheres = [];
+        const sphereGroup = new THREE.Group();
+        scene.add(sphereGroup);
+
+        const sphereGeo = new THREE.SphereGeometry(1, 32, 32); // Base for visual scale
+
+        for (let i = 0; i < CONFIG.count; i++) {
+            const color = new THREE.Color(CONFIG.colors[i % CONFIG.colors.length]);
+            
+            // Inner Glow Core
+            const coreGeo = new THREE.SphereGeometry(CONFIG.sphereRadius * 0.8, 16, 16);
+            const coreMat = new THREE.MeshBasicMaterial({ color: color });
+            const core = new THREE.Mesh(coreGeo, coreMat);
+
+            // Outer Shell (Refractive)
+            const shellGeo = new THREE.SphereGeometry(CONFIG.sphereRadius, 24, 24);
+            const shellMat = new THREE.MeshPhysicalMaterial({
+                color: color,
+                emissive: color,
+                emissiveIntensity: 2,
+                metalness: 0.9,
+                roughness: 0.1,
+                transparent: true,
+                opacity: 0.8
+            });
+            const shell = new THREE.Mesh(shellGeo, shellMat);
+
+            const mesh = new THREE.Group();
+            mesh.add(core);
+            mesh.add(shell);
+
+            // Initial State
+            const limit = (CONFIG.boxSize / 2) - CONFIG.sphereRadius;
+            mesh.position.set(
+                (Math.random() - 0.5) * limit * 2,
+                (Math.random() - 0.5) * limit * 2,
+                (Math.random() - 0.5) * limit * 2
+            );
+
+            const velocity = new THREE.Vector3(
+                (Math.random() - 0.5) * 15,
+                (Math.random() - 0.5) * 15,
+                (Math.random() - 0.5) * 15
+            );
+
+            sphereGroup.add(mesh);
+            spheres.push({ mesh, velocity, color });
+        }
+
+        // --- Physics Engine ---
+        const clock = new THREE.Clock();
+        const bound = CONFIG.boxSize / 2;
+
+        function updatePhysics(dt) {
+            spheres.forEach(s => {
+                // Gravity
+                s.velocity.y += CONFIG.gravity * dt;
+                
+                // Drag/Friction
+                s.velocity.multiplyScalar(1 - (0.1 * dt)); 
+
+                // Move
+                s.mesh.position.addScaledVector(s.velocity, dt);
+
+                const pos = s.mesh.position;
+                const r = CONFIG.sphereRadius;
+
+                // Collision Logic (Axis Aligned)
+                ['x', 'y', 'z'].forEach(axis => {
+                    if (Math.abs(pos[axis]) + r > bound) {
+                        // Correct position to stay inside
+                        pos[axis] = Math.sign(pos[axis]) * (bound - r);
+                        // Reflect velocity with damping
+                        s.velocity[axis] *= -CONFIG.bounce;
+                    }
+                });
+
+                // Visual pulse based on speed
+                const speed = s.velocity.length();
+                s.mesh.children[1].material.emissiveIntensity = 1 + (speed * 0.2);
+            });
+        }
+
+        // --- Main Loop ---
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            const dt = Math.min(clock.getDelta(), 0.05);
+            
+            updatePhysics(dt);
+            controls.update();
+            
+            composer.render();
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

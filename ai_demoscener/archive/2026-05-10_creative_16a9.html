@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>NEON_VOID // DEMO</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', Courier, monospace; }
+        #ui { position: absolute; top: 20px; left: 20px; color: #0ff; pointer-events: none; text-shadow: 0 0 5px #0ff; letter-spacing: 2px; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <div id="ui">SYSTEM_STATUS: OPERATIONAL<br>CORE_ENGINE: NEON_VOID_V1</div>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        /**
+         * IDEA: "CYBER-GEODESIC FRACTURE"
+         * A hybrid of raymarching, particle systems, and geometric fracturing.
+         * An infinite field of crystalline structures that shatter into glowing 
+         * particles when a mathematical wave passes through them.
+         */
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.body.appendChild(renderer.domElement);
+
+        // --- SHADER MATERIAL (The Core Visual) ---
+        const fragmentShader = `
+            uniform float time;
+            uniform vec2 resolution;
+            
+            mat2 rot(float a) { return mat2(cos(a), -sin(a), sin(a), cos(a)); }
+
+            float smin(float a, float b, float k) {
+                float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+                return mix(b, a, h) - k * h * (1.0 - h);
+            }
+
+            float sdBox(vec3 p, vec3 b) {
+                vec3 q = abs(p) - b;
+                return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
+            }
+
+            float sdSphere(vec3 p, float s) { return length(p) - s; }
+
+            float map(vec3 p) {
+                // Infinite repetition
+                vec3 q = mod(p + 2.5, 5.0) - 2.5;
+                
+                // The "Fracture" wave effect using sine of time and position
+                float wave = sin(length(p * 0.5 - time * 0.8) - 1.0);
+                float dist = smin(sdBox(q, vec3(0.8)), sdSphere(q, 0.9), 0.4);
+                
+                // Apply the fracture: if wave is high, objects "shrink" or invert
+                return dist * (1.0 - smoothstep(0.5, 0.8, wave) * 0.5);
+            }
+
+            vec3 getNormal(vec3 p) {
+                float d = map(p);
+                vec2 e = vec2(0.001, 0.0);
+                return normalize(vec3(
+                    d - map(p - e.xyy),
+                    d - map(p - e.yxy),
+                    d - map(p - e.yyx)
+                ));
+            }
+
+            void main() {
+                vec2 uv = (gl_FragCoord.xy * 2.0 - resolution.xy) / min(resolution.y, resolution.x);
+                vec3 ro = vec3(0.0, 0.0, time * 2.0); // Moving camera
+                vec3 rd = normalize(vec3(uv, 1.5));
+
+                // Camera rotation for "drift" effect
+                rd.xy *= rot(sin(time * 0.2) * 0.2);
+                rd.xz *= rot(cos(time * 0.15) * 0.3);
+
+                float t = 0.0;
+                for(int i = 0; i < 80; i++) {
+                    vec3 p = ro + rd * t;
+                    float d = map(p);
+                    if(d < 0.001 || t > 40.0) break;
+                    t += d;
+                }
+
+                vec3 col = vec3(0.0);
+
+                if(t < 40.0) {
+                    vec3 p = ro + rd * t;
+                    vec3 n = getNormal(p);
+                    vec3 lightDir = normalize(vec3(sin(time), 1.0, cos(time)));
+                    
+                    float diff = max(dot(n, lightDir), 0.0);
+                    float spec = pow(max(dot(reflect(-lightDir, n), -rd), 0.0), 32.0);
+                    
+                    // Color palette based on distance and position
+                    vec3 baseCol = 0.5 + 0.5 * cos(time * 0.1 + p.xyx * 0.5 + vec3(0, 2, 4));
+                    col = baseCol * diff + spec;
+                    
+                    // Fog/Depth
+                    col *= exp(-0.08 * t);
+                }
+
+                // Post-process: Scanlines and Vignette
+                col *= 1.0 - length(uv) * 0.4;
+                col += sin(gl_FragCoord.y * 2.5 + time * 10.0) * 0.01;
+
+                gl_FragColor = vec4(col, 1.0);
+            }
+        `;
+
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                time: { value: 0 },
+                resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+            },
+            fragmentShader: fragmentShader
+        });
+
+        const quad = new THREE.Mesh(geometry, material);
+        scene.add(quad);
+
+        // --- PARTICLE LAYER (The Shatter Effect) ---
+        const particleCount = 3000;
+        const pGeometry = new THREE.BufferGeometry();
+        const posArray = new Float32Array(particleCount * 3);
+        const velArray = new Float32Array(particleCount * 3);
+        const colorArray = new Float32Array(particleCount * 3);
+
+        for (let i = 0; i < particleCount; i++) {
+            posArray[i * 3] = (Math.random() - 0.5) * 20;
+            posArray[i * 3 + 1] = (Math.random() - 0.5) * 20;
+            posArray[i * 3 + 2] = (Math.random() - 0.5) * 40;
+
+            velArray[i * 3] = (Math.random() - 0.5) * 0.1;
+            velArray[i * 3 + 1] = (Math.random() - 0.5) * 0.1;
+            velArray[i * 3 + 2] = Math.random() * 0.2 + 0.1;
+
+            colorArray[i * 3] = 0.0;
+            colorArray[i * 3 + 1] = 1.0; // Cyan/Neon focus
+            colorArray[i * 3 + 2] = 1.0;
+        }
+
+        pGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+        pGeometry.setAttribute('color', new THREE.BufferAttribute(colorArray, 3));
+
+        const pMaterial = new THREE.PointsMaterial({
+            size: 0.05,
+            vertexColors: true,
+            transparent: true,
+            blending: THREE.AdditiveBlending
+        });
+
+        const particles = new THREE.Points(pGeometry, pMaterial);
+        scene.add(particles);
+
+        // --- ANIMATION LOOP ---
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            const elapsed = clock.getElapsedTime();
+
+            material.uniforms.time.value = elapsed;
+
+            // Update Particles (Simulating fragments flying past camera)
+            const positions = pGeometry.attributes.position.array;
+            const colors = pGeometry.attributes.color.array;
+
+            for (let i = 0; i < particleCount; i++) {
+                positions[i * 3 + 2] += velArray[i * 3 + 2]; // Move forward
+
+                // If particle passes camera, reset it far ahead in the "fracture" zone
+                if (positions[i * 3 + 2] > 5) {
+                    positions[i * 3 + 2] = -35;
+                    positions[i * 3] = (Math.random() - 0.5) * 15;
+                    positions[i * 3 + 1] = (Math.random() - 0.5) * 15;
+                }
+
+                // Pulse color based on time
+                const pulse = Math.sin(elapsed * 2.0 + i * 0.1) * 0.5 + 0.5;
+                colors[i * 3] = 0.1 * pulse;     // R
+                colors[i * 3 + 1] = 0.8 * pulse; // G
+                colors[i * 3 + 2] = 1.0 * pulse; // B
+            }
+            pGeometry.attributes.position.needsUpdate = true;
+            pGeometry.attributes.color.needsUpdate = true;
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            material.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

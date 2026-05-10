@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEON CHRONOS - Demoscene</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: monospace; }
+        canvas { display: block; }
+        #overlay {
+            position: absolute; top: 20px; left: 20px; color: #0ff;
+            pointer-events: none; text-transform: uppercase; letter-spacing: 2px;
+            text-shadow: 0 0 10px #0ff; font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div id="overlay">System: Chronos_Protocol // Status: Active</div>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        /** 
+         * CONCEPT: "NEON CHRONOS"
+         * A fusion of Raymarched SDFs, Rotozoomer distortion, and a particle-based clockwork.
+         * It features a central "Time Singularity" (SDF fractal) surrounded by orbiting 
+         * data-shards that leave light trails using additive blending.
+         */
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.body.appendChild(renderer.domElement);
+
+        // --- SHADER MATERIAL (The Singularity) ---
+        const singularityMat = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uRes: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float uTime;
+                uniform vec2 uRes;
+                varying vec2 vUv;
+
+                mat2 rot(float a) { return mat2(cos(a), -sin(a), sin(a), cos(a)); }
+
+                float map(vec3 p) {
+                    p.z += uTime * 0.5;
+                    p.xy *= rot(p.z * 0.1);
+                    // Fractal Fold
+                    for(int i=0; i<4; i++) {
+                        p = abs(p) - 0.5;
+                        p.xy *= rot(uTime * 0.2 + float(i));
+                        p.yz *= rot(uTime * 0.1);
+                    }
+                    return length(p) - 0.1;
+                }
+
+                void main() {
+                    vec2 uv = (gl_FragCoord.xy - 0.5 * uRes.xy) / min(uRes.y, uRes.x);
+                    vec3 ro = vec3(0.0, 0.0, -3.0);
+                    vec3 rd = normalize(vec3(uv, 1.5));
+                    
+                    float t = 0.0;
+                    float d;
+                    for(int i=0; i<64; i++) {
+                        d = map(ro + rd * t);
+                        if(d < 0.001 || t > 20.0) break;
+                        t += d;
+                    }
+
+                    vec3 col = vec3(0.0);
+                    if(t < 20.0) {
+                        vec3 pos = ro + rd * t;
+                        // Simple fake lighting based on depth/time
+                        col = 0.5 + 0.5 * cos(uTime + pos.xyz * 0.5 + vec3(0,2,4));
+                        col *= exp(-0.1 * t); // Fog
+                    }
+
+                    // Scanline effect
+                    col *= 0.9 + 0.1 * sin(gl_FragCoord.y * 1.5);
+                    gl_FragColor = vec4(col, 1.0);
+                }
+            `
+        });
+
+        const bgQuad = new THREE.Mesh(new THREE.PlaneGeometry(20, 20), singularityMat);
+        bgQuad.position.z = -5;
+        scene.add(bgQuad);
+
+        // --- PARTICLES (Data Shards) ---
+        const particleCount = 1500;
+        const geo = new THREE.BufferGeometry();
+        const pos = new Float32Array(particleCount * 3);
+        const vel = new Float32Array(particleCount * 3);
+        const color = new Float32Array(particleCount * 3);
+
+        for (let i = 0; i < particleCount; i++) {
+            pos[i*3] = (Math.random() - 0.5) * 10;
+            pos[i*3+1] = (Math.random() - 0.5) * 10;
+            pos[i*3+2] = (Math.random() - 0.5) * 10;
+
+            vel[i*3] = (Math.random() - 0.5) * 0.02;
+            vel[i*3+1] = (Math.random() - 0.5) * 0.02;
+            vel[i*3+2] = (Math.random() - 0.5) * 0.02;
+
+            color[i*3] = Math.random();
+            color[i*3+1] = 1.0;
+            color[i*3+2] = Math.random();
+        }
+
+        geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+        geo.setAttribute('color', new THREE.BufferAttribute(color, 3));
+
+        const pMat = new THREE.PointsMaterial({
+            size: 0.04,
+            vertexColors: true,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            opacity: 0.8
+        });
+
+        const particles = new THREE.Points(geo, pMat);
+        scene.add(particles);
+
+        // --- FLOATING GEOMETRY (The Clockwork) ---
+        const ringGroup = new THREE.Group();
+        const ringCount = 12;
+        for(let i=0; i<ringCount; i++) {
+            const geom = new THREE.IcosahedronGeometry(0.4, 0);
+            const mat = new THREE.MeshBasicMaterial({ color: 0x00ffff, wireframe: true });
+            const mesh = new THREE.Mesh(geom, mat);
+            
+            const angle = (i / ringCount) * Math.PI * 2;
+            mesh.position.set(Math.cos(angle)*3, Math.sin(angle)*3, 0);
+            ringGroup.add(mesh);
+        }
+        scene.add(ringGroup);
+
+        camera.position.z = 5;
+
+        // --- ANIMATION LOOP ---
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const t = clock.getElapsedTime();
+
+            singularityMat.uniforms.uTime.value = t;
+            singularityMat.uniforms.uRes.value.set(window.innerWidth, window.innerHeight);
+
+            // Animate Particles
+            const positions = geo.attributes.position.array;
+            for (let i = 0; i < particleCount; i++) {
+                positions[i*3] += vel[i*3];
+                positions[i*3+1] += vel[i*3+1];
+                positions[i*3+2] += vel[i*3+2];
+
+                // Boundary check & Wrap
+                if (Math.abs(positions[i*3]) > 8) positions[i*3] *= -0.9;
+                if (Math.abs(positions[i*3+1]) > 8) positions[i*3+1] *= -0.9;
+                if (Math.abs(positions[i*3+2]) > 8) positions[i*3+2] *= -0.9;
+            }
+            geo.attributes.position.needsUpdate = true;
+
+            // Animate Ring Group
+            ringGroup.rotation.z = t * 0.2;
+            ringGroup.children.forEach((child, idx) => {
+                const orbitT = t * 0.5 + (idx * 0.5);
+                child.position.x = Math.cos(orbitT) * 4;
+                child.position.y = Math.sin(orbitT) * 4;
+                child.rotation.x = t;
+                child.scale.setScalar(1 + Math.sin(t * 2 + idx) * 0.3);
+            });
+
+            // Camera "Breathing"
+            camera.position.x = Math.sin(t * 0.5) * 0.5;
+            camera.position.y = Math.cos(t * 0.5) * 0.5;
+            camera.lookAt(0,0,0);
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

@@ -1,0 +1,476 @@
+{
+  "2026-05-10_lens_flare_ec6e.html": {
+    "created": "2026-05-10T08:10:06.535042",
+    "mode": "stock",
+    "effect": "Lens Flare",
+    "passed_validation": true
+  },
+  "2026-05-10_lens_flare_ec6e_v2.html": {
+    "created": "2026-05-10T08:11:26.895032",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true
+  },
+  "2026-05-10_lens_flare_ec6e_v3.html": {
+    "created": "2026-05-10T08:13:14.972248",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true
+  },
+  "2026-05-10_lens_flare_ec6e_v4.html": {
+    "created": "2026-05-10T08:14:54.194874",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true
+  },
+  "2026-05-10_wireframe_icosahedron_3215.html": {
+    "created": "2026-05-10T08:16:09.632863",
+    "mode": "stock",
+    "effect": "Wireframe Icosahedron",
+    "passed_validation": true
+  },
+  "2026-05-10_bouncing_balls_e263.html": {
+    "created": "2026-05-10T08:17:34.388660",
+    "mode": "stock",
+    "effect": "Bouncing Balls",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_16a9.html": {
+    "created": "2026-05-10T08:19:01.105846",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_9693.html": {
+    "created": "2026-05-10T08:20:20.482267",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_b489.html": {
+    "created": "2026-05-10T08:23:38.879404",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true
+  },
+  "2026-05-10_glitch_postprocess_2676.html": {
+    "created": "2026-05-10T08:25:54.944034",
+    "mode": "stock",
+    "effect": "Glitch Postprocess",
+    "passed_validation": true
+  },
+  "2026-05-10_procedural_terrain_flythrough_59f6.html": {
+    "created": "2026-05-10T08:27:16.886200",
+    "mode": "stock",
+    "effect": "Procedural Terrain Flythrough",
+    "passed_validation": true
+  },
+  "2026-05-10_lens_flare_ec6e_v5.html": {
+    "created": "2026-05-10T08:28:42.791588",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true
+  },
+  "2026-05-10_wormhole_c39c.html": {
+    "created": "2026-05-10T08:30:05.719502",
+    "mode": "stock",
+    "effect": "Wormhole",
+    "passed_validation": true
+  },
+  "2026-05-10_lens_flare_ec6e_v6.html": {
+    "created": "2026-05-10T08:31:32.062654",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_2131.html": {
+    "created": "2026-05-10T08:32:59.845536",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true
+  },
+  "2026-05-10_plasma_4a14.html": {
+    "created": "2026-05-10T08:34:20.374658",
+    "mode": "stock",
+    "effect": "Plasma",
+    "passed_validation": true
+  },
+  "2026-05-10_voxel_landscape_9cc5.html": {
+    "created": "2026-05-10T08:38:51.253659",
+    "mode": "stock",
+    "effect": "Voxel Landscape",
+    "passed_validation": true
+  },
+  "2026-05-10_kaleidoscope_bff1.html": {
+    "created": "2026-05-10T08:40:17.506076",
+    "mode": "stock",
+    "effect": "Kaleidoscope",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_c89f.html": {
+    "created": "2026-05-10T08:48:27.725329",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true
+  },
+  "2026-05-10_2d_tunnel_cb48.html": {
+    "created": "2026-05-10T08:55:38.103946",
+    "mode": "stock",
+    "effect": "2D Tunnel",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_e5c6.html": {
+    "created": "2026-05-10T08:57:22.452999",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true
+  },
+  "2026-05-10_starfield_0fb3.html": {
+    "created": "2026-05-10T08:59:17.545718",
+    "mode": "stock",
+    "effect": "Starfield",
+    "passed_validation": true
+  },
+  "2026-05-10_boids_flocking_d82c.html": {
+    "created": "2026-05-10T09:25:45.565683",
+    "mode": "stock",
+    "effect": "Boids Flocking",
+    "passed_validation": true
+  },
+  "2026-05-10_lens_flare_ec6e_v7.html": {
+    "created": "2026-05-10T09:27:09.310908",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true
+  },
+  "2026-05-10_fire_5396.html": {
+    "created": "2026-05-10T09:28:43.349104",
+    "mode": "stock",
+    "effect": "Fire",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_7f06.html": {
+    "created": "2026-05-10T09:29:59.613000",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true
+  },
+  "2026-05-10_lens_flare_59fb.html": {
+    "created": "2026-05-10T09:31:20.880901",
+    "mode": "stock",
+    "effect": "Lens Flare",
+    "passed_validation": true
+  },
+  "2026-05-10_raymarched_scene_da99.html": {
+    "created": "2026-05-10T09:32:48.253517",
+    "mode": "stock",
+    "effect": "Raymarched Scene",
+    "passed_validation": true
+  },
+  "2026-05-10_water_ripple_1053.html": {
+    "created": "2026-05-10T09:34:18.524781",
+    "mode": "stock",
+    "effect": "Water Ripple",
+    "passed_validation": true
+  },
+  "2026-05-10_wormhole_c39c_v2.html": {
+    "created": "2026-05-10T09:35:37.553927",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true
+  },
+  "2026-05-10_procedural_terrain_flythrough_3fcd.html": {
+    "created": "2026-05-10T09:36:53.857905",
+    "mode": "stock",
+    "effect": "Procedural Terrain Flythrough",
+    "passed_validation": true
+  },
+  "2026-05-10_2d_tunnel_3b15.html": {
+    "created": "2026-05-10T09:38:18.034753",
+    "mode": "stock",
+    "effect": "2D Tunnel",
+    "passed_validation": true
+  },
+  "2026-05-10_bloom_torus_knot_4c0b.html": {
+    "created": "2026-05-10T09:39:33.910773",
+    "mode": "stock",
+    "effect": "Bloom Torus Knot",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_3987.html": {
+    "created": "2026-05-10T09:40:57.202035",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true
+  },
+  "2026-05-10_lens_flare_2495.html": {
+    "created": "2026-05-10T09:49:55.848804",
+    "mode": "stock",
+    "effect": "Lens Flare",
+    "passed_validation": true
+  },
+  "2026-05-10_wormhole_7e34.html": {
+    "created": "2026-05-10T09:55:43.280194",
+    "mode": "stock",
+    "effect": "Wormhole",
+    "passed_validation": true
+  },
+  "2026-05-10_kaleidoscope_68d4.html": {
+    "created": "2026-05-10T09:57:05.535286",
+    "mode": "stock",
+    "effect": "Kaleidoscope",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_2b58.html": {
+    "created": "2026-05-10T09:58:32.103020",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_b489_v2.html": {
+    "created": "2026-05-10T10:00:01.877387",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true
+  },
+  "2026-05-10_bouncing_balls_af06.html": {
+    "created": "2026-05-10T10:00:31.788014",
+    "mode": "stock",
+    "effect": "Bouncing Balls",
+    "passed_validation": true
+  },
+  "2026-05-10_boids_flocking_d82c_v2.html": {
+    "created": "2026-05-10T10:06:00.591081",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true
+  },
+  "2026-05-10_boids_flocking_69ef.html": {
+    "created": "2026-05-10T10:08:08.694859",
+    "mode": "stock",
+    "effect": "Boids Flocking",
+    "passed_validation": true
+  },
+  "2026-05-10_particle_system_2090.html": {
+    "created": "2026-05-10T10:08:43.682255",
+    "mode": "stock",
+    "effect": "Particle System",
+    "passed_validation": true
+  },
+  "2026-05-10_procedural_terrain_flythrough_59f6_v2.html": {
+    "created": "2026-05-10T10:09:25.981181",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true
+  },
+  "2026-05-10_fire_5396_v2.html": {
+    "created": "2026-05-10T10:13:16.501585",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true
+  },
+  "2026-05-10_lens_flare_59fb_v2.html": {
+    "created": "2026-05-10T10:15:17.865266",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true
+  },
+  "2026-05-10_wireframe_icosahedron_e38f.html": {
+    "created": "2026-05-10T10:16:24.635441",
+    "mode": "stock",
+    "effect": "Wireframe Icosahedron",
+    "passed_validation": true
+  },
+  "2026-05-10_raymarched_scene_46ea.html": {
+    "created": "2026-05-10T10:17:06.420113",
+    "mode": "stock",
+    "effect": "Raymarched Scene",
+    "passed_validation": true
+  },
+  "2026-05-10_2d_tunnel_d819.html": {
+    "created": "2026-05-10T10:17:50.893776",
+    "mode": "stock",
+    "effect": "2D Tunnel",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_f2da.html": {
+    "created": "2026-05-10T10:18:28.265386",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true
+  },
+  "2026-05-10_wireframe_icosahedron_3f09.html": {
+    "created": "2026-05-10T10:19:13.689475",
+    "mode": "stock",
+    "effect": "Wireframe Icosahedron",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_2131_v2.html": {
+    "created": "2026-05-10T10:19:56.373786",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_ca73.html": {
+    "created": "2026-05-10T10:20:35.441436",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true
+  },
+  "2026-05-10_glitch_postprocess_cefd.html": {
+    "created": "2026-05-10T10:22:04.357246",
+    "mode": "stock",
+    "effect": "Glitch Postprocess",
+    "passed_validation": true
+  },
+  "2026-05-10_mandelbrot_zoom_9a28.html": {
+    "created": "2026-05-10T10:23:01.495543",
+    "mode": "stock",
+    "effect": "Mandelbrot Zoom",
+    "passed_validation": true
+  },
+  "2026-05-10_wormhole_f6c1.html": {
+    "created": "2026-05-10T10:23:38.903511",
+    "mode": "stock",
+    "effect": "Wormhole",
+    "passed_validation": true
+  },
+  "2026-05-10_cube_twister_66f9.html": {
+    "created": "2026-05-10T10:24:11.850224",
+    "mode": "stock",
+    "effect": "Cube Twister",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_ca66.html": {
+    "created": "2026-05-10T10:24:50.491352",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_e4b9.html": {
+    "created": "2026-05-10T10:25:27.533648",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_b583.html": {
+    "created": "2026-05-10T10:26:10.742788",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_55b1.html": {
+    "created": "2026-05-10T10:26:53.594011",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true
+  },
+  "2026-05-10_kaleidoscope_afd6.html": {
+    "created": "2026-05-10T10:27:47.643882",
+    "mode": "stock",
+    "effect": "Kaleidoscope",
+    "passed_validation": true
+  },
+  "2026-05-10_mode_7_floor_a068.html": {
+    "created": "2026-05-10T10:28:26.356591",
+    "mode": "stock",
+    "effect": "Mode-7 Floor",
+    "passed_validation": true
+  },
+  "2026-05-10_raymarched_scene_da99_v2.html": {
+    "created": "2026-05-10T10:29:05.087118",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true
+  },
+  "2026-05-10_procedural_terrain_flythrough_59f6_v3.html": {
+    "created": "2026-05-10T10:29:46.150772",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_7ddb.html": {
+    "created": "2026-05-10T10:30:23.968656",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_0353.html": {
+    "created": "2026-05-10T10:31:14.540374",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true
+  },
+  "2026-05-10_wireframe_icosahedron_d806.html": {
+    "created": "2026-05-10T10:31:44.901966",
+    "mode": "stock",
+    "effect": "Wireframe Icosahedron",
+    "passed_validation": true
+  },
+  "2026-05-10_kaleidoscope_a20c.html": {
+    "created": "2026-05-10T10:32:19.769231",
+    "mode": "stock",
+    "effect": "Kaleidoscope",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_ee56.html": {
+    "created": "2026-05-10T10:36:53.089342",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true
+  },
+  "2026-05-10_starfield_0fb3_v2.html": {
+    "created": "2026-05-10T10:40:49.082769",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true
+  },
+  "2026-05-10_bouncing_balls_af06_v2.html": {
+    "created": "2026-05-10T10:43:50.927509",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_34a3.html": {
+    "created": "2026-05-10T10:50:42.184663",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_f2ed.html": {
+    "created": "2026-05-10T10:51:19.788614",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true
+  },
+  "2026-05-10_bouncing_balls_af06_v3.html": {
+    "created": "2026-05-10T10:52:00.668275",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_8844.html": {
+    "created": "2026-05-10T10:52:44.607826",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_0353_v2.html": {
+    "created": "2026-05-10T10:53:35.927897",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_cd4a.html": {
+    "created": "2026-05-10T10:54:21.089325",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_9475.html": {
+    "created": "2026-05-10T10:54:57.944163",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true
+  }
+}

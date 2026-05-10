@@ -16,6 +16,8 @@ A self-running kiosk that uses a local LLM to endlessly generate and display Thr
 4. **Display** — runs the working demo full-screen for a configurable duration
 5. **Archive** — saves it with a timestamped filename, then loops
 
+If all repair attempts are exhausted a styled **CRASHED / BLANK FRAME** overlay appears with a 5-second countdown before the next cycle starts automatically.
+
 **Replay mode** plays back archived demos without any LLM traffic — useful for showcasing a collection.
 
 ---
@@ -64,6 +66,7 @@ Key settings:
 | Mode weights | creative 1 / update 1 / stock 2 | Probability of each generation sub-mode |
 | Palette | Amber CRT | Display colour scheme |
 | Max repair attempts | 2 | How many times to ask the LLM to fix a broken demo |
+| Prompt fail tracking | — | Config GUI → Prompts CSV shows a **Fails** column per effect (amber = 1–2 failures, red = 3+) |
 
 ### Generation modes
 
@@ -80,6 +83,28 @@ Key settings:
 |---|---|
 | `d` | (Replay mode) Show delete confirmation for the current demo |
 | `Escape` | Dismiss confirmation dialog |
+
+---
+
+## Static archive player
+
+`ai_demoscener/archive/index.html` is a self-contained page that plays back your archived demos with no Python backend required — just a web server serving the `archive/` directory.
+
+Open it at the root of your archive folder:
+
+```
+http://localhost/archive/       # any static server
+https://yourname.github.io/auto_demo_scener/ai_demoscener/archive/   # GitHub Pages
+```
+
+It reads `archive_index.json`, shuffles the demos, and cycles through them automatically. Keyboard shortcuts:
+
+| Key | Action |
+|---|---|
+| `→` / `Space` | Skip to next demo |
+| `←` | Go back to previous demo |
+
+Add `?runtime=N` to the URL to change how long each demo displays (default: 60 seconds).
 
 ---
 
@@ -108,16 +133,19 @@ ai_demoscener/
 ├── lm_client.py        LM Studio streaming API client
 ├── validator.py        Probe injection, fence-stripping, validation sync
 ├── archive.py          Save / version / prune / delete archived demos
+├── stats.py            Per-prompt failure tracking → prompt_stats.json
 ├── config.py           Config load/save with schema migration
 ├── prompts.csv         26+ effect specifications fed to the LLM
 ├── launch.bat          Windows one-click launcher
 ├── download_vendor.py  Fetches three.js into static/three/
+├── archive/
+│   └── index.html      Static archive player (no backend needed)
 └── static/
     ├── display.html/js/css   Kiosk display page (mock-OS + iframe)
     └── config.html/js/css    Web config GUI
 ```
 
-`config.json`, `debug.log`, `archive/`, `temp/`, and `static/three/` are created at runtime and excluded from the repo.
+`config.json`, `debug.log`, `temp/`, and `static/three/` are created at runtime and excluded from the repo.
 
 ---
 

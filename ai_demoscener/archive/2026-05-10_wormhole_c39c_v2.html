@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Neural Flow</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #050505; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="module">
+    import * as THREE from 'https://unpkg.com/three@latest/build/three.module.js';
+
+    // Scene Setup - Darker, more atmospheric
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x050505, 0.03);
+    
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // Lighting - High contrast neon vibe
+    const ambientLight = new THREE.AmbientLight(0x404040, 0.2);
+    scene.add(ambientLight);
+
+    const pointLight1 = new THREE.PointLight(0xff00ff, 2, 50);
+    scene.add(pointLight1);
+
+    const pointLight2 = new THREE.PointLight(0x00ffff, 2, 50);
+    scene.add(pointLight2);
+
+    // Generate complex organic path using noise-like sine waves
+    const points = [];
+    for (let i = 0; i <= 40; i++) {
+        const t = i / 40;
+        const angle = t * Math.PI * 4;
+        points.push(new THREE.Vector3(
+            Math.sin(angle * 0.5) * 12 + Math.cos(t * 10) * 2,
+            Math.cos(angle * 0.3) * 12 + Math.sin(t * 8) * 2,
+            t * -60
+        ));
+    }
+    const curve = new THREE.CatmullRomCurve3(points);
+
+    // Create a glowing "nerve" tube
+    // Using a larger radius and many segments for smoothness
+    const geometry = new THREE.TubeGeometry(curve, 300, 0.4, 24, false);
+
+    // Procedural Texture: High-frequency light pulses
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    
+    const gradient = ctx.createLinearGradient(0, 0, canvas.width, 0);
+    gradient.addColorStop(0, '#000000');
+    gradient.addColorStop(0.3, '#ff00ff');
+    gradient.addColorStop(0.5, '#ffffff');
+    gradient.addColorStop(0.7, '#00ffff');
+    gradient.addColorStop(1, '#000000');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Add some "noise" dots to the texture
+    for (let i = 0; i < 200; i++) {
+        ctx.fillStyle = `rgba(255, 255, 255, ${Math.random() * 0.5})`;
+        ctx.fillRect(Math.random() * canvas.width, Math.random() * canvas.height, 1, 1);
+    }
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(20, 1); // High repetition for rapid pulse feel
+
+    // Material: Emissive glow and high metalness
+    const material = new THREE.MeshStandardMaterial({ 
+        map: texture,
+        emissive: 0xffffff,
+        emissiveMap: texture,
+        emissiveIntensity: 2,
+        roughness: 0.1,
+        metalness: 0.9
+    });
+
+    const tube = new THREE.Mesh(geometry, material);
+    scene.add(tube);
+
+    // Particles for "dust" in the void
+    const particleCount = 1000;
+    const particlesGeom = new THREE.BufferGeometry();
+    const posArray = new Float32Array(particleCount * 3);
+    for(let i=0; i<particleCount * 3; i++) {
+        posArray[i] = (Math.random() - 0.5) * 100;
+    }
+    particlesGeom.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+    const particleMat = new THREE.PointsMaterial({ size: 0.05, color: 0xffffff, transparent: true, opacity: 0.4 });
+    const particlesMesh = new THREE.Points(particlesGeom, particleMat);
+    scene.add(particlesMesh);
+
+    const clock = new THREE.Clock();
+
+    function animate() {
+        requestAnimationFrame(animate);
+        const elapsed = clock.getElapsedTime();
+
+        // Texture animation (fast pulse)
+        texture.offset.x = elapsed * 0.8;
+
+        // Movement logic: Loop through the path
+        const speed = 0.12;
+        const t = (elapsed * speed) % 1;
+        
+        // Position camera at point t, slightly offset to show scale
+        const pos = curve.getPointAt(t);
+        const lookAheadT = (t + 0.02) % 1;
+        const target = curve.getPointAt(lookAheadT);
+
+        camera.position.copy(pos);
+        // Add a slight "float" to the camera via sine waves
+        camera.position.y += Math.sin(elapsed * 2) * 0.5;
+        camera.position.x += Math.cos(elapsed * 1.5) * 0.5;
+        
+        camera.lookAt(target);
+
+        // Light movement to create dynamic shadows/highlights
+        pointLight1.position.set(Math.sin(elapsed) * 10, Math.cos(elapsed) * 10, -20 + Math.sin(elapsed * 0.5) * 20);
+        pointLight2.position.set(Math.cos(elapsed * 0.8) * 15, Math.sin(elapsed * 1.2) * 15, -30);
+
+        // Rotate dust particles slowly
+        particlesMesh.rotation.y = elapsed * 0.05;
+
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+</script>
+</body>
+</html>

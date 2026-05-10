@@ -23,7 +23,4 @@ ai_demoscener/static/three/
 # Temp demo files (generated each cycle)
 ai_demoscener/temp/
 
-# Archive — generated content; exclude from repo
-# (keep the directory itself via .gitkeep)
-ai_demoscener/archive/*.html
-ai_demoscener/archive/archive_index.json
+# Archive — add back to .gitignore if the collection grows too large for the repo

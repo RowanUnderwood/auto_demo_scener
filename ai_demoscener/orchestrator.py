@@ -11,6 +11,7 @@ from pathlib import Path
 import archive as archive_mod
 import config as cfg_mod
 import lm_client
+import stats as stats_mod
 import validator
 
 log = logging.getLogger(__name__)
@@ -109,21 +110,32 @@ class Orchestrator:
         # VALIDATE + REPAIR loop
         max_repairs = cfg["validation"]["max_repair_attempts"]
         audition_secs = cfg["validation"]["audition_seconds"]
+        last_error: dict = {"kind": None, "msg": None}
 
         for attempt in range(max_repairs + 1):
             self._tx("VALIDATE", attempt=attempt)
             result = self._audition(temp_path, audition_secs)
 
             if result.get("result") == "OK":
+                last_error = {"kind": None, "msg": None}
                 break
+
+            last_error = {
+                "kind": result.get("result", "CRASHED"),
+                "msg": result.get("error", ""),
+            }
 
             if attempt >= max_repairs:
                 log.info("Max repairs reached; discarding")
-                self._tx("DISCARD")
+                if mode == "stock" and last_error["kind"] and isinstance(prompt_data, dict):
+                    stats_mod.record_failure(
+                        prompt_data.get("effect", "unknown"), last_error["kind"]
+                    )
+                self._tx("DISCARD", kind=last_error["kind"], error=last_error["msg"])
                 temp_path.unlink(missing_ok=True)
                 return
 
-            error_msg = result.get("error", "unknown error")
+            error_msg = last_error["msg"] or "unknown error"
             if cfg["display"].get("show_retry_messages", True):
                 self._push_status(
                     f"ERROR DETECTED — REQUESTING REPAIR — ATTEMPT {attempt + 1}/{max_repairs}"

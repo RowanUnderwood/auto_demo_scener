@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Three.js Sprite Projection Effect</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+</script>
+<script type="module">
+    import * as THREE from 'three';
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 0, 5);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    document.body.appendChild(renderer.domElement);
+
+    // Central Torus Knot
+    const geometry = new THREE.TorusKnotGeometry(1, 0.3, 128, 32);
+    const material = new THREE.MeshNormalMaterial();
+    const torusKnot = new THREE.Mesh(geometry, material);
+    scene.add(torusKnot);
+
+    // Helper to create a soft circular sprite texture
+    function createCircleTexture() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 256;
+        canvas.height = 256;
+        const ctx = canvas.getContext('2d');
+        const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+        gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+        gradient.addColorStop(0.2, 'rgba(255, 255, 255, 0.8)');
+        gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.3)');
+        gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 256, 256);
+        const texture = new THREE.CanvasTexture(canvas);
+        return texture;
+    }
+
+    const spriteTexture = createCircleTexture();
+
+    // Main Sprite (at torus projection)
+    const mainSpriteMat = new THREE.SpriteMaterial({ 
+        map: spriteTexture, 
+        color: 0xffffff, 
+        transparent: true, 
+        blending: THREE.AdditiveBlending 
+    });
+    const mainSprite = new THREE.Sprite(mainSpriteMat);
+    mainSprite.scale.set(1, 1, 1);
+    scene.add(mainSprite);
+
+    // Small Sprites along the line to screen center
+    const smallSprites = [];
+    const colors = [0xff00ff, 0x00ffff, 0xffff00, 0x00ff00, 0xff4500, 0x1e90ff];
+    
+    for (let i = 0; i < 6; i++) {
+        const mat = new THREE.SpriteMaterial({
+            map: spriteTexture,
+            color: colors[i],
+            transparent: true,
+            blending: THREE.AdditiveBlending
+        });
+        const sprite = new THREE.Sprite(mat);
+        const scaleFactor = 0.2 + (Math.random() * 0.3);
+        sprite.scale.set(scaleFactor, scaleFactor, 1);
+        smallSprites.push(sprite);
+        scene.add(sprite);
+    }
+
+    // Reusable objects for math to avoid GC pressure
+    const vector = new THREE.Vector3();
+    const unprojectedPos = new THREE.Vector3();
+    const centerUnprojected = new THREE.Vector3();
+    const rayDir = new THREE.Vector3();
+    const centerRayDir = new THREE.Vector3();
+    const torusWorldPos = new THREE.Vector3();
+    const targetDepth = 3;
+
+    function animate() {
+        torusKnot.rotation.x += 0.01;
+        torusKnot.rotation.y += 0.015;
+
+        torusKnot.updateMatrixWorld();
+        
+        // 1. Get world position of torus center and project to NDC
+        torusWorldPos.set(0, 0, 0).applyMatrix4(torusKnot.matrixWorld);
+        vector.copy(torusWorldPos).project(camera);
+
+        // 2. Calculate a ray from camera through the projected point on screen
+        // We unproject a point at Z=0 in NDC space (mid-frustum) to get a stable direction
+        const nearPoint = new THREE.Vector3(vector.x, vector.y, 0).unproject(camera);
+        rayDir.subVectors(nearPoint, camera.position).normalize();
+        
+        // 3. Set sprite position at fixed depth along that ray
+        unprojectedPos.copy(camera.position).addScaledVector(rayDir, targetDepth);
+        mainSprite.position.copy(unprojectedPos);
+
+        // 4. Calculate center of screen point (NDC 0,0) at same depth
+        const screenCenterPoint = new THREE.Vector3(0, 0, 0).unproject(camera);
+        centerRayDir.subVectors(screenCenterPoint, camera.position).normalize();
+        centerUnprojected.copy(camera.position).addScaledVector(centerRayDir, targetDepth);
+
+        // 5. Interpolate small sprites between the torus projection and screen center
+        for (let i = 0; i < smallSprites.length; i++) {
+            const t = (i + 1) / (smallSprites.length + 1);
+            smallSprites[i].position.lerpVectors(unprojectedPos, centerUnprojected, t);
+        }
+
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    renderer.setAnimationLoop(animate);
+</script>
+</body>
+</html>

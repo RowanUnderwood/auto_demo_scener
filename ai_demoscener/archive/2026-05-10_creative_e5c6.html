@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CYBER-SYNTHESIS: NEON VOID</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: monospace; }
+        canvas { display: block; }
+        #ui { position: absolute; bottom: 20px; left: 20px; color: #0ff; text-shadow: 0 0 5px #0ff; pointer-events: none; letter-spacing: 2px; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <div id="ui">SYSTEM_STATUS: NEURAL_LINK_ESTABLISHED // PROTOCOL: KALEIDOSCOPIC_VOID</div>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        /**
+         * CONCEPT: "FRACTAL ECHO-CHAMBER"
+         * A hybrid of Raymarching, Kaleidoscope folding, and Particle feedback.
+         * It uses a single shader to render an infinite fractal structure that 
+         * breathes with time, using smooth-min SDFs and color-cycling palettes.
+         */
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const fragmentShader = `
+            uniform float time;
+            uniform vec2 resolution;
+
+            // Smooth minimum for organic merging
+            float smin(float a, float b, float k) {
+                float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+                return mix(b, a, h) - k * h * (1.0 - h);
+            }
+
+            // 2D Rotation Matrix
+            mat2 rot(float a) {
+                float s = sin(a), c = cos(a);
+                return mat2(c, -s, s, c);
+            }
+
+            // Fractal SDF: A morphing crystalline structure
+            float map(vec3 p) {
+                p.z += time * 0.5; // Move through space
+                p.xy *= rot(p.z * 0.1); // Twisting corridor effect
+                
+                // Kaleidoscope folding logic inside the SDF
+                for(int i = 0; i < 3; i++) {
+                    p = abs(p) - 0.5;
+                    p.xy *= rot(time * 0.2 + float(i));
+                    p.yz *= rot(time * 0.1);
+                }
+
+                float sphere = length(p) - 0.4;
+                float box = max(abs(p.x)-0.3, max(abs(p.y)-0.3, abs(p.z)-0.3));
+                float torus = length(vec2(length(p.xy) - 0.5, p.z)) - 0.1;
+
+                return smin(smin(sphere, box, 0.4), torus, 0.4);
+            }
+
+            // Normal estimation for lighting
+            vec3 getNormal(vec3 p) {
+                vec2 e = vec2(0.001, 0.0);
+                return normalize(vec3(
+                    map(p + e.xyy) - map(p - e.xyy),
+                    map(p + e.yxy) - map(p - e.yxy),
+                    map(p + e.yyx) - map(p - e.yyx)
+                ));
+            }
+
+            // Color palette function
+            vec3 palette(float t) {
+                vec3 a = vec3(0.5, 0.5, 0.5);
+                vec3 b = vec3(0.5, 0.5, 0.5);
+                vec3 c = vec3(1.0, 1.0, 1.0);
+                vec3 d = vec3(0.263, 0.416, 0.557);
+                return a + b * cos(6.28318 * (c * t + d));
+            }
+
+            void main() {
+                vec2 uv = (gl_FragCoord.xy * 2.0 - resolution.xy) / min(resolution.y, resolution.x);
+                vec3 ro = vec3(0.0, 0.0, -1.0); // Ray origin
+                vec3 rd = normalize(vec3(uv, 1.5)); // Ray direction
+
+                float t = 0.0;
+                float d = 0.0;
+                int i;
+                
+                // Raymarching loop
+                for(i = 0; i < 80; i++) {
+                    vec3 p = ro + rd * t;
+                    d = map(p);
+                    if(d < 0.001 || t > 20.0) break;
+                    t += d;
+                }
+
+                vec3 color = vec3(0.0);
+
+                if(t < 20.0) {
+                    vec3 p = ro + rd * t;
+                    vec3 normal = getNormal(p);
+                    
+                    // Simple lighting
+                    float diff = max(dot(normal, normalize(vec3(1.0, 1.0, -1.0))), 0.0);
+                    float ambient = 0.2;
+                    
+                    // Color based on position and normal
+                    vec3 baseCol = palette(length(p) * 0.2 + time * 0.1);
+                    color = baseCol * (diff + ambient);
+                    
+                    // Add "glow" rim effect
+                    float rim = pow(1.0 - max(dot(normal, -rd), 0.0), 4.0);
+                    color += vec3(0.0, 1.0, 1.0) * rim * 0.5;
+                }
+
+                // Fog/Depth effect
+                color = mix(color, vec3(0.02, 0.0, 0.05), 1.0 - exp(-0.15 * t));
+
+                // Post-process: subtle grain and vignette
+                float vignette = smoothstep(1.5, 0.5, length(uv));
+                color *= vignette;
+
+                gl_FragColor = vec4(color, 1.0);
+            }
+        `;
+
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const uniforms = {
+            time: { value: 0 },
+            resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+        };
+
+        const material = new THREE.ShaderMaterial({
+            fragmentShader,
+            uniforms
+        });
+
+        const quad = new THREE.Mesh(geometry, material);
+        scene.add(quad);
+
+        function animate(t) {
+            requestAnimationFrame(animate);
+            uniforms.time.value = t * 0.001;
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+        });
+
+        animate(0);
+    </script>
+</body>
+</html>

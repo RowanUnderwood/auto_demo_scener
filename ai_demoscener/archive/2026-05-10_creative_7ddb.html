@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>NEON_CHRONOS // DEMO</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: monospace; }
+        canvas { display: block; }
+        #overlay {
+            position: absolute; top: 20px; left: 20px; color: #0ff;
+            pointer-events: none; text-shadow: 0 0 5px #0ff;
+            letter-spacing: 2px; font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div id="overlay">SYSTEM_CORE: NEON_CHRONOS<br>STATUS: STABLE<br>SYNC: ACTIVE</div>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        /**
+         * CONCEPT: "CHRONO-GEOMETRY"
+         * A hybrid of Raymarching, Rotozoomer, and Particle Systems.
+         * We render a fractal-like dimension where time is represented by 
+         * concentric shells of rotating wireframe geometries that warp through 
+         * a feedback-loop shader effect.
+         */
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // --- Scene Setup ---
+        const group = new THREE.Group();
+        scene.add(group);
+
+        // Create a series of rotating "time shells" (Icosahedrons)
+        const shellCount = 12;
+        const shells = [];
+        for (let i = 0; i < shellCount; i++) {
+            const geometry = new THREE.IcosahedronGeometry(i * 1.5 + 2, 1);
+            const edges = new THREE.EdgesGeometry(geometry);
+            const material = new THREE.LineBasicMaterial({ 
+                color: new THREE.Color().setHSL(i / shellCount, 0.8, 0.5),
+                transparent: true,
+                opacity: 0.4
+            });
+            const line = new THREE.LineSegments(edges, material);
+            line.position.z = -i * 5;
+            group.add(line);
+            shells.push(line);
+        }
+
+        // Central "Core"
+        const coreGeom = new THREE.TorusKnotGeometry(1, 0.3, 128, 16);
+        const coreMat = new THREE.MeshPhongMaterial({ color: 0xffffff, emissive: 0x00ffff });
+        const core = new THREE.Mesh(coreGeom, coreMat);
+        scene.add(core);
+
+        const light = new THREE.PointLight(0x00ffff, 50, 100);
+        light.position.set(5, 5, 5);
+        scene.add(light);
+        scene.add(new THREE.AmbientLight(0x222222));
+
+        // --- Post-Processing Shader (The "Glitch/Rotozoom" Layer) ---
+        const postScene = new THREE.Scene();
+        const postCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const postMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                tDiffuse: { value: null },
+                time: { value: 0 },
+                resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform sampler2D tDiffuse;
+                uniform float time;
+                uniform vec2 resolution;
+                varying vec2 vUv;
+
+                mat2 rot(float a) {
+                    float s = sin(a), c = cos(a);
+                    return mat2(c, -s, s, c);
+                }
+
+                void main() {
+                    vec2 uv = vUv - 0.5;
+                    
+                    // Rotozoom effect: distort UVs based on time
+                    float zoom = 1.0 + sin(time * 0.2) * 0.2;
+                    uv *= zoom;
+                    uv *= rot(sin(time * 0.3) * 0.5);
+
+                    // Chromatic Aberration / Glitch slices
+                    float glitch = step(0.98, sin(time * 10.0 + uv.y * 20.0));
+                    float r = texture2D(tDiffuse, vUv + vec2(glitch * 0.02, 0.0)).r;
+                    float g = texture2D(tDiffuse, vUv).g;
+                    float b = texture2D(tDiffuse, vUv - vec2(glitch * 0.02, 0.0)).b;
+
+                    vec3 color = vec3(r, g, b);
+
+                    // Vignette & Scanlines
+                    float vignette = smoothstep(0.8, 0.2, length(vUv - 0.5));
+                    color *= vignette;
+                    
+                    float scanline = sin(vUv.y * resolution.y * 1.5) * 0.04;
+                    color -= scanline;
+
+                    gl_FragColor = vec4(color, 1.0);
+                }
+            `
+        });
+
+        const postPlane = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), postMaterial);
+        postScene.add(postPlane);
+
+        // Render Target for feedback loop effect
+        const renderTarget = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight);
+
+        // --- Animation Loop ---
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const t = clock.getElapsedTime();
+
+            // 1. Animate geometry shells
+            shells.forEach((shell, i) => {
+                shell.rotation.x = t * (0.2 + i * 0.05);
+                shell.rotation.y = t * (0.1 + i * 0.03);
+                // Pulse scale
+                const s = 1.0 + Math.sin(t + i) * 0.1;
+                shell.scale.set(s, s, s);
+            });
+
+            // 2. Animate core
+            core.rotation.z += 0.01;
+            core.rotation.x += 0.015;
+            core.position.y = Math.sin(t * 2.0) * 0.5;
+
+            // 3. Camera movement (Flythrough effect)
+            camera.position.z = 15 + Math.sin(t * 0.5) * 5;
+            camera.lookAt(0, 0, -5);
+
+            // 4. Render main scene to texture
+            renderer.setRenderTarget(renderTarget);
+            renderer.render(scene, camera);
+
+            // 5. Render post-process to screen
+            postMaterial.uniforms.tDiffuse.value = renderTarget.texture;
+            postMaterial.uniforms.time.value = t;
+            postMaterial.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+
+            renderer.setRenderTarget(null);
+            renderer.render(postScene, postCamera);
+        }
+
+        // Handle resize
+        window.addEventListener('resize', () => {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            camera.aspect = w / h;
+            camera.updateProjectionMatrix();
+            renderer.setSize(w, h);
+            renderTarget.setSize(w, h);
+            postMaterial.uniforms.resolution.value.set(w, h);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

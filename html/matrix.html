@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Three.js Matrix Rain - Text Edition</title>
+    <style>
+        body { margin: 0; background-color: #000; overflow: hidden; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+</script>
+
+<script type="module">
+    import * as THREE from 'three';
+
+    // --- CONFIGURATION ---
+    const COUNT = 300; // Number of active characters
+    const CHARACTERS = "ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789$+-*/=%\"'#&_(),.;:?!\\|{}<>";
+    const FONT_SIZE = 64;
+    const TEXT_COLOR = "#00ff41";
+    const HEAD_COLOR = "#ffffff"; // The "leading" character is white
+
+    // --- SETUP SCENE ---
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.z = 50;
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    document.body.appendChild(renderer.domElement);
+
+    // --- TEXTURE CACHE ---
+    // We cache textures so we don't create 300 identical canvases
+    const textureCache = new Map();
+
+    function getCharTexture(char) {
+        if (textureCache.has(char)) return textureCache.get(char);
+
+        const canvas = document.createElement('canvas');
+        canvas.width = FONT_SIZE;
+        canvas.height = FONT_SIZE;
+        const ctx = canvas.getContext('2d');
+
+        // Draw character with a slight glow effect via shadow
+        ctx.fillStyle = TEXT_COLOR;
+        ctx.font = `bold ${FONT_SIZE * 0.8}px monospace`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        
+        // Add subtle shadow for "glow"
+        ctx.shadowColor = TEXT_COLOR;
+        ctx.shadowBlur = 10;
+        
+        ctx.fillText(char, canvas.width / 2, canvas.height / 2);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        textureCache.set(char, texture);
+        return texture;
+    }
+
+    // Create a white version for the "head" of the stream
+    function getWhiteCharTexture(char) {
+        const canvas = document.createElement('canvas');
+        canvas.width = FONT_SIZE;
+        canvas.height = FONT_SIZE;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = "#ffffff";
+        ctx.font = `bold ${FONT_SIZE * 0.8}px monospace`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(char, canvas.width / 2, canvas.height / 2);
+        return new THREE.CanvasTexture(canvas);
+    }
+
+    // --- CHARACTER OBJECT CLASS ---
+    class MatrixChar {
+        constructor() {
+            this.init();
+        }
+
+        init() {
+            const char = CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)];
+            
+            // Create Sprite
+            const material = new THREE.SpriteMaterial({ 
+                map: getCharTexture(char),
+                transparent: true,
+                opacity: Math.random() * 0.5 + 0.3 // Varying opacity for depth
+            });
+            
+            this.sprite = new THREE.Sprite(material);
+            
+            // Random Position
+            this.sprite.position.x = (Math.random() - 0.5) * 100;
+            this.sprite.position.y = Math.random() * 100 - 50; // Start at various heights
+            this.sprite.position.z = (Math.random() - 0.5) * 20;
+            
+            // Size of the text
+            const scale = Math.random() * 2 + 2;
+            this.sprite.scale.set(scale, scale, 1);
+
+            // Movement properties
+            this.speed = Math.random() * 0.3 + 0.1;
+            this.char = char;
+
+            scene.add(this.sprite);
+        }
+
+        update() {
+            this.sprite.position.y -= this.speed;
+
+            // Reset if it falls off screen
+            if (this.sprite.position.y < -60) {
+                this.sprite.position.y = 60;
+                this.sprite.position.x = (Math.random() - 0.5) * 100;
+            }
+        }
+    }
+
+    // --- INITIALIZE ARRAY ---
+    const matrixChars = [];
+    for (let i = 0; i < COUNT; i++) {
+        matrixChars.push(new MatrixChar());
+    }
+
+    // --- ANIMATION LOOP ---
+    function animate() {
+        requestAnimationFrame(animate);
+
+        matrixChars.forEach(mc => mc.update());
+
+        renderer.render(scene, camera);
+    }
+
+    // --- HANDLE RESIZE ---
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+</script>
+</body>
+</html>

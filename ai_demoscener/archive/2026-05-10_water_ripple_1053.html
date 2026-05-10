@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+</script>
+<script type="module">
+    import * as THREE from 'three';
+
+    // Scene Setup
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // Geometry: 20x20 with 200x200 segments
+    const geometry = new THREE.PlaneGeometry(20, 20, 200, 200);
+
+    // Material with Custom Vertex Shader via onBeforeCompile
+    const material = new THREE.MeshPhongMaterial({
+        color: 0x3366ff,
+        flatShading: false,
+        side: THREE.DoubleSide
+    });
+
+    material.onBeforeCompile = (shader) => {
+        shader.uniforms.uTime = { value: 0 };
+        
+        // Inject uTime uniform
+        shader.vertexShader = `uniform float uTime;\n` + shader.vertexShader;
+
+        // Replace vertex calculation to include sine wave displacement on Z
+        shader.vertexShader = shader.vertexShader.replace(
+            '#include <begin_vertex>',
+            `
+            vec3 transformed = vec3( position );
+            
+            // Wave 1: Direction (1, 0.5), Freq 0.4, Speed 1.2
+            float w1 = sin(dot(transformed.xy, vec2(1.0, 0.5)) * 0.4 + uTime * 1.2);
+            
+            // Wave 2: Direction (-0.7, 0.9), Freq 0.6, Speed 0.8
+            float w2 = sin(dot(transformed.xy, vec2(-0.7, 0.9)) * 0.6 + uTime * 0.8);
+            
+            // Wave 3: Direction (0.2, -1.0), Freq 0.3, Speed 1.5
+            float w3 = sin(dot(transformed.xy, vec2(0.2, -1.0)) * 0.3 + uTime * 1.5);
+            
+            transformed.z += (w1 + w2 + w3) * 0.8;
+            `
+        );
+
+        // Store reference to update uniform
+        material.userData.shader = shader;
+    };
+
+    const mesh = new THREE.Mesh(geometry, material);
+    
+    // Rotate -PI/2 on X axis so it lies flat (XZ plane)
+    mesh.rotation.x = -Math.PI / 2;
+    scene.add(mesh);
+
+    // Lighting: One Directional Light
+    const dirLight = new THREE.DirectionalLight(0xffffff, 2);
+    dirLight.position.set(10, 20, 10);
+    scene.add(dirLight);
+
+    // Add a bit of ambient light just to see shadows better, though strictly one directional is requested
+    const ambient = new THREE.AmbientLight(0x404040, 0.5);
+    scene.add(ambient);
+
+    // Camera: Tilted down looking at the surface
+    camera.position.set(15, 15, 15);
+    camera.lookAt(0, 0, 0);
+
+    // Animation Loop
+    const clock = new THREE.Clock();
+
+    function animate() {
+        requestAnimationFrame(animate);
+        const elapsedTime = clock.getElapsedTime();
+
+        if (material.userData.shader) {
+            material.userData.shader.uniforms.uTime.value = elapsedTime;
+        }
+
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+</script>
+</body>
+</html>

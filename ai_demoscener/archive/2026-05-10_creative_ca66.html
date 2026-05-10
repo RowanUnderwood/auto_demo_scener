@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEON_FRACTAL_VOID</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: monospace; }
+        canvas { display: block; }
+        #ui { position: absolute; bottom: 20px; left: 20px; color: #0f0; pointer-events: none; text-shadow: 0 0 5px #0f0; letter-spacing: 2px; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <div id="ui">SYSTEM_STATUS: HYPER_DRIVE // SEED: 0x7F4</div>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        /**
+         * CONCEPT: "NEON FRACTAL VOID"
+         * A hybrid of Raymarching, Fractal folding, and a Particle Starfield.
+         * It uses a raymarched SDF containing a Menger-sponge inspired fractal 
+         * structure that "breathes" via time-varying coefficients, layered over 
+         * a volumetric particle field.
+         */
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const uniforms = {
+            u_time: { value: 0 },
+            u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+            u_mouse: { value: new THREE.Vector2(0.5, 0.5) }
+        };
+
+        const fragmentShader = `
+            uniform float u_time;
+            uniform vec2 u_resolution;
+            uniform vec2 u_mouse;
+
+            #define MAX_STEPS 80
+            #define SURF_DIST 0.001
+            #define MAX_DIST 40.0
+
+            mat2 rot(float a) {
+                float s = sin(a), c = cos(a);
+                return mat2(c, -s, s, c);
+            }
+
+            // Smooth minimum for organic fractal blending
+            float smin(float a, float b, float k) {
+                float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+                return mix(b, a, h) - k * h * (1.0 - h);
+            }
+
+            // Fractal SDF: Recursive Menger-like structure
+            float map(vec3 p) {
+                p.z += u_time * 0.5; // Constant movement forward
+                p.xy *= rot(u_time * 0.1);
+                
+                vec3 p_orig = p;
+                float scale = 1.0;
+                float d = 1e10;
+
+                // Fractal folding loop
+                for (int i = 0; i < 4; i++) {
+                    p = abs(p) - 0.5 - sin(u_time * 0.2 + float(i)) * 0.1;
+                    if (p.x < p.y) p.xy = p.yx;
+                    if (p.x < p.z) p.xz = p.zx;
+                    if (p.y < p.z) p.yz = p.zy;
+
+                    p *= 1.8;
+                    scale *= 1.8;
+                }
+
+                // Base shape: A large central sphere that pulses
+                float sphere = length(p_orig) - (1.5 + sin(u_time) * 0.2);
+                
+                // The folded geometry distance
+                d = length(p) / scale;
+                
+                return smin(d, sphere, 0.4);
+            }
+
+            vec3 getNormal(vec3 p) {
+                vec2 e = vec2(0.01, 0);
+                float d = map(p);
+                vec3 n = d - vec3(
+                    map(p - e.xyy),
+                    map(p - e.yxy),
+                    map(p - e.yyx)
+                );
+                return normalize(n);
+            }
+
+            // Procedural palette function
+            vec3 palette(float t) {
+                vec3 a = vec3(0.5, 0.5, 0.5);
+                vec3 b = vec3(0.5, 0.5, 0.5);
+                vec3 c = vec3(1.0, 1.0, 1.0);
+                vec3 d = vec3(0.263, 0.416, 0.557);
+                return a + b * cos(6.28318 * (c * t + d));
+            }
+
+            void main() {
+                vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / min(u_resolution.y, u_resolution.x);
+                
+                // Ray setup
+                vec3 ro = vec3(0, 0, -3); // Ray origin
+                vec3 rd = normalize(vec3(uv, 1.5)); // Ray direction
+
+                float dO = 0.0;
+                float dS;
+                vec3 p;
+
+                // Raymarching loop
+                for (int i = 0; i < MAX_STEPS; i++) {
+                    p = ro + rd * dO;
+                    dS = map(p);
+                    dO += dS;
+                    if (dO > MAX_DIST || abs(dS) < SURF_DIST) break;
+                }
+
+                vec3 color = vec3(0.0);
+
+                if (dO < MAX_DIST) {
+                    vec3 normal = getNormal(p);
+                    float diffuse = dot(normal, normalize(vec3(1, 2, -3))) * 0.5 + 0.5;
+                    
+                    // Coloring based on depth and normal
+                    float distFactor = float(clamp(dO / 10.0, 0.0, 1.0));
+                    color = palette(dO * 0.1 + u_time * 0.2) * diffuse;
+                    
+                    // Add some "rim" glow
+                    float rim = pow(1.0 - max(dot(normal, -rd), 0.0), 3.0);
+                    color += rim * palette(u_time * 0.5);
+
+                    // Fog
+                    color *= exp(-0.08 * dO);
+                } else {
+                    // Background: Starfield / Nebula effect
+                    float stars = pow(fract(sin(dot(rd.xy, vec2(12.9898, 78.233))) * 43758.5453), 100.0);
+                    color = palette(length(uv) + u_time * 0.05) * 0.1;
+                    color += stars * 0.5;
+                }
+
+                // Post-processing: Vignette and slight grain
+                float vignette = smoothstep(1.5, 0.3, length(uv));
+                color *= vignette;
+
+                gl_FragColor = vec4(color, 1.0);
+            }
+        `;
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: uniforms,
+            fragmentShader: fragmentShader,
+            vertexShader: `
+                void main() {
+                    gl_Position = vec4(position, 1.0);
+                }
+            `
+        });
+
+        const quad = new THREE.Mesh(geometry, material);
+        scene.add(quad);
+
+        // Animation Loop
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getElapsedTime();
+            uniforms.u_time.value = delta;
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            uniforms.u_resolution.value.set(window.innerWidth, window.innerHeight);
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            uniforms.u_mouse.value.set(e.clientX / window.innerWidth, 1 - e.clientY / window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>NEON_NEXUS // DEMO</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', Courier, monospace; }
+        canvas { display: block; }
+        #ui { position: absolute; bottom: 20px; left: 20px; color: #0ff; text-shadow: 0 0 5px #0ff; pointer-events: none; font-size: 12px; letter-spacing: 2px; }
+    </style>
+</head>
+<body>
+    <div id="ui">SYSTEM_STATUS: RUNNING // NEON_NEXUS_V1.0</div>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        /**
+         * CONCEPT: NEON_NEXUS
+         * A hybrid of Raymarching, Fractal folding, and Particle systems.
+         * It features a "Hyper-Dimensional Lattice" where a raymarched SDF structure 
+         * is wrapped in a kaleidoscope-style fractal fold, then overlaid with 
+         * high-speed data particles.
+         */
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // --- SHADER MATERIAL (The Core Engine) ---
+        const fragmentShader = `
+            uniform float time;
+            uniform vec2 resolution;
+
+            #define MAX_STEPS 80
+            #define SURFACE_DIST .001
+            #define MAX_DIST 50.
+
+            mat2 rot(float a) {
+                float s = sin(a), c = cos(a);
+                return mat2(c, -s, s, c);
+            }
+
+            // Smooth minimum for organic merging
+            float smin(float a, float b, float k) {
+                float h = clamp(0.5 + 0.5*(b-a)/k, 0.0, 1.0);
+                return mix(b, a, h) - k*h*(1.0-h);
+            }
+
+            // SDF Functions
+            float sdBox(vec3 p, vec3 b) {
+                vec3 q = abs(p) - b;
+                return length(max(q,0.0)) + min(max(q.x,max(q.y,q.z)),0.0);
+            }
+
+            float sdTorus(vec3 p, vec2 t) {
+                vec2 q = vec2(length(p.xz)-t.x, p.y);
+                return length(q)-t.y;
+            }
+
+            // The Scene SDF
+            float getDist(vec3 p) {
+                // Fractal Space Folding
+                for(int i=0; i<3; i++) {
+                    p = abs(p) - 1.5;
+                    p.xy *= rot(time * 0.2 + float(i));
+                    p.yz *= rot(time * 0.1);
+                }
+
+                // Infinite repetition of a geometric nucleus
+                vec3 q = mod(p + 4.0, 8.0) - 4.0;
+                
+                float box = sdBox(q, vec3(1.2));
+                float torus = sdTorus(q, vec2(2.0, 0.4));
+                float sphere = length(q) - 1.5;
+
+                float d = smin(box, torus, 1.0);
+                d = smin(d, sphere, 0.8);
+                
+                // Add a pulse effect
+                return d * (1.0 + sin(time)*0.1);
+            }
+
+            vec3 getNormal(vec3 p) {
+                float d = getDist(p);
+                vec2 e = vec2(.01, 0);
+                vec3 n = d - vec3(
+                    getDist(p-e.xyy),
+                    getDist(p-e.yxy),
+                    getDist(p-e.yyx));
+                return normalize(n);
+            }
+
+            void main() {
+                vec2 uv = (gl_FragCoord.xy - 0.5 * resolution.xy) / min(resolution.y, resolution.x);
+                vec3 ro = vec3(0, 0, -6); // Ray origin
+                vec3 rd = normalize(vec3(uv, 1.5)); // Ray direction
+
+                // Camera animation
+                float camT = time * 0.3;
+                ro.xz *= rot(camT);
+                rd.xz *= rot(camT);
+                ro.yz *= rot(camT * 0.5);
+                rd.yz *= rot(camT * 0.5);
+
+                float dO = 0.0;
+                for(int i=0; i<MAX_STEPS; i++) {
+                    vec3 p = ro + rd * dO;
+                    float dS = getDist(p);
+                    dO += dS;
+                    if(dO > MAX_DIST || abs(dS) < SURFACE_DIST) break;
+                }
+
+                vec3 col = vec3(0.02, 0.0, 0.05); // Deep space background
+
+                if(dO < MAX_DIST) {
+                    vec3 p = ro + rd * dO;
+                    vec3 n = getNormal(p);
+                    float diff = dot(n, normalize(vec3(1,2,3))) * 0.5 + 0.5;
+                    
+                    // Color Palette based on position and normal
+                    vec3 baseCol = 0.5 + 0.5 * cos(time + p.xyx * 0.3 + vec3(0,2,4));
+                    col = baseCol * diff;
+                    
+                    // Specular/Glow
+                    float spec = pow(max(dot(reflect(-normalize(vec3(1,2,3)), n), -rd), 0.0), 32.0);
+                    col += spec * vec3(0.8, 1.0, 1.0);
+
+                    // Fog/Depth
+                    col = mix(col, vec3(0.0), 1.0 - exp(-0.05 * dO));
+                }
+
+                // Post-process: Vignette and scanlines
+                float vig = 1.0 - length(uv * 0.8);
+                col *= pow(vig, 1.5);
+                col *= 0.9 + 0.1 * sin(gl_FragCoord.y * 1.5);
+
+                gl_FragColor = vec4(col, 1.0);
+            }
+        `;
+
+        const vertexShader = `
+            void main() {
+                gl_Position = vec4(position, 1.0);
+            }
+        `;
+
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                time: { value: 0 },
+                resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+            },
+            vertexShader,
+            fragmentShader
+        });
+
+        const quad = new THREE.Mesh(geometry, material);
+        scene.add(quad);
+
+        // --- PARTICLE OVERLAY (Data Stream) ---
+        const particleCount = 1500;
+        const pGeometry = new THREE.BufferGeometry();
+        const posArray = new Float32Array(particleCount * 3);
+        const velArray = new Float32Array(particleCount * 3);
+        const colorArray = new Float32Array(particleCount * 3);
+
+        for (let i = 0; i < particleCount * 3; i += 3) {
+            posArray[i] = (Math.random() - 0.5) * 20;
+            posArray[i+1] = (Math.random() - 0.5) * 20;
+            posArray[i+2] = (Math.random() - 0.5) * 30;
+
+            velArray[i] = (Math.random() - 0.5) * 0.1;
+            velArray[i+1] = (Math.random() - 0.5) * 0.1;
+            velArray[i+2] = Math.random() * 0.2 + 0.05;
+
+            colorArray[i] = 0.0;
+            colorArray[i+1] = Math.random(); // Greenish/Cyan tint
+            colorArray[i+2] = 1.0;
+        }
+
+        pGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+        pGeometry.setAttribute('color', new THREE.BufferAttribute(colorArray, 3));
+        
+        const pMaterial = new THREE.PointsMaterial({
+            size: 0.04,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.6,
+            blending: THREE.AdditiveBlending
+        });
+
+        const particles = new THREE.Points(pGeometry, pMaterial);
+        scene.add(particles);
+
+        // --- ANIMATION LOOP ---
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            const elapsed = clock.getElapsedTime();
+
+            material.uniforms.time.value = elapsed;
+
+            // Update Particles
+            const positions = pGeometry.attributes.position.array;
+            for (let i = 0; i < particleCount * 3; i += 3) {
+                positions[i+2] -= velArray[i+2]; // Move forward
+                
+                // Wrap around Z
+                if (positions[i+2] < -15) {
+                    positions[i+2] = 15;
+                    positions[i] = (Math.random() - 0.5) * 20;
+                    positions[i+1] = (Math.random() - 0.5) * 20;
+                }
+            }
+            pGeometry.attributes.position.needsUpdate = true;
+
+            // Subtle particle drift
+            particles.rotation.y += 0.001;
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            material.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

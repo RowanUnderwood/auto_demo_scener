@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Neon Abyss - Infinite Flow</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #050505; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+{
+    "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+    }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const vertexShader = `
+    varying float vElevation;
+    varying vec2 vUv;
+    uniform float uTime;
+
+    // Simplex Noise Implementation
+    vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+    vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+    vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
+    vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+
+    float snoise(vec3 v) {
+        const vec2 C = vec2(1.0/6.0, 1.0/3.0);
+        const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+
+        vec3 i  = floor(v + dot(v, C.yyy));
+        vec3 x0 = v - i + dot(i, C.xxx);
+
+        vec3 g = step(x0.yzx, x0.xyz);
+        vec3 l = 1.0 - g;
+        vec3 i1 = min(g.xyz, l.zxy);
+        vec3 i2 = max(g.xyz, l.zxy);
+
+        vec3 x1 = x0 - i1 + C.xxx;
+        vec3 x2 = x0 - i2 + C.yyy;
+        vec3 x3 = x0 - D.yyy;
+
+        i = mod289(i);
+        vec4 p = permute(permute(permute(
+                    i.z + vec4(0.0, i1.z, i2.z, 1.0))
+                  + i.y + vec4(0.0, i1.y, i2.y, 1.0))
+                  + i.x + vec4(0.0, i1.x, i2.x, 1.0));
+
+        float n_ = 0.142857142857;
+        vec3 ns = n_ * D.wyz - D.xzx;
+
+        vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+
+        vec4 x_ = floor(j * ns.z);
+        vec4 y_ = floor(j - 7.0 * x_);
+
+        vec4 x = x_ * ns.x + ns.yyyy;
+        vec4 y = y_ * ns.x + ns.yyyy;
+        vec4 h = 1.0 - abs(x) - abs(y);
+
+        vec4 b0 = vec4(x.xy, y.xy);
+        vec4 b1 = vec4(x.zw, y.zw);
+
+        vec4 s0 = floor(b0)*2.0 + 1.0;
+        vec4 s1 = floor(b1)*2.0 + 1.0;
+        vec4 sh = -step(h, vec4(0.0));
+
+        vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;
+        vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;
+
+        vec3 p0 = vec3(a0.xy, h.x);
+        vec3 p1 = vec3(a0.zw, h.y);
+        vec3 p2 = vec3(a1.xy, h.z);
+        vec3 p3 = vec3(a1.zw, h.w);
+
+        vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));
+        p0 *= norm.x;
+        p1 *= norm.y;
+        p2 *= norm.z;
+        p3 *= norm.w;
+
+        vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+        m = m * m;
+        return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
+    }
+
+    void main() {
+        vUv = uv;
+        // Create a flowing movement by scrolling the 3D noise coordinate
+        vec3 noiseCoord = vec3(position.xy * 0.05, uTime * 0.4);
+        float noise = snoise(noiseCoord) * 12.0;
+        
+        vec3 newPos = position;
+        newPos.z += noise;
+        vElevation = noise;
+
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(newPos, 1.0);
+    }
+`;
+
+const fragmentShader = `
+    varying float vElevation;
+    varying vec2 vUv;
+    uniform float uTime;
+
+    void main() {
+        // Color Palette: Cyberpunk (Deep Purples, Cyans, Hot Pinks)
+        vec3 colorLow = vec3(0.05, 0.0, 0.15);     // Deep void
+        vec3 colorMid = vec3(0.4, 0.0, 0.8);       // Electric purple
+        vec3 colorHigh = vec3(0.0, 1.0, 0.9);      // Cyan glow
+        vec3 colorPeak = vec3(1.0, 0.0, 0.5);      // Pink accent
+
+        float h = vElevation / 12.0; // Normalize elevation (-1 to 1)
+        h = clamp(h * 0.5 + 0.5, 0.0, 1.0);
+
+        vec3 color = mix(colorLow, colorMid, smoothstep(0.0, 0.4, h));
+        color = mix(color, colorHigh, smoothstep(0.4, 0.7, h));
+        color = mix(color, colorPeak, smoothstep(0.7, 1.0, h));
+
+        // Add a scanline/grid effect based on UVs
+        float grid = sin(vUv.x * 200.0) * sin(vUv.y * 200.0);
+        grid = smoothstep(0.95, 1.0, grid) * 0.1;
+
+        // Add a pulse intensity
+        float pulse = sin(uTime * 2.0) * 0.05 + 0.95;
+
+        gl_FragColor = vec4(color * pulse + grid, 1.0);
+    }
+`;
+
+let scene, camera, renderer, mesh, material;
+
+init();
+animate();
+
+function init() {
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x020205);
+    scene.fog = new THREE.FogExp2(0x020205, 0.04);
+
+    camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+    // Low angle view for dramatic perspective
+    camera.position.set(0, 8, 25);
+    camera.lookAt(0, 0, -10);
+
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    document.body.appendChild(renderer.domElement);
+
+    // High density plane for smooth noise deformation
+    const geometry = new THREE.PlaneGeometry(150, 200, 300, 300);
+    geometry.rotateX(-Math.PI / 2);
+
+    material = new THREE.ShaderMaterial({
+        uniforms: {
+            uTime: { value: 0 },
+        },
+        vertexShader,
+        fragmentShader,
+        side: THREE.DoubleSide
+    });
+
+    mesh = new THREE.Mesh(geometry, material);
+    scene.add(mesh);
+
+    window.addEventListener('resize', onWindowResize, false);
+}
+
+function onWindowResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+function animate() {
+    requestAnimationFrame(animate);
+
+    const timeScale = 0.4;
+    material.uniforms.uTime.value += 0.01 * timeScale;
+
+    // Simulate forward motion by oscillating camera or moving plane? 
+    // Here we move the camera and loop it for a seamless feel
+    camera.position.z -= 0.15;
+
+    if (camera.position.z < -80) {
+        camera.position.z = 25; // Loop back to start position
+    }
+
+    renderer.render(scene, camera);
+}
+</script>
+</body>
+</html>

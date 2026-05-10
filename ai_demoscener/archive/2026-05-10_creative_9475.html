@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>NEON SYNAESTHESIA: THE KINETIC FRACTAL</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: monospace; }
+        canvas { display: block; }
+        #ui { position: absolute; bottom: 20px; left: 20px; color: #0f0; text-shadow: 0 0 5px #0f0; pointer-events: none; font-size: 12px; letter-spacing: 2px; }
+    </style>
+</head>
+<body>
+    <div id="ui">SYSTEM_STATUS: OSCILLATING_FRACTAL_ENGINE // MODE: KINETIC_SYNAESTHESIA</div>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        /**
+         * IDEA: "KINETIC FRACTAL SYNAESTHESIA"
+         * A hybrid of a 4D Tesseract Projection, Reaction-Diffusion patterns, and Raymarched SDFs.
+         * We render an infinite field of morphing hyper-cubes that act as light sources for a 
+         * volumetric reaction-diffusion fluid, creating a "breathing" geometric organism.
+         */
+
+        let scene, camera, renderer, clock, material, mesh;
+        const size = window.innerWidth, height = window.innerHeight;
+
+        const vertexShader = `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `;
+
+        const fragmentShader = `
+            uniform float time;
+            uniform vec2 resolution;
+            varying vec2 vUv;
+
+            // Palette function
+            vec3 palette(float t) {
+                vec3 a = vec3(0.5, 0.5, 0.5);
+                vec3 b = vec3(0.5, 0.5, 0.5);
+                vec3 c = vec3(1.0, 1.0, 1.0);
+                vec3 d = vec3(0.263, 0.416, 0.557);
+                return a + b * cos(6.28318 * (c * t + d));
+            }
+
+            mat2 rot(float a) {
+                float s = sin(a), c = cos(a);
+                return mat2(c, -s, s, c);
+            }
+
+            // 4D Hypercube SDF component
+            float sdHypercube(vec3 p, float size) {
+                // Simplified projection of a 4D Tesseract into 3D space via trig modulation
+                p.xy *= rot(time * 0.2);
+                p.yz *= rot(time * 0.3);
+                float d = length(max(abs(p) - size, 0.0));
+                return d;
+            }
+
+            // Raymarching loop
+            float map(vec3 p) {
+                // Infinite repetition of hypercube structures
+                vec3 q = mod(p + 2.5, 5.0) - 2.5;
+                float h1 = sdHypercube(q, 0.8 + 0.4 * sin(time + length(p)*0.5));
+                
+                // Reaction-diffusion inspired noise layer
+                float wave = sin(p.x*3.0 + time) * cos(p.y*3.0 - time) * sin(p.z*3.0 + time);
+                return min(h1, wave * 0.5);
+            }
+
+            vec3 getNormal(vec3 p) {
+                float d = map(p);
+                vec2 e = vec2(0.01, 0.0);
+                return normalize(vec3(
+                    d - map(p - e.xyy),
+                    d - map(p - e.yxy),
+                    d - map(p - e.yyx)
+                ));
+            }
+
+            void main() {
+                vec2 uv = (gl_FragCoord.xy * 2.0 - resolution.xy) / min(resolution.x, resolution.y);
+                vec3 ro = vec3(0.0, 0.0, -5.0); // Ray origin
+                vec3 rd = normalize(vec3(uv, 1.5)); // Ray direction
+                
+                // Camera rotation
+                ro.xy *= rot(time * 0.1);
+                rd.xy *= rot(time * 0.1);
+
+                float dTotal = 0.0;
+                float t = 0.0;
+                bool hit = false;
+
+                for(int i=0; i<80; i++) {
+                    vec3 p = ro + rd * t;
+                    float d = map(p);
+                    if(d < 0.001) {
+                        hit = true;
+                        break;
+                    }
+                    t += d;
+                    if(t > 20.0) break;
+                }
+
+                vec3 color = vec3(0.02, 0.01, 0.05); // Deep space background
+
+                if(hit) {
+                    vec3 p = ro + rd * t;
+                    vec3 n = getNormal(p);
+                    vec3 lightPos = vec3(sin(time)*4.0, cos(time*0.7)*4.0, -2.0);
+                    vec3 l = normalize(lightPos - p);
+                    
+                    float diff = max(dot(n, l), 0.0);
+                    float spec = pow(max(dot(reflect(-l, n), -rd), 0.0), 32.0);
+                    
+                    // Color by position and normal (reaction-diffusion aesthetic)
+                    vec3 baseCol = palette(length(p)*0.1 + time*0.1);
+                    color = baseCol * diff + spec * 0.5;
+                    
+                    // Fog for depth
+                    color *= exp(-0.1 * t);
+                }
+
+                // Add glow/bloom effect via screen-space noise overlay
+                float scanline = sin(gl_FragCoord.y * 1.5) * 0.04;
+                color -= scanline;
+
+                gl_FragColor = vec4(color, 1.0);
+            }
+        `;
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            clock = new THREE.Clock();
+
+            const geometry = new THREE.PlaneGeometry(2, 2);
+            material = new THREE.ShaderMaterial({
+                uniforms: {
+                    time: { value: 0 },
+                    resolution: { value: new THREE.Vector2(size, height) }
+                },
+                vertexShader,
+                fragmentShader
+            });
+
+            mesh = new THREE.Mesh(geometry, material);
+            scene.add(mesh);
+
+            window.addEventListener('resize', onWindowResize, false);
+        }
+
+        function onWindowResize() {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            material.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getElapsedTime();
+            material.uniforms.time.value = delta;
+            renderer.render(scene, camera);
+        }
+
+        init();
+        animate();
+    </script>
+</body>
+</html>

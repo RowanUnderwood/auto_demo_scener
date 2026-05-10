@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cybernetic Warp Tunnel</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #020205; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+</script>
+<script type="module">
+    import * as THREE from 'three';
+
+    /** 
+     * CONFIGURATION
+     */
+    const PARTICLE_COUNT = 8000;
+    const TUNNEL_RADIUS = 15;
+    const DEPTH = 200;
+    const SPEED = 1.5;
+    const COLORS = [
+        new THREE.Color(0x00f2ff), // Cyan
+        new THREE.Color(0x7000ff), // Purple
+        new THREE.Color(0xff00ea), // Magenta
+        new THREE.Color(0x0044ff)  // Deep Blue
+    ];
+
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x020205, 0.015);
+
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // Create a procedural circular glow texture for the particles
+    const createGlowTexture = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 64;
+        canvas.height = 64;
+        const ctx = canvas.getContext('2d');
+        const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+        gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+        gradient.addColorStop(0.2, 'rgba(255, 255, 255, 0.5)');
+        gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.1)');
+        gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 64, 64);
+        const texture = new THREE.CanvasTexture(canvas);
+        return texture;
+    };
+
+    const glowTexture = createGlowTexture();
+
+    // Geometry setup
+    const geometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(PARTICLE_COUNT * 3);
+    const colors = new Float32Array(PARTICLE_COUNT * 3);
+    const sizes = new Float32Array(PARTICLE_COUNT);
+    const rotationOffsets = new Float32Array(PARTICLE_COUNT);
+
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+        // Position
+        resetParticle(i, positions, colors, sizes, rotationOffsets);
+    }
+
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+    // We'll use the rotationOffsets in the animation loop manually via position updates
+
+    const material = new THREE.PointsMaterial({
+        size: 0.4,
+        map: glowTexture,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        vertexColors: true,
+        depthWrite: false,
+        sizeAttenuation: true
+    });
+
+    const points = new THREE.Points(geometry, material);
+    scene.add(points);
+
+    function resetParticle(i, pos, col, siz, rot) {
+        const idx = i * 3;
+        // Distribute in a cylinder/vortex shape
+        const angle = Math.random() * Math.PI * 2;
+        const radius = Math.pow(Math.random(), 0.5) * TUNNEL_RADIUS; // Density higher towards center
+        
+        pos[idx] = Math.cos(angle) * radius;
+        pos[idx + 1] = Math.sin(angle) * radius;
+        pos[idx + 2] = -(Math.random() * DEPTH);
+
+        // Color assignment
+        const colorBase = COLORS[Math.floor(Math.random() * COLORS.length)];
+        col[idx] = colorBase.r;
+        col[idx + 1] = colorBase.g;
+        col[idx + 2] = colorBase.b;
+
+        // Size and individual rotation factor for the spiral
+        siz[i] = Math.random() * 2.0 + 0.5;
+        rot[i] = Math.random() * Math.PI * 2;
+    }
+
+    let time = 0;
+
+    function animate() {
+        requestAnimationFrame(animate);
+        time += 0.01;
+
+        const posAttr = geometry.attributes.position;
+        const colAttr = geometry.attributes.color;
+        const sizAttr = geometry.attributes.size;
+
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+            const idx = i * 3;
+
+            // Move forward through Z
+            posAttr.array[idx + 2] += SPEED;
+
+            // Apply a swirl effect: rotate around Y axis as they move
+            // The rotation speed depends on distance to create a spiral
+            const swirlStrength = 0.02;
+            const angleStep = swirlStrength * (1 + posAttr.array[idx + 2] / DEPTH);
+            
+            // Rotate the X and Y based on a simple trig function for vortex feel
+            const currentX = posAttr.array[idx];
+            const currentY = posAttr.array[idx+1];
+            
+            posAttr.array[idx]     = currentX * Math.cos(angleStep) - currentY * Math.sin(angleStep);
+            posAttr.array[idx + 1] = currentX * Math.sin(angleStep) + currentY * Math.cos(angleStep);
+
+            // Respawn if they fly past the camera
+            if (posAttr.array[idx + 2] > 10) {
+                resetParticle(i, posAttr.array, colAttr.array, sizAttr.array, new Float32Array(PARTICLE_COUNT)); 
+                // Note: The reset logic above passes arrays directly to the buffer for efficiency
+            }
+        }
+
+        // Manual re-implementation of the reset inside loop for performance
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+            const idx = i * 3;
+            if (posAttr.array[idx + 2] > 10) {
+                const angle = Math.random() * Math.PI * 2;
+                const radius = Math.pow(Math.random(), 0.5) * TUNNEL_RADIUS;
+                posAttr.array[idx]     = Math.cos(angle) * radius;
+                posAttr.array[idx + 1] = Math.sin(angle) * radius;
+                posAttr.array[idx + 2] = -DEPTH;
+
+                const colorBase = COLORS[Math.floor(Math.random() * COLORS.length)];
+                colAttr.array[idx]     = colorBase.r;
+                colAttr.array[idx + 1] = colorBase.g;
+                colAttr.array[idx + 2] = colorBase.b;
+            }
+        }
+
+        posAttr.needsUpdate = true;
+        colAttr.needsUpdate = true;
+
+        // Organic camera movement
+        camera.position.x = Math.sin(time * 0.5) * 2;
+        camera.position.y = Math.cos(time * 0.3) * 1.5;
+        camera.lookAt(0, 0, -50);
+
+        // Subtle rotation of the whole system
+        points.rotation.z += 0.001;
+
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+</script>
+</body>
+</html>

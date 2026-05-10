@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>8-Fold Symmetry Shader</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+    </style>
+</head>
+<body>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        const vertexShader = `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = vec4(position, 1.0);
+            }
+        `;
+
+        const fragmentShader = `
+            uniform float uTime;
+            uniform vec2 uResolution;
+            varying vec2 vUv;
+
+            #define PI 3.14159265359
+
+            void main() {
+                // Center coordinates and adjust for aspect ratio
+                vec2 uv = (vUv - 0.5) * 2.0;
+                uv.x *= uResolution.x / uResolution.y;
+
+                float r = length(uv);
+                float a = atan(uv.y, uv.x);
+
+                // Fold angle into an 8-fold wedge
+                float N = 8.0;
+                float slice = (2.0 * PI) / N;
+                // GLSL mod(a, b) returns x - y * floor(x/y), which is mathematically consistent for periodic tiling
+                a = abs(mod(a, slice) - (slice * 0.5));
+
+                // Convert back to Cartesian using folded angle
+                vec2 p = vec2(r * cos(a), r * sin(a));
+
+                // Procedural pattern: Sum of sines for colorful interference
+                float freq = 6.0;
+                vec3 col = vec3(0.0);
+                
+                // Layering multiple sine waves to create complexity
+                col.r = sin(p.x * freq + uTime) * 0.5 + 0.5;
+                col.g = sin(p.y * freq + uTime * 1.2) * 0.5 + 0.5;
+                col.b = sin((p.x + p.y) * freq + uTime * 0.8) * 0.5 + 0.5;
+
+                // Add a radial pulse effect
+                float ring = sin(r * 15.0 - uTime * 2.0) * 0.1;
+                col += ring;
+
+                // Apply some saturation/contrast
+                col = pow(col, vec3(0.8));
+
+                gl_FragColor = vec4(col, 1.0);
+            }
+        `;
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const uniforms = {
+            uTime: { value: 0 },
+            uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+        };
+
+        const material = new THREE.ShaderMaterial({
+            uniforms,
+            vertexShader,
+            fragmentShader
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        function resize() {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        function animate(time) {
+            uniforms.uTime.value = time * 0.001;
+            renderer.render(scene, camera);
+            requestAnimationFrame(animate);
+        }
+
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>

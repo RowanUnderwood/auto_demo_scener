@@ -208,6 +208,13 @@ def api_set_prompts():
     return jsonify({"ok": True})
 
 
+# ── API: prompt stats ─────────────────────────────────────────────────────────
+@app.route("/api/prompt_stats")
+def api_prompt_stats():
+    import stats as stats_mod
+    return jsonify(stats_mod.load())
+
+
 # ── API: logs ──────────────────────────────────────────────────────────────────
 @app.route("/api/logs")
 def api_logs():

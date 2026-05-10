@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Quantum Singularity Flux</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #050505; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+</script>
+<script type="module">
+    import * as THREE from 'three';
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.z = 5;
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // --- Geometry & Particles ---
+    // Instead of a single sphere, let's use an attractor field effect with many particles
+    const particleCount = 8000;
+    const positions = new Float32Array(particleCount * 3);
+    const colors = new Float32Array(particleCount * 3);
+    const velocities = [];
+
+    for (let i = 0; i < particleCount; i++) {
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos((Math.random() * 2) - 1);
+        const r = 2 + Math.random() * 0.5;
+
+        positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+        positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+        positions[i * 3 + 2] = r * Math.cos(phi);
+
+        velocities.push(new THREE.Vector3(
+            (Math.random() - 0.5) * 0.02,
+            (Math.random() - 0.5) * 0.02,
+            (Math.random() - 0.5) * 0.02
+        ));
+
+        const color = new THREE.Color();
+        color.setHSL(0.6 + Math.random() * 0.1, 0.8, 0.5);
+        colors[i * 3] = color.r;
+        colors[i * 3 + 1] = color.g;
+        colors[i * 3 + 2] = color.b;
+    }
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+    const material = new THREE.PointsMaterial({
+        size: 0.015,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.8,
+        blending: THREE.AdditiveBlending
+    });
+
+    const points = new THREE.Points(geometry, material);
+    scene.add(points);
+
+    // --- The Core Singularity (The "Projector") ---
+    const coreGeometry = new THREE.SphereGeometry(0.1, 32, 32);
+    const coreMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const singularity = new THREE.Mesh(coreGeometry, coreMaterial);
+    scene.add(singularity);
+
+    // Glow effect for the singularity
+    const glowGeo = new THREE.SphereGeometry(0.3, 32, 32);
+    const glowMat = new THREE.MeshBasicMaterial({ 
+        color: 0x00ffff, 
+        transparent: true, 
+        opacity: 0.3, 
+        blending: THREE.AdditiveBlending 
+    });
+    const glow = new THREE.Mesh(glowGeo, glowMat);
+    singularity.add(glow);
+
+    // --- Light Beams / Projection Lines ---
+    // Instead of sprites trailing, let's use lines connecting the center to a moving target
+    const lineCount = 40;
+    const lineMaterial = new THREE.LineBasicMaterial({ 
+        color: 0x00ffff, 
+        transparent: true, 
+        opacity: 0.3, 
+        blending: THREE.AdditiveBlending 
+    });
+    const linesGroup = new THREE.Group();
+    scene.add(linesGroup);
+
+    const lineGeometries = [];
+    for(let i=0; i<lineCount; i++) {
+        const lGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+        const line = new THREE.Line(lGeo, lineMaterial);
+        linesGroup.add(line);
+        lineGeometries.push(lGeo);
+    }
+
+    // --- Animation Variables ---
+    const targetPos = new THREE.Vector3();
+    const centerPos = new THREE.Vector3(0, 0, 0);
+
+    function animate() {
+        requestAnimationFrame(animate);
+        const time = Date.now() * 0.001;
+
+        // 1. Update Singularity Position (The "Source")
+        // Moves in a complex orbit
+        singularity.position.x = Math.sin(time * 0.5) * 3;
+        singularity.position.y = Math.cos(time * 0.7) * 2;
+        singularity.position.z = Math.sin(time * 0.3) * 2;
+
+        // 2. Update Particles (The "Field")
+        const posAttr = geometry.attributes.position;
+        for (let i = 0; i < particleCount; i++) {
+            const ix = i * 3;
+            const iy = i * 3 + 1;
+            const iz = i * 3 + 2;
+
+            // Pull particles toward the singularity slightly
+            const dx = singularity.position.x - posAttr.array[ix];
+            const dy = singularity.position.y - posAttr.array[iy];
+            const dz = singularity.position.z - posAttr.array[iz];
+            const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+
+            if (dist < 3) {
+                posAttr.array[ix] += dx * 0.001;
+                posAttr.array[iy] += dy * 0.001;
+                posAttr.array[iz] += dz * 0.001;
+            }
+
+            // Drift/Chaos
+            posAttr.array[ix] += velocities[i].x;
+            posAttr.array[iy] += velocities[i].y;
+            posAttr.array[iz] += velocities[i].z;
+
+            // Boundary reset (keep them in a sphere)
+            if (Math.abs(posAttr.array[ix]) > 5 || Math.abs(posAttr.array[iy]) > 5 || Math.abs(posAttr.array[iz]) > 5) {
+                posAttr.array[ix] *= 0.9;
+                posAttr.array[iy] *= 0.9;
+                posAttr.array[iz] *= 0.9;
+            }
+        }
+        posAttr.needsUpdate = true;
+
+        // 3. Update Projection Lines (The "Connection")
+        // We project lines from the center of the screen to the singularity's projected position
+        // or simply between the moving source and a rhythmic attractor point.
+        const attractorPos = new THREE.Vector3(
+            Math.sin(time * 1.2) * 4,
+            Math.cos(time * 0.8) * 4,
+            Math.sin(time * 0.5) * 4
+        );
+
+        for (let i = 0; i < lineCount; i++) {
+            const ratio = i / lineCount;
+            // Create a wave effect for the lines
+            const offset = Math.sin(time * 2 + i * 0.5) * 0.5;
+            
+            // Line start: Singularity
+            // Line end: Attractor (with some noise)
+            const p1 = singularity.position.clone();
+            const p2 = attractorPos.clone().add(new THREE.Vector3(
+                Math.sin(time + i) * offset, 
+                Math.cos(time + i) * offset, 
+                0
+            ));
+
+            lineGeometries[i].setFromPoints([p1, p2]);
+            lineMaterial.opacity = (1 - ratio) * 0.4;
+        }
+
+        // Rotation of the whole system
+        points.rotation.y += 0.001;
+        linesGroup.rotation.z += 0.0005;
+
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+</script>
+</body>
+</html>

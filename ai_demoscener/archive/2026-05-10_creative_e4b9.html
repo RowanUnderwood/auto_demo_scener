@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEON SINGULARITY</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+/**
+ * CONCEPT: NEON SINGULARITY
+ * A hybrid of Raymarching (Metaballs), Rotozoomer, and Starfield.
+ * An infinite cosmic tunnel made of morphing SDF fractals, 
+ * viewed through a rotating, scaling kaleidoscopic lens.
+ */
+
+const vertexShader = `
+    varying vec2 vUv;
+    void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+`;
+
+const fragmentShader = `
+    uniform float time;
+    uniform vec2 resolution;
+    varying vec2 vUv;
+
+    #define MAX_STEPS 80
+    #define SURFACE_DIST 0.001
+    #define MAX_DIST 20.0
+
+    mat2 rot(float a) {
+        float s = sin(a), c = cos(a);
+        return mat2(c, -s, s, c);
+    }
+
+    // Smooth minimum for metaball effect
+    float smin(float a, float b, float k) {
+        float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+        return mix(b, a, h) - k * h * (1.0 - h);
+    }
+
+    // Distance Function: A fractal-like morphing shape inside the tunnel
+    float map(vec3 p) {
+        // Infinite repetition along Z
+        p.z = mod(p.z + time * 2.0, 4.0) - 2.0;
+        
+        // Create a rotating "core" effect using rotation matrices
+        p.xy *= rot(time * 0.5);
+        p.xz *= rot(time * 0.3);
+
+        float sphere1 = length(p - vec3(sin(time)*0.5, cos(time*0.7)*0.5, 0.0)) - 0.8;
+        float sphere2 = length(p - vec3(cos(time*0.8)*0.6, sin(time*1.1)*0.6, 0.0)) - 0.7;
+        float torus = length(vec2(length(p.xz) - 1.2, p.y)) - 0.2;
+
+        float d = smin(sphere1, sphere2, 0.8);
+        d = smin(d, torus, 0.5);
+        
+        // Add a cage-like structure via periodic functions
+        float cage = abs(sin(p.x * 3.0) * sin(p.y * 3.0) * sin(p.z * 3.0)) - 0.05;
+        return smin(d, cage, 0.2);
+    }
+
+    vec3 getNormal(vec3 p) {
+        vec2 e = vec2(0.01, 0);
+        float d = map(p);
+        vec3 n = d - vec3(map(p-e.xyy), map(p-e.yxy), map(p-e.yyx));
+        return normalize(n);
+    }
+
+    // Color palette function
+    vec3 palette(float t) {
+        vec3 a = vec3(0.5, 0.5, 0.5);
+        vec3 b = vec3(0.5, 0.5, 0.5);
+        vec3 c = vec3(1.0, 1.0, 1.0);
+        vec3 d = vec3(0.263, 0.416, 0.557);
+        return a + b * cos(6.28318 * (c * t + d));
+    }
+
+    void main() {
+        // Rotozoomer logic: apply transformation to UVs before raymarching
+        vec2 uv = vUv - 0.5;
+        float zoom = 1.0 + sin(time * 0.4) * 0.5;
+        uv *= zoom;
+        uv *= rot(time * 0.2);
+        
+        // Aspect ratio correction
+        float aspect = resolution.x / resolution.y;
+        uv.x *= aspect;
+
+        vec3 ro = vec3(0, 0, -3.0); // Ray Origin
+        vec3 rd = normalize(vec3(uv, 1.5)); // Ray Direction
+
+        float dO = 0.0;
+        int steps = 0;
+        for(int i=0; i<MAX_STEPS; i++) {
+            vec3 p = ro + rd * dO;
+            float dS = map(p);
+            dO += dS;
+            steps = i;
+            if(dO > MAX_DIST || abs(dS) < SURFACE_DIST) break;
+        }
+
+        vec3 col = vec3(0.0);
+
+        if(dO < MAX_DIST) {
+            vec3 p = ro + rd * dO;
+            vec3 n = getNormal(p);
+            float diff = dot(n, normalize(vec3(1,2,3))) * 0.5 + 0.5;
+            
+            // Color by depth and normal
+            col = palette(dO * 0.1 + time * 0.1) * diff;
+            
+            // Add some "glow" based on step count (simulating proximity to surface)
+            col += vec3(0.1, 0.2, 0.4) * float(steps) / float(MAX_STEPS);
+        }
+
+        // Post-process: Vignette and Starfield background
+        float vignette = smoothstep(1.5 * aspect, 0.3, length(uv));
+        col *= vignette;
+
+        // Procedural Stars in the background
+        float stars = pow(fract(sin(dot(rd.xy ,vec2(12.9898,78.233))) * 43758.5453), 500.0);
+        col += stars * (1.0 - vignette) * 2.0;
+
+        // Chromatic aberration-ish effect
+        gl_FragColor = vec4(col, 1.0);
+    }
+`;
+
+class Scene {
+    constructor() {
+        this.renderer = new THREE.WebGLRenderer({ antialias: true });
+        this.renderer.setPixelRatio(window.devicePixelRatio);
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(this.renderer.domElement);
+
+        this.scene = new THREE.Scene();
+        this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+        this.uniforms = {
+            time: { value: 0 },
+            resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+        };
+
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const material = new THREE.ShaderMaterial({
+            uniforms: this.uniforms,
+            vertexShader,
+            fragmentShader
+        });
+
+        this.quad = new THREE.Mesh(geometry, material);
+        this.scene.add(this.quad);
+
+        window.addEventListener('resize', () => this.onResize());
+        this.onResize();
+        this.animate();
+    }
+
+    onResize() {
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.uniforms.resolution.value.x = window.innerWidth;
+        this.uniforms.resolution.value.y = window.innerHeight;
+    }
+
+    animate(t) {
+        requestAnimationFrame((val) => this.animate(val));
+        this.uniforms.time.value = t / 1000;
+        this.renderer.render(this.scene, this.camera);
+    }
+}
+
+new Scene();
+</script>
+</body>
+</html>

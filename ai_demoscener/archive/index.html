@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Demoscener — Archive</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; }
+
+body {
+  font-family: 'Courier New', 'Lucida Console', monospace;
+  font-size: clamp(11px, min(2.2vh, 1.4vw), 18px);
+  background: #0d0800;
+  color: #ffb000;
+  --bg:      #0d0800;
+  --bg2:     #1a1200;
+  --fg:      #ffb000;
+  --fg-dim:  #7a5500;
+  --accent:  #ff8800;
+  --linenum: #553300;
+  --cursor:  #ffb000;
+  --scanlines: rgba(0,0,0,0.15);
+  --glow:    0 0 8px rgba(255,176,0,0.5);
+  --border:  #331a00;
+  --titlebar:#1a1000;
+  --btn:     #2a1a00;
+}
+
+#app {
+  width: 100vw;
+  height: 100vh;
+  position: relative;
+  background: var(--bg);
+}
+
+/* ── Demo iframe ──────────────────────────────────────────────────────────── */
+#demoFrame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+  z-index: 1;
+  opacity: 0;
+  transition: opacity 0.6s ease;
+}
+#demoFrame.visible { opacity: 1; }
+
+/* ── Overlay ──────────────────────────────────────────────────────────────── */
+#overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: var(--bg);
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  opacity: 1;
+  transition: opacity 0.5s ease;
+  pointer-events: auto;
+}
+#overlay.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Scanlines */
+#overlay::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px, transparent 2px,
+    var(--scanlines) 2px, var(--scanlines) 4px
+  );
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* ── Title bar ────────────────────────────────────────────────────────────── */
+#titleBar {
+  background: var(--titlebar);
+  border-bottom: 1px solid var(--border);
+  padding: 0.3em 0.8em;
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  user-select: none;
+}
+
+.win-btn {
+  width: 0.9em;
+  height: 0.9em;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--btn);
+  flex-shrink: 0;
+}
+
+#titleText {
+  flex: 1;
+  text-align: center;
+  color: var(--fg);
+  font-weight: bold;
+  letter-spacing: 0.1em;
+  text-shadow: var(--glow);
+  font-size: 0.9em;
+}
+
+#countChip {
+  font-size: 0.75em;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  padding: 0.1em 0.5em;
+  border-radius: 2px;
+}
+
+/* ── Main content ─────────────────────────────────────────────────────────── */
+#main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1em;
+  padding: 2em;
+  text-align: center;
+}
+
+#loadLabel {
+  color: var(--fg-dim);
+  font-size: 0.8em;
+  letter-spacing: 0.2em;
+}
+
+#loadDots::after {
+  content: '';
+  animation: dots 1.2s steps(4, end) infinite;
+}
+@keyframes dots {
+  0%   { content: ''; }
+  25%  { content: '.'; }
+  50%  { content: '..'; }
+  75%  { content: '...'; }
+  100% { content: ''; }
+}
+
+#effectName {
+  font-size: clamp(1.4em, 5vw, 3.5em);
+  font-weight: bold;
+  color: var(--accent);
+  text-shadow: var(--glow);
+  letter-spacing: 0.15em;
+  word-break: break-word;
+}
+
+#fileLabel {
+  color: var(--fg-dim);
+  font-size: 0.75em;
+  letter-spacing: 0.05em;
+  word-break: break-all;
+}
+
+/* ── Status bar ───────────────────────────────────────────────────────────── */
+#statusBar {
+  background: var(--bg2);
+  border-top: 1px solid var(--border);
+  padding: 0.2em 0.8em;
+  display: flex;
+  align-items: center;
+  gap: 1em;
+  font-size: 0.8em;
+  color: var(--fg-dim);
+  user-select: none;
+}
+
+#statusText {
+  flex: 1;
+  color: var(--accent);
+  font-weight: bold;
+  letter-spacing: 0.05em;
+  text-shadow: var(--glow);
+}
+
+#keyHints {
+  color: var(--fg-dim);
+  font-size: 0.9em;
+}
+
+/* ── Progress bar ─────────────────────────────────────────────────────────── */
+#progressBar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  z-index: 3;
+  background: var(--bg2);
+  opacity: 0;
+  transition: opacity 0.4s;
+}
+
+#progressFill {
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  box-shadow: var(--glow);
+}
+
+/* ── Error state ──────────────────────────────────────────────────────────── */
+#effectName.error { color: var(--fg-dim); font-size: 1.2em; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <iframe id="demoFrame" sandbox="allow-scripts" src="about:blank"></iframe>
+
+  <div id="overlay">
+    <div id="titleBar">
+      <div class="win-btn"></div>
+      <div class="win-btn"></div>
+      <div class="win-btn"></div>
+      <div id="titleText">DEMOWRITER&nbsp;1.0 — ARCHIVE</div>
+      <div id="countChip">— / —</div>
+    </div>
+
+    <div id="main">
+      <div id="loadLabel">LOADING<span id="loadDots"></span></div>
+      <div id="effectName"></div>
+      <div id="fileLabel"></div>
+    </div>
+
+    <div id="statusBar">
+      <span id="statusText">INITIALISING</span>
+      <span id="keyHints">← prev &nbsp;·&nbsp; → / space next</span>
+    </div>
+  </div>
+
+  <div id="progressBar"><div id="progressFill"></div></div>
+
+</div>
+<script>
+'use strict';
+
+const params   = new URLSearchParams(location.search);
+const RUNTIME  = Math.max(5, parseInt(params.get('runtime') || '60', 10));
+
+const demoFrame   = document.getElementById('demoFrame');
+const overlay     = document.getElementById('overlay');
+const effectName  = document.getElementById('effectName');
+const fileLabel   = document.getElementById('fileLabel');
+const countChip   = document.getElementById('countChip');
+const statusText  = document.getElementById('statusText');
+const progressBar = document.getElementById('progressBar');
+const progressFill= document.getElementById('progressFill');
+
+let entries = [];
+let idx = 0;
+let displayTimer = null;
+let transTimer   = null;
+
+// ── Shuffle ───────────────────────────────────────────────────────────────────
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+async function init() {
+  statusText.textContent = 'LOADING INDEX…';
+  try {
+    const r = await fetch('archive_index.json');
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    entries = Object.entries(data)
+      .filter(([k]) => k.toLowerCase().endsWith('.html'))
+      .sort((a, b) => (a[1].created || '').localeCompare(b[1].created || ''));
+    if (entries.length === 0) {
+      showError('ARCHIVE EMPTY', 'No demos found in archive_index.json');
+      return;
+    }
+    shuffle(entries);
+    showDemo(0);
+  } catch (e) {
+    showError('COULD NOT LOAD INDEX', e.message);
+  }
+}
+
+// ── Demo cycle ────────────────────────────────────────────────────────────────
+function showDemo(i) {
+  idx = ((i % entries.length) + entries.length) % entries.length;
+
+  // Reshuffle when we wrap around to keep it fresh
+  if (i !== 0 && idx === 0) shuffle(entries);
+
+  clearTimers();
+
+  const [filename, meta] = entries[idx];
+  const effect = (meta.effect || filename).replace(/_/g, ' ');
+
+  // Update overlay text
+  effectName.className = '';
+  effectName.textContent = effect.toUpperCase();
+  fileLabel.textContent  = filename;
+  countChip.textContent  = `${idx + 1} / ${entries.length}`;
+  statusText.textContent = 'LOADING…';
+
+  // Show overlay, hide frame and progress
+  overlay.classList.remove('hidden');
+  demoFrame.classList.remove('visible');
+  progressBar.style.opacity = '0';
+
+  // Load the demo in the background
+  demoFrame.src = filename;
+
+  // After a short delay, reveal the demo
+  transTimer = setTimeout(() => {
+    transTimer = null;
+    overlay.classList.add('hidden');
+    demoFrame.classList.add('visible');
+    statusText.textContent = 'RUNNING';
+    startProgress();
+    displayTimer = setTimeout(() => showDemo(idx + 1), RUNTIME * 1000);
+  }, 1000);
+}
+
+// ── Progress bar ──────────────────────────────────────────────────────────────
+function startProgress() {
+  progressFill.style.transition = 'none';
+  progressFill.style.width = '0%';
+  progressBar.style.opacity = '1';
+  // Double-rAF so the reset takes effect before we start the transition
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    progressFill.style.transition = `width ${RUNTIME}s linear`;
+    progressFill.style.width = '100%';
+  }));
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function clearTimers() {
+  if (displayTimer) { clearTimeout(displayTimer); displayTimer = null; }
+  if (transTimer)   { clearTimeout(transTimer);   transTimer   = null; }
+}
+
+function showError(title, detail) {
+  effectName.className = 'error';
+  effectName.textContent = title;
+  fileLabel.textContent  = detail || '';
+  countChip.textContent  = '— / —';
+  statusText.textContent = 'HALTED';
+}
+
+// ── Keyboard ──────────────────────────────────────────────────────────────────
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowRight' || e.key === ' ') {
+    e.preventDefault();
+    showDemo(idx + 1);
+  } else if (e.key === 'ArrowLeft') {
+    e.preventDefault();
+    showDemo(idx - 1);
+  }
+});
+
+// Relay keydown events from iframe (demo steals focus when WebGL loads)
+window.addEventListener('message', (ev) => {
+  if (ev.data?.type === 'probe_keydown') {
+    const k = ev.data.key;
+    if (k === 'ArrowRight' || k === ' ') showDemo(idx + 1);
+    else if (k === 'ArrowLeft') showDemo(idx - 1);
+  }
+});
+
+// Reclaim focus after iframe loads so keyboard shortcuts keep working
+demoFrame.addEventListener('load', () => {
+  if (demoFrame.src !== 'about:blank') window.focus();
+});
+
+init();
+</script>
+</body>
+</html>

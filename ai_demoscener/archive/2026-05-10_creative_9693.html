@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>NEON_VOID // DEMO</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: monospace; }
+        #ui { position: absolute; bottom: 20px; left: 20px; color: #0ff; pointer-events: none; text-shadow: 0 0 5px #0ff; }
+    </style>
+</head>
+<body>
+    <div id="ui">NEON_VOID // SYSTEM_ACTIVE</div>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        /**
+         * CONCEPT: "CHRONOS_FRACTAL"
+         * A hybrid demoscene effect combining Raymarching (SDF), 
+         * a Rotozoom-style spatial folding, and a Starfield background.
+         * The scene features a central pulsating fractal entity composed of 
+         * nested geometric distortions that "breathe" with the music of time.
+         */
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer({ antialias: false });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                u_time: { value: 0 },
+                u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+                u_mouse: { value: new THREE.Vector2(0.5, 0.5) }
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float u_time;
+                uniform vec2 u_resolution;
+                varying vec2 vUv;
+
+                mat2 rot(float a) {
+                    float s = sin(a), c = cos(a);
+                    return mat2(c, -s, s, c);
+                }
+
+                // Smooth minimum for organic blending
+                float smin(float a, float b, float k) {
+                    float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+                    return mix(b, a, h) - k * h * (1.0 - h);
+                }
+
+                // Distance Function: The "Heart" of the fractal
+                float map(vec3 p) {
+                    // Space Folding (Rotozoom logic applied to 3D)
+                    p.z += u_time * 0.5;
+                    for(int i = 0; i < 4; i++) {
+                        p = abs(p) - 0.5;
+                        p.xy *= rot(u_time * 0.2 + float(i));
+                        p.yz *= rot(u_time * 0.3);
+                    }
+
+                    // Combine shapes
+                    float sphere = length(p) - 0.4;
+                    float box = max(abs(p.x), max(abs(p.y), abs(p.z))) - 0.2;
+                    
+                    // Fractal noise-like distortion via sin waves
+                    float wave = sin(p.x * 10.0 + u_time) * cos(p.y * 10.0 + u_time) * sin(p.z * 10.0);
+                    return smin(sphere, box, 0.5) + wave * 0.05;
+                }
+
+                void main() {
+                    vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / min(u_resolution.y, u_resolution.x);
+                    
+                    // Background Starfield logic in shader
+                    float stars = 0.0;
+                    vec2 starUv = uv * 2.0;
+                    for(float i=1.0; i<5.0; i++) {
+                        starUv += vec2(sin(u_time * 0.1 * i), cos(u_time * 0.12 * i)) * 0.1;
+                        stars += pow(fract(sin(dot(starUv, vec2(12.9898, 78.233))) * 43758.5453), 200.0);
+                    }
+
+                    // Raymarching setup
+                    vec3 ro = vec3(0.0, 0.0, -3.0); // Ray origin
+                    vec3 rd = normalize(vec3(uv, 1.5)); // Ray direction
+                    
+                    float dO = 0.0; // Distance traveled
+                    float dS;
+                    for(int i = 0; i < 64; i++) {
+                        vec3 p = ro + rd * dO;
+                        dS = map(p);
+                        dO += dS;
+                        if(dO > 10.0 || dS < 0.001) break;
+                    }
+
+                    // Coloring
+                    vec3 color = vec3(0.0);
+                    if(dO < 10.0) {
+                        float edge = smoothstep(0.0, 0.1, dS);
+                        vec3 baseCol = 0.5 + 0.5 * cos(u_time + vec3(0,2,4) + dO * 0.5);
+                        color = baseCol / (dO * 0.2 + 1.0); // Fog/Depth effect
+                        color += pow(1.0 - edge, 5.0) * vec3(0.0, 1.0, 1.0); // Neon edges
+                    }
+
+                    // Add stars and final tint
+                    color += stars * 0.5;
+                    color *= vec3(0.9, 0.95, 1.0); // Slight blue tint
+
+                    gl_FragColor = vec4(color, 1.0);
+                }
+            `
+        });
+
+        scene.add(new THREE.Mesh(geometry, material));
+
+        function animate(t) {
+            requestAnimationFrame(animate);
+            material.uniforms.u_time.value = t * 0.001;
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            material.uniforms.u_resolution.value.set(window.innerWidth, window.innerHeight);
+        });
+
+        animate(0);
+    </script>
+</body>
+</html>

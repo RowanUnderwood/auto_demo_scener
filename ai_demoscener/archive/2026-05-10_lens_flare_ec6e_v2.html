@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Ethereal Neural Network Projection</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #02050a; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+</script>
+<script type="module">
+    import * as THREE from 'three';
+
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x02050a, 0.15);
+
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.z = 8;
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // Geometry: A complex wireframe sphere made of points/lines
+    const geometry = new THREE.IcosahedronGeometry(2, 4);
+    const material = new THREE.PointsMaterial({
+        size: 0.05,
+        color: 0x4488ff,
+        transparent: true,
+        opacity: 0.6
+    });
+    const pointCloud = new THREE.Points(geometry, material);
+    scene.add(pointCloud);
+
+    const wireframe = new THREE.Mesh(
+        geometry, 
+        new THREE.MeshBasicMaterial({ color: 0x112244, wireframe: true, transparent: true, opacity: 0.1 })
+    );
+    scene.add(wireframe);
+
+    // Create a "glitchy" spark texture for sprites via Canvas
+    function createSparkTexture() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 128;
+        canvas.height = 128;
+        const ctx = canvas.getContext('2d');
+        const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+        gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+        gradient.addColorStop(0.2, 'rgba(100, 200, 255, 0.8)');
+        gradient.addColorStop(0.4, 'rgba(0, 50, 150, 0.3)');
+        gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 128, 128);
+        return new THREE.CanvasTexture(canvas);
+    }
+
+    const sparkTex = createSparkTexture();
+
+    // The "Core" Sprite (The Target)
+    const coreMat = new THREE.SpriteMaterial({
+        map: sparkTex,
+        color: 0x00ffff,
+        transparent: true,
+        blending: THREE.AdditiveBlending
+    });
+    const coreSprite = new THREE.Sprite(coreMat);
+    coreSprite.scale.set(1.5, 1.5, 1);
+    scene.add(coreSprite);
+
+    // Trailing Sprites (The Projection)
+    const trailCount = 12;
+    const trailSprites = [];
+    const trailMaterials = [];
+    for (let i = 0; i < trailCount; i++) {
+        const mat = new THREE.SpriteMaterial({
+            map: sparkTex,
+            color: new THREE.Color().setHSL(0.5 + (i / trailCount) * 0.2, 1.0, 0.5),
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            opacity: 1 - (i / trailCount)
+        });
+        const s = new THREE.Sprite(mat);
+        s.scale.set(0.4 * (1 - i/trailCount), 0.4 * (1 - i/trailCount), 1);
+        scene.add(s);
+        trailSprites.push(s);
+        trailMaterials.push(mat);
+    }
+
+    const targetPoint = new THREE.Vector3();
+    const projPos = new THREE.Vector3();
+    const raycaster = new THREE.Raycaster();
+
+    function animate() {
+        requestAnimationFrame(animate);
+        const time = Date.now() * 0.001;
+
+        // Rotate the background mesh
+        pointCloud.rotation.y += 0.002;
+        pointCloud.rotation.x += 0.001;
+        wireframe.rotation.y += 0.002;
+        wireframe.rotation.x += 0.001;
+
+        // Calculate a moving target point on the surface of the sphere
+        const radius = 2;
+        targetPoint.set(
+            Math.sin(time * 0.7) * Math.cos(time * 0.3) * radius,
+            Math.cos(time * 0.5) * Math.sin(time * 0.8) * radius,
+            Math.sin(time * 0.4) * radius
+        );
+
+        // Position core sprite at the target point in world space
+        coreSprite.position.copy(targetPoint);
+
+        // Project the target to screen NDC
+        targetPoint.project(camera);
+
+        // Animate trailing sprites along a projection line from Screen Center (0,0) to Target
+        for (let i = 0; i < trailCount; i++) {
+            // We create a "trail" in NDC space that looks like it's being projected from the center of the screen
+            const factor = (i + 1) / (trailCount + 1);
+            
+            // Interpolate between screen origin (0,0) and target projection
+            const nx = targetPoint.x * factor;
+            const ny = targetPoint.y * factor;
+
+            // Convert NDC back to world space at a specific depth range
+            // We vary the Z slightly per sprite to create a sense of depth/volumetric flow
+            const zDepth = 2 + (i * 0.1); 
+            projPos.set(nx, ny, 0.5).unproject(camera);
+            
+            // Adjust position based on a pseudo-depth calculation to keep them "near" the object visually
+            trailSprites[i].position.copy(projPos);
+            
+            // Add some scale pulsing and opacity flicker
+            const pulse = Math.sin(time * 5 + i) * 0.1 + 0.9;
+            const s = 0.3 * (1 - i / trailCount) * pulse;
+            trailSprites[i].scale.set(s, s, 1);
+            trailMaterials[i].opacity = (1 - i / trailCount) * pulse;
+        }
+
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+</script>
+</body>
+</html>

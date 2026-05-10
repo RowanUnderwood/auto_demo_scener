@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Three.js Tube Path</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="module">
+    import * as THREE from 'https://unpkg.com/three@latest/build/three.module.js';
+
+    // Scene Setup
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // Lighting
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    scene.add(ambientLight);
+    const pointLight = new THREE.PointLight(0xffffff, 1);
+    pointLight.position.set(10, 10, 10);
+    scene.add(pointLight);
+
+    // Create Winding Path (12 Control Points)
+    const points = [];
+    for (let i = 0; i < 12; i++) {
+        points.push(new THREE.Vector3(
+            Math.sin(i * 0.8) * 15,
+            Math.cos(i * 1.5) * 8,
+            i * 5 - 25
+        ));
+    }
+    const curve = new THREE.CatmullRomCurve3(points);
+
+    // Tube Geometry
+    const geometry = new THREE.TubeGeometry(curve, 200, 1, 32, false);
+
+    // Procedural Canvas Texture (Stripes)
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    
+    // Background color
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw Stripes
+    ctx.fillStyle = '#00ffcc';
+    for (let i = 0; i < 8; i++) {
+        ctx.fillRect(i * 32, 0, 16, canvas.height);
+    }
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(5, 1); // Repeat the pattern along the tube length
+
+    // Material
+    const material = new THREE.MeshStandardMaterial({ 
+        map: texture,
+        roughness: 0.3,
+        metalness: 0.2
+    });
+
+    const tube = new THREE.Mesh(geometry, material);
+    scene.add(tube);
+
+    // Animation loop variables
+    const clock = new THREE.Clock();
+
+    function animate() {
+        requestAnimationFrame(animate);
+        const time = clock.getElapsedTime();
+
+        // 1. Scroll texture offset
+        texture.offset.x = time * 0.5;
+
+        // 2. Camera movement along curve
+        // t = (time * 0.05) % 1
+        const t = (time * 0.05) % 1;
+        
+        // Position camera at point t
+        const pos = curve.getPointAt(t);
+        camera.position.copy(pos);
+
+        // Look slightly ahead to follow the path smoothly
+        // Use a small epsilon for look-ahead target
+        const lookAheadT = (t + 0.01) % 1;
+        const target = curve.getPointAt(lookAheadT);
+        camera.lookAt(target);
+
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+</script>
+</body>
+</html>
