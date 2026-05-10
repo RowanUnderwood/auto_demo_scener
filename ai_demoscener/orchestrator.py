@@ -68,10 +68,13 @@ class Orchestrator:
                 cfg = cfg_mod.load()
                 if cfg["boot_mode"] == "replay":
                     self._replay_cycle(cfg)
-                elif self._lm_unavailable and cfg.get("lm_fallback_to_replay", True):
-                    self._push_status("LM Studio unreachable — replaying archive")
-                    self._replay_cycle(cfg)
+                elif cfg.get("lm_fallback_to_replay", True):
                     self._probe_lm(cfg)
+                    if self._lm_unavailable:
+                        self._push_status("LM Studio unreachable — replaying archive")
+                        self._replay_cycle(cfg)
+                    else:
+                        self._generate_cycle(cfg)
                 else:
                     self._generate_cycle(cfg)
             except Exception:
@@ -93,11 +96,12 @@ class Orchestrator:
     def _probe_lm(self, cfg: dict) -> None:
         try:
             lm_client.list_models(cfg["lm_studio"]["base_url"])
+            if self._lm_unavailable:
+                log.info("LM Studio reachable again — resuming generate mode")
+                self._push_status("LM Studio reconnected — resuming generate mode")
             self._lm_unavailable = False
-            log.info("LM Studio reachable again — resuming generate mode")
-            self._push_status("LM Studio reconnected — resuming generate mode")
         except lm_client.LMClientError:
-            pass
+            self._lm_unavailable = True
 
     # ── Generate cycle ─────────────────────────────────────────────────────────
 
