@@ -2,7 +2,9 @@
 
 A self-running kiosk that uses a local LLM to endlessly generate and display Three.js demoscene effects. The system writes code on screen in a retro mock-OS editor, runs the demo, archives the good ones, and loops forever.
 
-![Amber CRT palette showing the mock-OS editor mid-generation](https://raw.githubusercontent.com/RowanUnderwood/auto_demo_scener/main/html/plasma.html)
+![Mock-OS editor mid-generation](ai_demoscener/coding_in_progress.jpg)
+
+![Demo running full-screen](ai_demoscener/demo_in_progress.jpg)
 
 ---
 
