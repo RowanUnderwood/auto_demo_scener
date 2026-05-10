@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEURAL_VOID_01</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', Courier, monospace; }
+        canvas { display: block; }
+        #ui {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(0, 255, 200, 0.5);
+            pointer-events: none;
+            font-size: 10px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+    </style>
+</head>
+<body>
+    <div id="ui">System.Status: Flux_Stability_Low // Kernel_Active</div>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+        // --- SHADER CODE ---
+        const fragmentShader = `
+            uniform float uTime;
+            uniform vec2 uResolution;
+            uniform vec3 uColor1;
+            uniform vec3 uColor2;
+
+            #define MAX_STEPS 80
+            #define SURFACE_DIST 0.001
+            #define MAX_DIST 20.0
+
+            mat2 rot(float a) {
+                float s = sin(a), c = cos(a);
+                return mat2(c, -s, s, c);
+            }
+
+            // Smooth minimum for organic blending
+            float smin(float a, float b, float k) {
+                float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+                return mix(b, a, h) - k * h * (1.0 - h);
+            }
+
+            float sdSphere(vec3 p, float s) { return length(p) - s; }
+
+            float sdTorusKnot(vec3 p) {
+                vec3 q = p;
+                float t = uTime * 0.4;
+                q.xy *= rot(t * 0.3);
+                q.xz *= rot(t * 0.5);
+                
+                // Fractal-like distortion
+                for(int i=0; i<3; i++) {
+                    q = abs(q) - 0.5;
+                    q.xy *= rot(0.8);
+                    q.yz *= rot(1.2);
+                }
+
+                float r = length(q.xy) - 0.3;
+                return sqrt(r*r + q.z*q.z) - 0.1;
+            }
+
+            float getDist(vec3 p) {
+                float knot = sdTorusKnot(p);
+                float sphere = sdSphere(p, 0.8 + sin(uTime * 0.5) * 0.2);
+                return smin(knot, sphere, 0.6);
+            }
+
+            vec3 getNormal(vec3 p) {
+                vec2 e = vec2(0.01, 0);
+                float d = getDist(p);
+                vec3 n = d - vec3(
+                    getDist(p - e.xyy),
+                    getDist(p - e.yxy),
+                    getDist(p - e.yyx)
+                );
+                return normalize(n);
+            }
+
+            void main() {
+                vec2 uv = (gl_FragCoord.xy - 0.5 * uResolution.xy) / min(uResolution.y, uResolution.x);
+                vec3 ro = vec3(0, 0, -3); // Ray origin
+                vec3 rd = normalize(vec3(uv, 1.2)); // Ray direction
+
+                float dO = 0.0;
+                float dS;
+                vec3 p;
+
+                for(int i=0; i<MAX_STEPS; i++) {
+                    p = ro + rd * dO;
+                    dS = getDist(p);
+                    dO += dS;
+                    if(dO > MAX_DIST || abs(dS) < SURFACE_DIST) break;
+                }
+
+                vec3 color = vec3(0.01, 0.02, 0.05); // Deep void background
+
+                if(dO < MAX_DIST) {
+                    vec3 n = getNormal(p);
+                    vec3 lightPos = vec3(2.0 * sin(uTime), 2.0 * cos(uTime), -3.0);
+                    vec3 l = normalize(lightPos - p);
+                    
+                    float diff = max(dot(n, l), 0.0);
+                    float fresnel = pow(1.0 + dot(rd, n), 4.0);
+                    
+                    // Coloring based on position and normal
+                    vec3 baseColor = mix(uColor1, uColor2, sin(p.z * 2.0 + uTime) * 0.5 + 0.5);
+                    baseColor += n * 0.2; // Add subtle normal coloring
+
+                    color = baseColor * diff;
+                    color += fresnel * uColor1 * 0.8; // Rim lighting
+                    color += pow(max(dot(reflect(-l, n), -rd), 0.0), 32.0) * 0.5; // Specular
+                }
+
+                // Fog/Depth effect
+                color = mix(color, vec3(0.0), 1.0 - exp(-0.15 * dO));
+
+                // Grain
+                float grain = fract(sin(dot(uv, vec2(12.9898, 78.233))) * 43758.5453);
+                color += grain * 0.04;
+
+                gl_FragColor = vec4(color, 1.0);
+            }
+        `;
+
+        const vertexShader = `
+            void main() {
+                gl_Position = vec4(position, 1.0);
+            }
+        `;
+
+        // --- SETUP ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.body.appendChild(renderer.domElement);
+
+        // Post Processing
+        const composer = new EffectComposer(renderer);
+        const renderPass = new RenderPass(scene, camera);
+        composer.addPass(renderPass);
+
+        const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
+        bloomPass.threshold = 0.2;
+        bloomPass.strength = 1.2;
+        composer.addPass(bloomPass);
+
+        // Fullscreen Plane for Raymarching
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const uniforms = {
+            uTime: { value: 0 },
+            uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+            uColor1: { value: new THREE.Color(0x00ffc8) },
+            uColor2: { value: new THREE.Color(0xff0055) }
+        };
+
+        const material = new THREE.ShaderMaterial({
+            uniforms,
+            vertexShader,
+            fragmentShader
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        // Particles for "Atmosphere"
+        const partCount = 1500;
+        const partGeo = new THREE.BufferGeometry();
+        const posArr = new Float32Array(partCount * 3);
+        for(let i=0; i<partCount*3; i++) {
+            posArr[i] = (Math.random() - 0.5) * 10;
+        }
+        partGeo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+        const partMat = new THREE.PointsMaterial({
+            size: 0.015,
+            color: 0x00ffc8,
+            transparent: true,
+            opacity: 0.4,
+            blending: THREE.AdditiveBlending
+        });
+        const points = new THREE.Points(partGeo, partMat);
+        scene.add(points);
+
+        // --- ANIMATION ---
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const elapsed = clock.getElapsedTime();
+            uniforms.uTime.value = elapsed;
+
+            // Animate particles
+            points.rotation.y = elapsed * 0.05;
+            points.position.z = Math.sin(elapsed * 0.2) * 0.5;
+
+            composer.render();
+        }
+
+        window.addEventListener('resize', () => {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            renderer.setSize(w, h);
+            composer.setSize(w, h);
+            uniforms.uResolution.value.set(w, h);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

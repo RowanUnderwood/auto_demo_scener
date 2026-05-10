@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Glitch Torus Knot</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+{
+    "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+camera.position.z = 4;
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+const geometry = new THREE.TorusKnotGeometry(1, 0.3, 200, 32);
+const material = new THREE.MeshNormalMaterial();
+const mesh = new THREE.Mesh(geometry, material);
+scene.add(mesh);
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+const GlitchShader = {
+    uniforms: {
+        'tDiffuse': { value: null },
+        'time': { value: 0.0 }
+    },
+    vertexShader: `
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `,
+    fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform float time;
+        varying vec2 vUv;
+
+        float random(vec2 st) {
+            return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
+        }
+
+        void main() {
+            float t = time;
+            vec2 uv = vUv;
+
+            // (a) Channel shifting
+            // Small offsets that change each frame using sin/cos of time
+            float rShift = sin(t * 1.5) * 0.005;
+            float bShift = cos(t * 2.2) * 0.005;
+            
+            float r = texture2D(tDiffuse, vec2(uv.x + rShift, uv.y)).r;
+            float g = texture2D(tDiffuse, uv).g;
+            float b = texture2D(tDiffuse, vec2(uv.x + bShift, uv.y)).b;
+
+            vec3 color = vec3(r, g, b);
+
+            // (b) Random horizontal slices
+            // Trigger effect every few frames (using floor/mod on time)
+            float glitchTrigger = step(0.95, fract(t * 0.5)); 
+            
+            if (glitchTrigger > 0.5) {
+                // Use a seeded random based on time to pick slice positions
+                float sliceSeed = fract(sin(t * 123.456) * 43758.5453);
+                float sliceY = sliceSeed;
+                float sliceHeight = 0.05; // height of the slice
+                
+                // Pick a random offset for Y sampling
+                float yOffset = fract(sin(t * 987.654) * 43758.5453) * 0.2 - 0.1;
+
+                if (abs(uv.y - sliceY) < sliceHeight) {
+                    // Sample at different y offset within the slice
+                    color = texture2D(tDiffuse, vec2(uv.x, clamp(uv.y + yOffset, 0.0, 1.0))).rgb;
+                }
+            }
+
+            gl_FragColor = vec4(color, 1.0);
+        }
+    `
+};
+
+const glitchPass = new ShaderPass(GlitchShader);
+composer.addPass(glitchPass);
+
+function animate() {
+    requestAnimationFrame(animate);
+    
+    const time = performance.now() * 0.001;
+    mesh.rotation.x += 0.01;
+    mesh.rotation.y += 0.015;
+    
+    glitchPass.uniforms.time.value = time;
+    
+    composer.render();
+}
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    composer.setSize(window.innerWidth, window.innerHeight);
+});
+
+animate();
+</script>
+</body>
+</html>

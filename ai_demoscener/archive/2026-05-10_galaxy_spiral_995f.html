@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spiral Galaxy Shader</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+</script>
+<script type="module">
+    import * as THREE from 'three';
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    const geometry = new THREE.PlaneGeometry(2, 2);
+    const uniforms = {
+        u_time: { value: 0 },
+        u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+    };
+
+    const material = new THREE.ShaderMaterial({
+        uniforms,
+        vertexShader: `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = vec4(position, 1.0);
+            }
+        `,
+        fragmentShader: `
+            uniform float u_time;
+            uniform vec2 u_resolution;
+            varying vec2 vUv;
+
+            float hash(vec2 p) {
+                return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+            }
+
+            float noise(vec2 p) {
+                vec2 i = floor(p);
+                vec2 f = fract(p);
+                vec2 u = f * f * (3.0 - 2.0 * f);
+                return mix(mix(hash(i + vec2(0.0, 0.0)), hash(i + vec2(1.0, 0.0)), u.x),
+                           mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
+            }
+
+            float fbm(vec2 p) {
+                float v = 0.0;
+                float a = 0.5;
+                for (int i = 0; i < 6; i++) {
+                    v += a * noise(p);
+                    p *= 2.1;
+                    a *= 0.5;
+                }
+                return v;
+            }
+
+            void main() {
+                vec2 uv = (gl_FragCoord.xy * 2.0 - u_resolution.xy) / min(u_resolution.x, u_resolution.y);
+                
+                float r = length(uv);
+                float a = atan(uv.y, uv.x);
+
+                // Spiral arms intensity logic
+                // pow(0.5+0.5*cos(2*a + log(r)*6 + time*0.2), 8) * exp(-r*1.5)
+                float spiral = pow(0.5 + 0.5 * cos(2.0 * a + log(max(r, 0.001)) * 6.0 + u_time * 0.2), 8.0) * exp(-r * 1.5);
+                
+                // Bright core logic: exp(-r*8)
+                float core = exp(-r * 8.0);
+                
+                // Dust lanes via FBM
+                float dust = fbm(uv * 4.0 + u_time * 0.05);
+                dust *= exp(-r * 2.0); // concentrate dust towards center/arms
+                
+                // Total brightness combining components
+                // We use the noise to modulate the spiral and core slightly for a "dusty" look
+                float intensity = (spiral + core) * (0.7 + 0.3 * dust);
+                
+                // Color palette: Hot-core -> Pink -> Blue
+                vec3 colorHot = vec3(1.0, 0.95, 0.8);  // Warm white/yellow
+                vec3 colorPink = vec3(1.0, 0.2, 0.6); // Vibrant pink
+                vec3 colorBlue = vec3(0.1, 0.1, 0.4); // Deep space blue
+
+                vec3 finalColor;
+                if (intensity > 0.6) {
+                    finalColor = mix(colorPink, colorHot, smoothstep(0.6, 1.2, intensity));
+                } else if (intensity > 0.05) {
+                    finalColor = mix(colorBlue, colorPink, smoothstep(0.05, 0.5, intensity));
+                } else {
+                    finalColor = colorBlue * (intensity * 10.0); // Very faint blue for background
+                }
+
+                // Add a bit of the dust's dark texture back in as shadows
+                finalColor *= (0.8 + 0.2 * dust);
+
+                gl_FragColor = vec4(finalColor, 1.0);
+            }
+        `
+    });
+
+    const plane = new THREE.Mesh(geometry, material);
+    scene.add(plane);
+
+    function animate(time) {
+        uniforms.u_time.value = time * 0.001;
+        renderer.render(scene, camera);
+        requestAnimationFrame(animate);
+    }
+
+    window.addEventListener('resize', () => {
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        renderer.setSize(w, h);
+        uniforms.u_resolution.value.set(w, h);
+    });
+
+    requestAnimationFrame(animate);
+</script>
+</body>
+</html>

@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plasma Math</title>
+    <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { position: absolute; top: 0; left: 0; }
+        #textCanvas { pointer-events: none; z-index: 10; }
+    </style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
+
+<script id="vertexShader" type="x-shader/x-vertex">
+    varying vec2 vUv;
+    void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+</script>
+
+<script id="fragmentShader" type="x-shader/x-fragment">
+    uniform float time;
+    varying vec2 vUv;
+
+    void main() {
+        vec2 p = vUv * 4.0;
+        float t = time * 0.5;
+        
+        float v1 = sin(p.x + t) + sin((p.y + t) * 0.5);
+        float v2 = sin(p.x * 0.5 - t) + sin(p.y + t);
+        float v3 = sin(sqrt(p.x*p.x + p.y*p.y + 1.0) - t);
+        float v4 = sin((p.x + p.y + t) * 0.8);
+        
+        float plasma = v1 + v2 + v3 + v4;
+        
+        vec3 col1 = vec3(0.1, 0.0, 0.3); // Deep Purple
+        vec3 col2 = vec3(0.0, 0.4, 0.5); // Teal
+        vec3 col3 = vec3(0.6, 0.1, 0.4); // Magenta
+        vec3 col4 = vec3(0.0, 0.1, 0.2); // Dark Blue
+
+        vec3 color = mix(col1, col2, sin(plasma * 0.5) * 0.5 + 0.5);
+        color = mix(color, col3, cos(plasma * 0.3) * 0.5 + 0.5);
+        color = mix(color, col4, sin(v3 * 2.0) * 0.5 + 0.5);
+
+        gl_FragColor = vec4(color * (0.7 + 0.3 * sin(plasma)), 1.0);
+    }
+</script>
+
+<script>
+    const poem = [
+        "A calculus of drifting light,\nWhere photons dance in coded flight,\nThrough copper veins and silicon deep,\nThe waking math that never sleeps.",
+        "Sine waves ripple through the dark,\nA rhythmic pulse, a digital spark,\nIn logic gates where shadows bloom,\nAnd geometry carves through the gloom.",
+        "Tiny gears of integer law,\nHeld in circuits without a flaw,\nThe clock-speed heartbeat, precise and small,\nAnswering the cosmic call.",
+        "A strange beauty in the machine’s glow,\nWhere numbers ebb and currents flow,\nA luminous ghost in a metal frame,\nWriting light in a nameless name."
+    ];
+
+    // --- Three.js Background Setup ---
+    const scene = new THREE.Scene();
+    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    const geometry = new THREE.PlaneGeometry(2, 2);
+    const uniforms = { time: { value: 0 } };
+    const material = new THREE.ShaderMaterial({
+        uniforms: uniforms,
+        vertexShader: document.getElementById('vertexShader').textContent,
+        fragmentShader: document.getElementById('fragmentShader').textContent
+    });
+
+    const mesh = new THREE.Mesh(geometry, material);
+    scene.add(mesh);
+
+    // --- 2D Canvas Overlay Setup ---
+    const textCanvas = document.createElement('canvas');
+    textCanvas.id = 'textCanvas';
+    textCanvas.width = window.innerWidth;
+    textCanvas.height = window.innerHeight;
+    document.body.appendChild(textCanvas);
+    const ctx = textCanvas.getContext('2d');
+
+    function resize() {
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        textCanvas.width = window.innerWidth;
+        textCanvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // --- Animation Loop ---
+    const cycleDuration = 6000; // 6 seconds per stanza
+    const totalCycle = cycleDuration * poem.length;
+
+    function animate(now) {
+        requestAnimationFrame(animate);
+        const t = now * 0.001;
+        uniforms.time.value = t;
+        renderer.render(scene, camera);
+
+        // Text Logic
+        ctx.clearRect(0, 0, textCanvas.width, textCanvas.height);
+        
+        const elapsedInCycle = now % totalCycle;
+        const stanzaIndex = Math.floor(elapsedInCycle / cycleDuration);
+        const localTime = elapsedInCycle % cycleDuration;
+
+        // Smooth fade in and out using sine wave: 0 -> 1 -> 0 over the duration
+        // We use a simple sin curve for elegance
+        const alpha = Math.sin((localTime / cycleDuration) * Math.PI);
+
+        ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+        ctx.font = '40px "VT323", monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        // Add a slight text glow/shadow for readability
+        ctx.shadowColor = 'rgba(0, 255, 255, 0.5)';
+        ctx.shadowBlur = 15;
+
+        const lines = poem[stanzaIndex].split('\n');
+        const lineHeight = 45;
+        const startY = textCanvas.height / 2 - ((lines.length - 1) * lineHeight) / 2;
+
+        lines.forEach((line, i) => {
+            ctx.fillText(line, textCanvas.width / 2, startY + (i * lineHeight));
+        });
+
+        // CRT scanline effect overlay on the whole canvas
+        drawScanlines();
+    }
+
+    function drawScanlines() {
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = 'rgba(18, 16, 16, 0.1)';
+        for (let i = 0; i < textCanvas.height; i += 4) {
+            ctx.fillRect(0, i, textCanvas.width, 1);
+        }
+    }
+
+    // Wait for font to load before starting animation
+    document.fonts.ready.then(() => {
+        requestAnimationFrame(animate);
+    });
+
+</script>
+</body>
+</html>

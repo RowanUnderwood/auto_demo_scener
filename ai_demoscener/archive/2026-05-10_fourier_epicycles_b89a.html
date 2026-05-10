@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Fourier Epicycles</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #050505; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+// --- Configuration & Math ---
+const SAMPLES = 512;
+const MAX_N = 64;
+const GROWTH_DURATION = 30; // seconds to reach MAX_N
+const TRACE_LENGTH = 500;
+
+class Complex {
+    constructor(re, im) { this.re = re; this.im = im; }
+    add(other) { return new Complex(this.re + other.re, this.im + other.im); }
+    mul(other) { 
+        return new Complex(
+            this.re * other.re - this.im * other.im,
+            this.re * other.im + this.im * other.re
+        );
+    }
+    static fromPolar(r, theta) { return new Complex(r * Math.cos(theta), r * Math.sin(theta)); }
+    get mag() { return Math.sqrt(this.re**2 + this.im**2); }
+    get arg() { return Math.atan2(this.im, this.re); }
+}
+
+// --- Shape Definition (Letter A) ---
+const polyline = [
+    new THREE.Vector2(0, -1),
+    new THREE.Vector2(0.5, 1),
+    new THREE.Vector2(1, -1),
+    new THREE.Vector2(0.7, -1),
+    new THREE.Vector2(0.5, 0),
+    new THREE.Vector2(0.3, -1),
+    new THREE.Vector2(0, -1)
+];
+
+function getSampledPoints(points, count) {
+    const sampled = [];
+    for (let i = 0; i < points.length - 1; i++) {
+        const p1 = points[i];
+        const p2 = points[i+1];
+        const segmentLen = p1.distanceTo(p2);
+        const samplesInSegment = Math.floor((segmentLen / points.reduce((acc, curr, idx) => idx === 0 ? 0 : acc + curr.distanceTo(points[idx-1]), 0)) * count); // This is a bit messy, let's simplify
+    }
+    // Simple linear interpolation for fixed total count
+    for (let i = 0; i < count; i++) {
+        const t = i / count;
+        // Find which segment we are in
+        let cumulativeT = 0;
+        const segs = [];
+        let totalDist = 0;
+        for(let j=0; j<points.length-1; j++){
+            const d = points[j].distanceTo(points[j+1]);
+            segs.push(d);
+            totalDist += d;
+        }
+        
+        let targetDist = t * totalDist;
+        let currentDist = 0;
+        let found = false;
+        for(let j=0; j<segs.length; j++) {
+            if (currentDist + segs[j] >= targetDist || j === segs.length -1) {
+                const localT = (targetDist - currentDist) / segs[j];
+                sampled.push(new THREE.Vector2().lerpVectors(points[j], points[j+1], Math.min(localT, 1)));
+                found = true;
+                break;
+            }
+            currentDist += segs[j];
+        }
+    }
+    return sampled;
+}
+
+const sampledPoints = getSampledPoints(polyline, SAMPLES);
+const zValues = sampledPoints.map(p => new Complex(p.x, p.y));
+
+// --- Compute DFT ---
+const coefficients = [];
+for (let k = 0; k < SAMPLES / 2; k++) {
+    let sum = new Complex(0, 0);
+    for (let n = 0; n < SAMPLES; n++) {
+        const angle = (2 * Math.PI * k * n) / SAMPLES;
+        // DFT formula: c_k = 1/M * sum( z_n * exp(-i * 2pi * k * n / M) )
+        const exponent = Complex.fromPolar(1, -angle);
+        sum = sum.add(zValues[n].mul(exponent));
+    }
+    coefficients.push(new Complex(sum.re / SAMPLES, sum.im / SAMPLES));
+}
+
+// --- Three.js Setup ---
+const scene = new THREE.Scene();
+const aspect = window.innerWidth / window.innerHeight;
+const d = 2;
+const camera = new THREE.OrthographicCamera(-d * aspect, d * aspect, d, -d, 0.1, 1000);
+camera.position.z = 5;
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+// --- Epicycle Objects ---
+const circleMeshes = [];
+const circleGeometries = [];
+
+for (let i = 0; i < MAX_N; i++) {
+    const geom = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(1, 0, 0), new THREE.Vector3(-1, 0, 0)]);
+    // We'll update this manually to be a circle later or use a pre-made ring
+    const material = new THREE.LineBasicMaterial({ color: new THREE.Color().setHSL(i / MAX_N, 0.8, 0.5), transparent: true, opacity: 0.4 });
+    // Actually, let's use CircleGeometry for efficiency and just scale/rotate it
+    const ringGeom = new THREE.RingGeometry(0, 0.01, 64); // Very thin ring
+    const ringMat = new THREE.LineBasicMaterial({ color: new THREE.Color().setHSL(i / MAX_N, 0.7, 0.5), transparent: true, opacity: 0.3 });
+    const mesh = new THREE.LineLoop(ringGeom, ringMat);
+    mesh.visible = false;
+    scene.add(mesh);
+    circleMeshes.push(mesh);
+}
+
+// --- Trace Path Setup (Custom Shader for Fading) ---
+const traceGeometry = new THREE.BufferGeometry();
+const maxTracePoints = TRACE_LENGTH;
+const posArray = new Float32Array(maxTracePoints * 3);
+const ageArray = new Float32Array(maxTracePoints); // Stores life: 1.0 (new) to 0.0 (old)
+
+traceGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+traceGeometry.setAttribute('age', new THREE.BufferAttribute(ageArray, 1));
+
+const traceMaterial = new THREE.ShaderMaterial({
+    transparent: true,
+    uniforms: { color: { value: new THREE.Color(0xffffff) } },
+    vertexShader: `
+        attribute float age;
+        varying float vAge;
+        void main() {
+            vAge = age;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `,
+    fragmentShader: `
+        uniform vec3 color;
+        varying float vAge;
+        void main() {
+            gl_FragColor = vec4(color, vAge * 0.6);
+        }
+    `
+});
+
+const traceLine = new THREE.Line(traceGeometry, traceMaterial);
+scene.add(traceLine);
+
+// --- Animation Loop ---
+let startTime = Date.now();
+let traceIdx = 0;
+const traceHistory = []; // Array of {pos: Vector3, age: float}
+
+function animate() {
+    requestAnimationFrame(animate);
+    const elapsed = (Date.now() - startTime) / 1000;
+    
+    // N grows from 8 to 64
+    const currentN = Math.floor(8 + (MAX_N - 8) * Math.min(elapsed / GROWTH_DURATION, 1));
+
+    let currentPos = new Complex(0, 0);
+    
+    for (let k = 1; k <= currentN; k++) {
+        const coeff = coefficients[k-1]; // k=1 is index 0
+        if (!coeff) break;
+        
+        const r = coeff.mag;
+        const phase = coeff.arg;
+        const angle = 2 * Math.PI * k * elapsed + phase;
+
+        // Update circle mesh
+        const mesh = circleMeshes[k-1];
+        mesh.visible = true;
+        mesh.position.set(currentPos.re, currentPos.im, 0);
+        mesh.scale.set(r * 2, r * 2, 1); // RingGeometry is radius 0 to 0.01, scale it up
+        // We need the ring center to be at the tip of previous circle. 
+        // The way LineLoop/Ring works: mesh position is center.
+        // To make it look like epicycles, we rotate the whole object? No, just reposition.
+        // But a circle is always centered on its own origin. The "tip-to-tip" means 
+        // the NEXT circle's center is the CURRENT circle's edge.
+        
+        mesh.rotation.z = angle; // This doesn't rotate the ring itself visually if it's a perfect circle, but let's keep it for consistency
+
+        // Calculate next tip
+        const dx = r * Math.cos(angle);
+        const dy = r * Math.sin(angle);
+        currentPos = currentPos.add(new Complex(dx, dy));
+    }
+
+    // Hide unused circles
+    for (let k = currentN; k < MAX_N; k++) {
+        circleMeshes[k].visible = false;
+    }
+
+    // Update Trace
+    const tipVec = new THREE.Vector3(currentPos.re, currentPos.im, 0);
+    traceHistory.push({ pos: tipVec.clone(), age: 1.0 });
+    if (traceHistory.length > maxTracePoints) traceHistory.shift();
+
+    // Update Trace Geometry Attributes
+    const positions = traceGeometry.attributes.position.array;
+    const ages = traceGeometry.attributes.age.array;
+
+    for (let i = 0; i < traceHistory.length; i++) {
+        positions[i * 3] = traceHistory[i].pos.x;
+        positions[i * 3 + 1] = traceHistory[i].pos.y;
+        positions[i * 3 + 2] = traceHistory[i].pos.z;
+        // Fade ages based on index
+        ages[i] = i / traceHistory.length; 
+    }
+    
+    // Clear unused vertices in the buffer
+    for (let i = traceHistory.length; i < maxTracePoints; i++) {
+        positions[i * 3] = 0;
+        ages[i] = 0;
+    }
+
+    traceGeometry.attributes.position.needsUpdate = true;
+    traceGeometry.attributes.age.needsUpdate = true;
+    traceGeometry.setDrawRange(0, traceHistory.length);
+
+    renderer.render(scene, camera);
+}
+
+window.addEventListener('resize', () => {
+    const aspect = window.innerWidth / window.innerHeight;
+    camera.left = -d * aspect;
+    camera.right = d * aspect;
+    camera.top = d;
+    camera.bottom = -d;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+animate();
+
+</script>
+</body>
+</html>

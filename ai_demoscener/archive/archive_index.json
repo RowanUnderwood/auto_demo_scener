@@ -89,18 +89,6 @@
     "effect": "creative",
     "passed_validation": true
   },
-  "2026-05-10_plasma_4a14.html": {
-    "created": "2026-05-10T08:34:20.374658",
-    "mode": "stock",
-    "effect": "Plasma",
-    "passed_validation": true
-  },
-  "2026-05-10_voxel_landscape_9cc5.html": {
-    "created": "2026-05-10T08:38:51.253659",
-    "mode": "stock",
-    "effect": "Voxel Landscape",
-    "passed_validation": true
-  },
   "2026-05-10_kaleidoscope_bff1.html": {
     "created": "2026-05-10T08:40:17.506076",
     "mode": "stock",
@@ -239,18 +227,6 @@
     "effect": "Bouncing Balls",
     "passed_validation": true
   },
-  "2026-05-10_boids_flocking_d82c_v2.html": {
-    "created": "2026-05-10T10:06:00.591081",
-    "mode": "update",
-    "effect": "update",
-    "passed_validation": true
-  },
-  "2026-05-10_boids_flocking_69ef.html": {
-    "created": "2026-05-10T10:08:08.694859",
-    "mode": "stock",
-    "effect": "Boids Flocking",
-    "passed_validation": true
-  },
   "2026-05-10_particle_system_2090.html": {
     "created": "2026-05-10T10:08:43.682255",
     "mode": "stock",
@@ -297,12 +273,6 @@
     "created": "2026-05-10T10:18:28.265386",
     "mode": "creative",
     "effect": "creative",
-    "passed_validation": true
-  },
-  "2026-05-10_wireframe_icosahedron_3f09.html": {
-    "created": "2026-05-10T10:19:13.689475",
-    "mode": "stock",
-    "effect": "Wireframe Icosahedron",
     "passed_validation": true
   },
   "2026-05-10_creative_2131_v2.html": {
@@ -413,12 +383,6 @@
     "effect": "Kaleidoscope",
     "passed_validation": true
   },
-  "2026-05-10_creative_ee56.html": {
-    "created": "2026-05-10T10:36:53.089342",
-    "mode": "creative",
-    "effect": "creative",
-    "passed_validation": true
-  },
   "2026-05-10_starfield_0fb3_v2.html": {
     "created": "2026-05-10T10:40:49.082769",
     "mode": "update",
@@ -455,12 +419,6 @@
     "effect": "creative",
     "passed_validation": true
   },
-  "2026-05-10_creative_0353_v2.html": {
-    "created": "2026-05-10T10:53:35.927897",
-    "mode": "update",
-    "effect": "update",
-    "passed_validation": true
-  },
   "2026-05-10_creative_cd4a.html": {
     "created": "2026-05-10T10:54:21.089325",
     "mode": "creative",
@@ -471,6 +429,324 @@
     "created": "2026-05-10T10:54:57.944163",
     "mode": "creative",
     "effect": "creative",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_34a3_v2.html": {
+    "created": "2026-05-10T11:36:56.504324",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true
+  },
+  "2026-05-10_starfield_c208.html": {
+    "created": "2026-05-10T11:38:16.767455",
+    "mode": "stock",
+    "effect": "Starfield",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_8025.html": {
+    "created": "2026-05-10T11:39:43.690631",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true
+  },
+  "2026-05-10_copper_bars_44a0.html": {
+    "created": "2026-05-10T11:41:11.406262",
+    "mode": "stock",
+    "effect": "Copper Bars",
+    "passed_validation": true
+  },
+  "2026-05-10_mandelbrot_zoom_ab6b.html": {
+    "created": "2026-05-10T11:42:46.740021",
+    "mode": "stock",
+    "effect": "Mandelbrot Zoom",
+    "passed_validation": true
+  },
+  "2026-05-10_fourier_epicycles_b89a.html": {
+    "created": "2026-05-10T11:44:31.043336",
+    "mode": "stock",
+    "effect": "Fourier Epicycles",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_ca66_v2.html": {
+    "created": "2026-05-10T11:45:56.493736",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true
+  },
+  "2026-05-10_galaxy_spiral_995f.html": {
+    "created": "2026-05-10T11:47:28.260790",
+    "mode": "stock",
+    "effect": "Galaxy Spiral",
+    "passed_validation": true
+  },
+  "2026-05-10_3d_pipes_screensaver_7643.html": {
+    "created": "2026-05-10T11:49:07.278103",
+    "mode": "stock",
+    "effect": "3D Pipes Screensaver",
+    "passed_validation": true
+  },
+  "2026-05-10_kaleidoscope_8a92.html": {
+    "created": "2026-05-10T11:53:12.396230",
+    "mode": "stock",
+    "effect": "Kaleidoscope",
+    "passed_validation": true
+  },
+  "2026-05-10_iridescent_oil_slick_46d6.html": {
+    "created": "2026-05-10T11:59:46.782867",
+    "mode": "stock",
+    "effect": "Iridescent Oil Slick",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_80f9.html": {
+    "created": "2026-05-10T12:01:11.518300",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_5b80.html": {
+    "created": "2026-05-10T12:02:35.249130",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true
+  },
+  "2026-05-10_wormhole_f6c1_v2.html": {
+    "created": "2026-05-10T12:03:52.743445",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true
+  },
+  "2026-05-10_raymarched_scene_b764.html": {
+    "created": "2026-05-10T12:05:20.185477",
+    "mode": "stock",
+    "effect": "Raymarched Scene",
+    "passed_validation": true
+  },
+  "2026-05-10_fire_af55.html": {
+    "created": "2026-05-10T12:06:51.277338",
+    "mode": "stock",
+    "effect": "Fire",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_34a3_v3.html": {
+    "created": "2026-05-10T12:08:16.561168",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_0402.html": {
+    "created": "2026-05-10T12:09:45.351944",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_db9a.html": {
+    "created": "2026-05-10T12:16:58.157037",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true
+  },
+  "2026-05-10_mystify_bezier_lines_efaa.html": {
+    "created": "2026-05-10T12:18:17.224382",
+    "mode": "stock",
+    "effect": "Mystify Bezier Lines",
+    "passed_validation": true
+  },
+  "2026-05-10_2d_tunnel_d819_v2.html": {
+    "created": "2026-05-10T12:29:27.591712",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true
+  },
+  "2026-05-10_bouncing_balls_e986.html": {
+    "created": "2026-05-10T12:33:33.694952",
+    "mode": "stock",
+    "effect": "Bouncing Balls",
+    "passed_validation": true
+  },
+  "2026-05-10_galaxy_spiral_8d3a.html": {
+    "created": "2026-05-10T12:35:12.664697",
+    "mode": "stock",
+    "effect": "Galaxy Spiral",
+    "passed_validation": true
+  },
+  "2026-05-10_fire_5396_v3.html": {
+    "created": "2026-05-10T12:38:48.732951",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true
+  },
+  "2026-05-10_plasma_backdrop_poem_0519.html": {
+    "created": "2026-05-10T12:40:19.330271",
+    "mode": "stock",
+    "effect": "Plasma Backdrop Poem",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_7055.html": {
+    "created": "2026-05-10T12:41:47.344242",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true
+  },
+  "2026-05-10_wormhole_c39c_v3.html": {
+    "created": "2026-05-10T12:43:08.678597",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_5b80_v2.html": {
+    "created": "2026-05-10T12:45:02.775600",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_2b58_v2.html": {
+    "created": "2026-05-10T12:48:35.893056",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_445b.html": {
+    "created": "2026-05-10T12:50:00.822932",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_edb8.html": {
+    "created": "2026-05-10T12:52:55.561733",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true
+  },
+  "2026-05-10_clifford_attractor_f32c.html": {
+    "created": "2026-05-10T12:54:49.830949",
+    "mode": "stock",
+    "effect": "Clifford Attractor",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_5723.html": {
+    "created": "2026-05-10T12:57:32.710231",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true
+  },
+  "2026-05-10_copper_bars_ec6a.html": {
+    "created": "2026-05-10T13:03:04.411551",
+    "mode": "stock",
+    "effect": "Copper Bars",
+    "passed_validation": true
+  },
+  "2026-05-10_particle_system_1d7a.html": {
+    "created": "2026-05-10T13:07:50.100901",
+    "mode": "stock",
+    "effect": "Particle System",
+    "passed_validation": true
+  },
+  "2026-05-10_2d_tunnel_654e.html": {
+    "created": "2026-05-10T13:09:28.555907",
+    "mode": "stock",
+    "effect": "2D Tunnel",
+    "passed_validation": true
+  },
+  "2026-05-10_volumetric_clouds_792c.html": {
+    "created": "2026-05-10T13:10:49.303046",
+    "mode": "stock",
+    "effect": "Volumetric Clouds",
+    "passed_validation": true
+  },
+  "2026-05-10_rotozoomer_f903.html": {
+    "created": "2026-05-10T13:30:48.365628",
+    "mode": "stock",
+    "effect": "Rotozoomer",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_b7d6.html": {
+    "created": "2026-05-10T13:32:18.111799",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true
+  },
+  "2026-05-10_mode_7_floor_a068_v2.html": {
+    "created": "2026-05-10T13:33:37.417449",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true
+  },
+  "2026-05-10_wireframe_icosahedron_5688.html": {
+    "created": "2026-05-10T13:34:51.937490",
+    "mode": "stock",
+    "effect": "Wireframe Icosahedron",
+    "passed_validation": true
+  },
+  "2026-05-10_glitch_postprocess_5030.html": {
+    "created": "2026-05-10T13:36:06.995685",
+    "mode": "stock",
+    "effect": "Glitch Postprocess",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_f0d4.html": {
+    "created": "2026-05-10T13:38:05.972275",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_3ced.html": {
+    "created": "2026-05-10T15:45:56.828847",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true
+  },
+  "2026-05-10_starfield_42ab.html": {
+    "created": "2026-05-10T15:47:18.547036",
+    "mode": "stock",
+    "effect": "Starfield",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_af9f.html": {
+    "created": "2026-05-10T15:50:45.538345",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true
+  },
+  "2026-05-10_barnsley_fern_5750.html": {
+    "created": "2026-05-10T15:54:57.035012",
+    "mode": "stock",
+    "effect": "Barnsley Fern",
+    "passed_validation": true
+  },
+  "2026-05-10_copper_bars_f7c7.html": {
+    "created": "2026-05-10T16:00:16.121100",
+    "mode": "stock",
+    "effect": "Copper Bars",
+    "passed_validation": true
+  },
+  "2026-05-10_sorting_visualizer_1601.html": {
+    "created": "2026-05-10T16:06:22.249715",
+    "mode": "stock",
+    "effect": "Sorting Visualizer",
+    "passed_validation": true
+  },
+  "2026-05-10_volumetric_clouds_cc75.html": {
+    "created": "2026-05-10T16:12:34.273681",
+    "mode": "stock",
+    "effect": "Volumetric Clouds",
+    "passed_validation": true
+  },
+  "2026-05-10_creative_8fdb.html": {
+    "created": "2026-05-10T16:14:08.742819",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true
+  },
+  "2026-05-10_auto_play_pong_af57.html": {
+    "created": "2026-05-10T16:16:01.488886",
+    "mode": "stock",
+    "effect": "Auto-Play Pong",
+    "passed_validation": true
+  },
+  "2026-05-10_glitch_postprocess_7754.html": {
+    "created": "2026-05-10T16:17:11.913091",
+    "mode": "stock",
+    "effect": "Glitch Postprocess",
     "passed_validation": true
   }
 }

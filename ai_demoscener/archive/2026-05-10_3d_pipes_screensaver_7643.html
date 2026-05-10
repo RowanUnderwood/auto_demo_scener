@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Pipe Grid Automata</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #050505; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+</script>
+<script type="module">
+    import * as THREE from 'three';
+
+    // Configuration
+    const GRID_SIZE = 20;
+    const MAX_ACTIVE_PIPES = 15;
+    const TICK_RATE = 5; // frames per step
+    
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // Lighting
+    const ambientLight = new THREE.AmbientLight(0x404040, 2);
+    scene.add(ambientLight);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 3);
+    dirLight.position.set(15, 30, 15);
+    scene.add(dirLight);
+
+    // Grid State
+    const occupiedCells = new Set(); // "x,y,z" format
+    const activePaths = [];
+
+    function getCellKey(x, y, z) { return `${x},${y},${z}`; }
+
+    class PipePath {
+        constructor() {
+            this.reset();
+        }
+
+        reset() {
+            let x, y, z;
+            let attempts = 0;
+            do {
+                x = Math.floor(Math.random() * GRID_SIZE);
+                y = Math.floor(Math.random() * GRID_SIZE);
+                z = Math.floor(Math.random() * GRID_SIZE);
+                attempts++;
+            } while (occupiedCells.has(getCellKey(x, y, z)) && attempts < 100);
+
+            this.pos = new THREE.Vector3(x, y, z);
+            this.dir = new THREE.Vector3(0, 0, 0);
+            this.color = new THREE.Color().setHSL(Math.random(), 1.0, 0.5);
+            this.material = new THREE.MeshPhongMaterial({ color: this.color, shininess: 100 });
+            this.isDead = false;
+
+            occupiedCells.add(getCellKey(x, y, z));
+            // Initial node
+            this.addElbow(this.pos);
+        }
+
+        addElbow(position) {
+            const geom = new THREE.SphereGeometry(0.25, 16, 16);
+            const mesh = new THREE.Mesh(geom, this.material);
+            mesh.position.copy(position);
+            scene.add(mesh);
+        }
+
+        addSegment(start, end) {
+            const vec = new THREE.Vector3().subVectors(end, start);
+            const mid = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
+            const geom = new THREE.CylinderGeometry(0.12, 0.12, 1, 8);
+            const mesh = new THREE.Mesh(geom, this.material);
+            mesh.position.copy(mid);
+            mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), vec.clone().normalize());
+            scene.add(mesh);
+        }
+
+        step() {
+            if (this.isDead) return;
+
+            const neighbors = [
+                [1, 0, 0], [-1, 0, 0],
+                [0, 1, 0], [0, -1, 0],
+                [0, 0, 1], [0, 0, -1]
+            ];
+
+            const validNeighbors = [];
+            for (let i = 0; i < neighbors.length; i++) {
+                const nx = Math.round(this.pos.x + neighbors[i][0]);
+                const ny = Math.round(this.pos.y + neighbors[i][1]);
+                const nz = Math.round(this.pos.z + neighbors[i][2]);
+
+                if (nx >= 0 && nx < GRID_SIZE && ny >= 0 && ny < GRID_SIZE && nz >= 0 && nz < GRID_SIZE) {
+                    if (!occupiedCells.has(getCellKey(nx, ny, nz))) {
+                        validNeighbors.push({ pos: new THREE.Vector3(nx, ny, nz), dir: new THREE.Vector3(neighbors[i][0], neighbors[i][1], neighbors[i][2]) });
+                    }
+                }
+            }
+
+            if (validNeighbors.length === 0) {
+                this.isDead = true;
+                return;
+            }
+
+            // Filter to avoid immediate backtrack
+            const filtered = validNeighbors.filter(n => !this.dir.equals(n.dir.clone().multiplyScalar(-1)));
+            const choice = filtered.length > 0 ? filtered[Math.floor(Math.random() * filtered.length)] : validNeighbors[Math.floor(Math.random() * validNeighbors.length)];
+
+            // Check for direction change
+            if (this.dir.lengthSq() > 0 && !this.dir.equals(choice.dir)) {
+                this.addElbow(this.pos);
+            }
+
+            const prevPos = this.pos.clone();
+            this.pos.copy(choice.pos);
+            this.dir.copy(choice.dir);
+
+            this.addSegment(prevPos, this.pos);
+            occupiedCells.add(getCellKey(this.pos.x, this.pos.y, this.pos.z));
+        }
+    }
+
+    // Initialize paths
+    for (let i = 0; i < MAX_ACTIVE_PIPES; i++) {
+        activePaths.push(new PipePath());
+    }
+
+    camera.position.set(35, 35, 35);
+    camera.lookAt(10, 10, 10);
+
+    let frameCount = 0;
+
+    function animate() {
+        requestAnimationFrame(animate);
+        frameCount++;
+
+        if (frameCount % TICK_RATE === 0) {
+            for (let i = activePaths.length - 1; i >= 0; i--) {
+                const path = activePaths[i];
+                path.step();
+                if (path.isDead) {
+                    activePaths.splice(i, 1);
+                    activePaths.push(new PipePath()); // Replace dead pipe with new one
+                }
+            }
+        }
+
+        // Camera Orbit
+        const time = Date.now() * 0.0005;
+        camera.position.x = 35 * Math.cos(time);
+        camera.position.z = 35 * Math.sin(time);
+        camera.position.y = 20 + Math.sin(time * 0.5) * 15;
+        camera.lookAt(GRID_SIZE / 2, GRID_SIZE / 2, GRID_SIZE / 2);
+
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+</script>
+</body>
+</html>

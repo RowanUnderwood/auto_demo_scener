@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AETHERIS - VOID DYNAMICS</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #050508; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        canvas { display: block; }
+        #ui {
+            position: absolute; bottom: 30px; left: 30px; color: #fff;
+            pointer-events: none; letter-spacing: 4px; font-size: 10px;
+            opacity: 0.6; border-left: 1px solid rgba(255,255,255,0.3); padding-left: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div id="ui">CORE_STABILITY: UNSTABLE<br>AETHER_FLOW: MAXIMUM</div>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        /** 
+         * CONCEPT: "AETHERIS"
+         * A departure from the neon cyber-look to a deep, ethereal cosmic void.
+         * Instead of sharp shards, we use volumetric-feeling SDF noise and soft particle wisps.
+         * The central singularity is a smooth Mandelbulb-inspired fractal cloud.
+         */
+
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x050508, 0.15);
+        
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.body.appendChild(renderer.domElement);
+
+        // --- THE VOID SHADER (Volumetric Fractal Noise) ---
+        const voidMat = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uRes: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+                uColorA: { value: new THREE.Color(0x4400ff) },
+                uColorB: { value: new THREE.Color(0xff0055) }
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float uTime;
+                uniform vec2 uRes;
+                uniform vec3 uColorA;
+                uniform vec3 uColorB;
+                varying vec2 vUv;
+
+                // Smooth noise for "gas" effect
+                float hash(vec3 p) {
+                    p = fract(p * 0.3183099 + .1);
+                    p *= 17.0;
+                    return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+                }
+
+                float noise(vec3 x) {
+                    vec3 i = floor(x);
+                    vec3 f = fract(x);
+                    f = f*f*(3.0-2.0*f);
+                    return mix(mix(mix(hash(i+vec3(0,0,0)), hash(i+vec3(1,0,0)),f.x),
+                                   mix(hash(i+vec3(0,1,0)), hash(i+vec3(1,1,0)),f.x),f.y),
+                               mix(mix(hash(i+vec3(0,0,1)), hash(i+vec3(1,0,1)),f.x),
+                                   mix(hash(i+vec3(0,1,1)), hash(i+vec3(1,1,1)),f.x),f.y),f.z);
+                }
+
+                void main() {
+                    vec2 uv = (gl_FragCoord.xy - 0.5 * uRes.xy) / min(uRes.y, uRes.x);
+                    vec3 ro = vec3(0.0, 0.0, -4.0);
+                    vec3 rd = normalize(vec3(uv, 1.2));
+                    
+                    float t = 0.0;
+                    float d = 0.0;
+                    vec3 col = vec3(0.0);
+
+                    // Raymarching a soft noise field
+                    for(int i=0; i<40; i++) {
+                        vec3 p = ro + rd * t;
+                        // Distort space with sin/cos to simulate gravity well
+                        p.x += sin(p.z * 0.5 + uTime) * 0.5;
+                        p.y += cos(p.x * 0.5 + uTime) * 0.5;
+                        
+                        float density = noise(p * 1.2 + uTime * 0.2);
+                        density *= smoothstep(0.8, 0.2, length(p - vec3(0.0))); // Centralize
+
+                        if(density > 0.4) {
+                            float glow = (density - 0.4) * 0.15;
+                            col += mix(uColorA, uColorB, density) * glow;
+                            t += 0.1; 
+                        } else {
+                            t += 0.2;
+                        }
+                        if(t > 8.0) break;
+                    }
+
+                    // Vignette and grain
+                    col *= 1.0 - length(uv) * 0.7;
+                    float grain = hash(vec3(uv, uTime)) * 0.04;
+                    gl_FragColor = vec4(col + grain, 1.0);
+                }
+            `
+        });
+
+        const voidQuad = new THREE.Mesh(new THREE.PlaneGeometry(25, 25), voidMat);
+        voidQuad.position.z = -8;
+        scene.add(voidQuad);
+
+        // --- AETHER PARTICLES (Soft Wisps) ---
+        const partCount = 3000;
+        const pGeo = new THREE.BufferGeometry();
+        const pPos = new Float32Array(partCount * 3);
+        const pVel = new Float32Array(partCount * 3);
+        const pScale = new Float32Array(partCount);
+
+        for (let i = 0; i < partCount; i++) {
+            pPos[i*3] = (Math.random() - 0.5) * 15;
+            pPos[i*3+1] = (Math.random() - 0.5) * 15;
+            pPos[i*3+2] = (Math.random() - 0.5) * 15;
+
+            pVel[i*3] = (Math.random() - 0.5) * 0.01;
+            pVel[i*3+1] = (Math.random() - 0.5) * 0.01;
+            pVel[i*3+2] = (Math.random() - 0.5) * 0.01;
+
+            pScale[i] = Math.random();
+        }
+
+        pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+        pGeo.setAttribute('scale', new THREE.BufferAttribute(pScale, 1));
+
+        const pMat = new THREE.PointsMaterial({
+            size: 0.06,
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0.3,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        });
+
+        const particles = new THREE.Points(pGeo, pMat);
+        scene.add(particles);
+
+        // --- ORBITAL CONSTELLATIONS (Geometric structures) ---
+        const constellationGroup = new THREE.Group();
+        for(let i=0; i<6; i++) {
+            const cluster = new THREE.Group();
+            const ringGeo = new THREE.TorusGeometry(2, 0.005, 16, 100);
+            const ringMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3 });
+            const ring = new THREE.Mesh(ringGeo, ringMat);
+            cluster.add(ring);
+
+            // Small nodes on the ring
+            for(let j=0; j<5; j++) {
+                const node = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.04, 8, 8),
+                    new THREE.MeshBasicMaterial({ color: 0xffffff })
+                );
+                const angle = (j / 5) * Math.PI * 2;
+                node.position.set(Math.cos(angle)*2, Math.sin(angle)*2, 0);
+                cluster.add(node);
+            }
+
+            const rotY = (i / 6) * Math.PI * 2;
+            cluster.position.set(Math.cos(rotY)*5, Math.sin(rotY)*5, -2);
+            const rotX = Math.random() * Math.PI;
+            cluster.rotation.x = rotX;
+            constellationGroup.add(cluster);
+        }
+        scene.add(constellationGroup);
+
+        camera.position.z = 4;
+
+        // --- ANIMATION LOOP ---
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const t = clock.getElapsedTime();
+
+            voidMat.uniforms.uTime.value = t * 0.2;
+            voidMat.uniforms.uRes.value.set(window.innerWidth, window.innerHeight);
+
+            // Particles Drift
+            const positions = pGeo.attributes.position.array;
+            for (let i = 0; i < partCount; i++) {
+                positions[i*3] += pVel[i*3];
+                positions[i*3+1] += pVel[i*3+1];
+                positions[i*3+2] += pVel[i*3+2];
+
+                // Drifting back to center via attraction logic (simulated)
+                const x = positions[i*3], y = positions[i*3+1], z = positions[i*3+2];
+                const dist = Math.sqrt(x*x + y*y + z*z);
+                if(dist > 10) {
+                    positions[i*3] *= -0.95;
+                    positions[i*3+1] *= -0.95;
+                    positions[i*3+2] *= -0.95;
+                }
+            }
+            pGeo.attributes.position.needsUpdate = true;
+
+            // Constellation rotation
+            constellationGroup.children.forEach((cluster, idx) => {
+                cluster.rotation.z += 0.005 * (idx % 2 === 0 ? 1 : -1);
+                cluster.rotation.y += 0.003;
+                const scale = 1 + Math.sin(t + idx) * 0.1;
+                cluster.scale.setScalar(scale);
+            });
+
+            // Cinematic Camera movement
+            camera.position.x = Math.sin(t * 0.3) * 1.5;
+            camera.position.y = Math.cos(t * 0.4) * 1.2;
+            camera.lookAt(0, 0, -2);
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            voidMat.uniforms.uRes.value.set(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

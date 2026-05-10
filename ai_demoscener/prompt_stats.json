@@ -1,0 +1,32 @@
+{
+  "Voxel Landscape": {
+    "crashes": 0,
+    "blanks": 1,
+    "total": 1,
+    "last_fail": "2026-05-10T11:57:17.493502"
+  },
+  "Audio Sphere": {
+    "crashes": 0,
+    "blanks": 1,
+    "total": 1,
+    "last_fail": "2026-05-10T12:20:40.984833"
+  },
+  "Audio-Reactive Bars": {
+    "crashes": 0,
+    "blanks": 3,
+    "total": 3,
+    "last_fail": "2026-05-10T16:08:32.006654"
+  },
+  "Phyllotaxis Spiral": {
+    "crashes": 0,
+    "blanks": 1,
+    "total": 1,
+    "last_fail": "2026-05-10T12:59:32.574380"
+  },
+  "Wormhole": {
+    "crashes": 0,
+    "blanks": 1,
+    "total": 1,
+    "last_fail": "2026-05-10T13:04:47.616202"
+  }
+}

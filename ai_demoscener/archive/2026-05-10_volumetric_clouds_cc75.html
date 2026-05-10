@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Raymarched Clouds</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+</script>
+<script type="module">
+    import * as THREE from 'three';
+
+    const vertexShader = `
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `;
+
+    const fragmentShader = `
+        uniform float uTime;
+        uniform vec2 uResolution;
+        varying vec2 vUv;
+
+        // Hash function for value noise
+        float hash(vec3 p) {
+            p = fract(p * 0.3183099 + .1);
+            p *= 17.0;
+            return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+        }
+
+        // Value noise implementation
+        float valueNoise(vec3 p) {
+            vec3 i = floor(p);
+            vec3 f = fract(p);
+            f = f * f * (3.0 - 2.0 * f);
+
+            return mix(mix(mix(hash(i + vec3(0,0,0)), hash(i + vec3(1,0,0)), f.x),
+                           mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
+                       mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x),
+                           mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x), f.y), f.z);
+        }
+
+        // 4-octave FBM
+        float fbm(vec3 p) {
+            float v = 0.0;
+            float amp = 0.5;
+            for (int i = 0; i < 4; i++) {
+                v += amp * valueNoise(p);
+                p *= 2.0;
+                amp *= 0.5;
+            }
+            return v;
+        }
+
+        // Density function
+        float getDensity(vec3 p) {
+            // Drift clouds with time
+            vec3 drift = vec3(uTime * 0.1, 0.0, uTime * 0.05);
+            float d = fbm(p * 0.4 + drift);
+            // Height constraint to create a cloud layer
+            float heightFactor = smoothstep(0.0, 0.3, p.y) * smoothstep(1.5, 0.8, p.y);
+            return smoothstep(0.4, 0.7, d * heightFactor);
+        }
+
+        void main() {
+            vec2 uv = (gl_FragCoord.xy - 0.5 * uResolution.xy) / min(uResolution.y, uResolution.x);
+            
+            // Camera setup
+            vec3 ro = vec3(0.0, 0.5, 5.0); // Ray origin
+            vec3 rd = normalize(vec3(uv, -1.2)); // Ray direction (slight downward tilt)
+            
+            // Sky Gradient
+            vec3 skyTop = vec3(0.4, 0.6, 0.9);
+            vec3 skyBottom = vec3(0.7, 0.8, 1.0);
+            vec3 sunDir = normalize(vec3(0.5, 0.5, -0.5));
+            float horizonFactor = smoothstep(-1.0, 1.0, rd.y);
+            vec3 skyColor = mix(skyBottom, skyTop, horizonFactor);
+            
+            // Add sun glow to sky
+            float sunGlow = pow(max(dot(rd, sunDir), 0.0), 32.0);
+            skyColor += vec3(1.0, 0.9, 0.7) * sunGlow;
+
+            // Raymarching loop
+            vec3 col = skyColor;
+            float T = 1.0; // Transmittance
+            const int STEPS = 64;
+            float stepSize = 0.15;
+            
+            for (int i = 0; i < STEPS; i++) {
+                vec3 p = ro + rd * float(i) * stepSize;
+                
+                // Only sample clouds in a specific altitude range
+                if(p.y > 0.2 && p.y < 1.5) {
+                    float d = getDensity(p);
+                    
+                    if (d > 0.01) {
+                        // Self-shadowing: sample towards sun
+                        float shadowD = 0.0;
+                        vec3 shadowP = p;
+                        for(int j = 0; j < 4; j++) {
+                            shadowP += sunDir * 0.15;
+                            shadowD += getDensity(shadowP);
+                        }
+                        float shadow = exp(-shadowD * 1.5);
+                        
+                        // Lighting calculation
+                        float luminance = clamp(dot(rd, sunDir) + 0.5, 0.0, 1.0); // fake diffuse
+                        vec3 cloudColor = mix(vec3(0.4, 0.4, 0.45), vec3(1.0, 1.0, 1.0), shadow);
+                        cloudColor += vec3(1.0, 0.9, 0.8) * sunGlow * 0.5;
+
+                        // Accumulate density/color
+                        float alpha = d * 0.4;
+                        col = mix(col, cloudColor, T * alpha);
+                        T *= (1.0 - alpha);
+                    }
+                }
+                
+                if (T < 0.01) break;
+            }
+
+            gl_FragColor = vec4(col, 1.0);
+        }
+    `;
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    const geometry = new THREE.PlaneGeometry(2, 2);
+    const uniforms = {
+        uTime: { value: 0 },
+        uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+    };
+
+    const material = new THREE.ShaderMaterial({
+        vertexShader,
+        fragmentShader,
+        uniforms
+    });
+
+    const mesh = new THREE.Mesh(geometry, material);
+    scene.add(mesh);
+
+    function resize() {
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+    }
+
+    window.addEventListener('resize', resize);
+    resize();
+
+    function animate(time) {
+        uniforms.uTime.value = time * 0.001;
+        renderer.render(scene, camera);
+        requestAnimationFrame(animate);
+    }
+
+    requestAnimationFrame(animate);
+</script>
+</body>
+</html>

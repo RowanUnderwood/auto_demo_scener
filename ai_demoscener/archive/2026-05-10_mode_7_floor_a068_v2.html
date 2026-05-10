@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Synthwave Mode 7</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #050505; }
+        canvas { display: block; width: 100vw; height: 100vh; image-rendering: pixelated; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+</script>
+<script type="module">
+    import * as THREE from 'three';
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    const renderer = new THREE.WebGLRenderer({ antialias: false });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    const geometry = new THREE.PlaneGeometry(2, 2);
+    const material = new THREE.ShaderMaterial({
+        uniforms: {
+            uTime: { value: 0 },
+            uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+            uColor1: { value: new THREE.Color(0xff00ff) }, // Neon Pink
+            uColor2: { value: new THREE.Color(0x00ffff) }  // Neon Cyan
+        },
+        vertexShader: `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = vec4(position, 1.0);
+            }
+        `,
+        fragmentShader: `
+            uniform float uTime;
+            uniform vec2 uResolution;
+            uniform vec3 uColor1;
+            uniform vec3 uColor2;
+            varying vec2 vUv;
+
+            float hash(vec2 p) {
+                return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+            }
+
+            void main() {
+                vec2 uv = (gl_FragCoord.xy - 0.5 * uResolution.xy) / min(uResolution.y, uResolution.x);
+                float horizon = 0.1;
+
+                if (uv.y > horizon) {
+                    // Deep space background with star flicker
+                    vec3 bg = vec3(0.02, 0.0, 0.05);
+                    float stars = pow(hash(uv + floor(uTime * 0.1)), 500.0) * 2.0;
+                    // Moving star field
+                    float starField = hash(uv + vec2(sin(uTime*0.1), cos(uTime*0.1))*10.0);
+                    bg += step(0.998, starField) * 0.5;
+                    
+                    // Nebula glow
+                    float nebula = sin(uv.x * 3.0 + uTime * 0.2) * cos(uv.y * 2.0 - uTime * 0.1);
+                    bg += vec3(0.1, 0.0, 0.2) * nebula;
+
+                    gl_FragColor = vec4(bg, 1.0);
+                } else {
+                    // Mode 7 Synthwave Grid
+                    float h = horizon - uv.y;
+                    // Perspective mapping (z-depth emulation)
+                    float depth = 0.15 / (h + 0.02);
+                    float aspect = uResolution.x / uResolution.y;
+                    
+                    vec2 worldPos = vec2(uv.x * depth * aspect, depth);
+                    
+                    // Scrolling movement
+                    worldPos.y -= uTime * 3.5; // Fast travel feel
+                    worldPos.x += sin(uTime * 0.4) * 0.8; // Drifting effect
+
+                    // Grid logic
+                    float gridSize = 1.2;
+                    vec2 gridId = floor(worldPos * gridSize);
+                    vec2 gridFrac = fract(worldPos * gridSize);
+                    
+                    // Checkerboard-style neon tiles
+                    float checker = mod(gridId.x + gridId.y, 2.0);
+                    
+                    // Color blending: Cyan and Pink alternating
+                    vec3 tileColor = mix(uColor1, uColor2, checker);
+                    
+                    // Add a "glow" line effect for the grid
+                    float gridLines = smoothstep(0.95, 1.0, gridFrac.x) + smoothstep(0.0, 0.05, gridFrac.x) +
+                                     smoothstep(0.95, 1.0, gridFrac.y) + smoothstep(0.0, 0.05, gridFrac.y);
+                    
+                    // Dark base for the tiles
+                    vec3 finalCol = tileColor * 0.1;
+                    
+                    // Apply glowing lines
+                    finalCol += tileColor * clamp(gridLines, 0.0, 1.0) * 0.8;
+
+                    // Distance Fog (Atmospheric depth)
+                    float fog = smoothstep(horizon, -1.2, uv.y);
+                    // Combine with a dark gradient at the horizon for "infinite" look
+                    finalCol *= pow(fog, 1.5);
+                    
+                    // Retro scanline effect
+                    float scanline = sin(gl_FragCoord.y * 0.8) * 0.04;
+                    finalCol -= scanline;
+
+                    gl_FragColor = vec4(finalCol, 1.0);
+                }
+            }
+        `
+    });
+
+    const plane = new THREE.Mesh(geometry, material);
+    scene.add(plane);
+
+    function animate(time) {
+        material.uniforms.uTime.value = time / 1000;
+        renderer.render(scene, camera);
+        requestAnimationFrame(animate);
+    }
+
+    window.addEventListener('resize', () => {
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        renderer.setSize(w, h);
+        material.uniforms.uResolution.value.set(w, h);
+    });
+
+    requestAnimationFrame(animate);
+</script>
+</body>
+</html>

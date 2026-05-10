@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Pong</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+</script>
+<script type="module">
+    import * as THREE from 'three';
+
+    // --- Configuration ---
+    const WIDTH = 20;
+    const HEIGHT = 12;
+    const PADDLE_WIDTH = 0.5;
+    const PADDLE_HEIGHT = 3;
+    const BALL_RADIUS = 0.3;
+    const INITIAL_SPEED = 0.15;
+    const SPEED_MULTIPLIER = 1.05;
+
+    // --- Scene Setup ---
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x000000);
+
+    const aspect = window.innerWidth / window.innerHeight;
+    const viewW = WIDTH * aspect;
+    const viewH = HEIGHT;
+    const camera = new THREE.OrthographicCamera(-viewW/2, viewW/2, viewH/2, -viewH/2, 0.1, 100);
+    camera.position.z = 10;
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // --- Score Canvas Texture ---
+    const scoreCanvas = document.createElement('canvas');
+    scoreCanvas.width = 512;
+    scoreCanvas.height = 128;
+    const ctx = scoreCanvas.getContext('2d');
+    const scoreTexture = new THREE.CanvasTexture(scoreCanvas);
+    const scoreMaterial = new THREE.MeshBasicMaterial({ map: scoreTexture, transparent: true });
+    const scoreMesh = new THREE.Mesh(new THREE.PlaneGeometry(4, 1), scoreMaterial);
+    scoreMesh.position.y = HEIGHT / 2 - 1;
+    scene.add(scoreMesh);
+
+    let scores = { left: 0, right: 0 };
+    function updateScoreUI() {
+        ctx.clearRect(0, 0, scoreCanvas.width, scoreCanvas.height);
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 80px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(`${scores.left}   ${scores.right}`, scoreCanvas.width / 2, 90);
+        scoreTexture.needsUpdate = true;
+    }
+    updateScoreUI();
+
+    // --- Objects ---
+    // Paddles
+    const paddleGeo = new THREE.PlaneGeometry(PADDLE_WIDTH, PADDLE_HEIGHT);
+    const paddleMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const leftPaddle = new THREE.Mesh(paddleGeo, paddleMat);
+    leftPaddle.position.x = -WIDTH / 2 + 1;
+    const rightPaddle = new THREE.Mesh(paddleGeo, paddleMat);
+    rightPaddle.position.x = WIDTH / 2 - 1;
+    scene.add(leftPaddle, rightPaddle);
+
+    // Ball
+    const ballGeo = new THREE.SphereGeometry(BALL_RADIUS, 32, 32);
+    const ballMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const ball = new THREE.Mesh(ballGeo, ballMat);
+    scene.add(ball);
+
+    // Center Line (Dashed with Glow)
+    function createDashedLine() {
+        const points = [];
+        const dashLength = 1;
+        const gapLength = 0.5;
+        let currentY = -HEIGHT/2;
+        
+        while(currentY < HEIGHT/2) {
+            points.push(new THREE.Vector3(0, currentY, 0));
+            currentY += dashLength;
+            points.push(new THREE.Vector3(0, currentY, 0));
+            currentY += gapLength;
+        }
+
+        const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
+        
+        // Glow layer (cyan)
+        const glowMat = new THREE.LineBasicMaterial({ 
+            color: 0x00ffff, 
+            transparent: true, 
+            opacity: 0.4,
+            blending: THREE.AdditiveBlending 
+        });
+        const glowLine = new THREE.LineSegments(lineGeo, glowMat);
+        scene.add(glowLine);
+
+        // Main line (white)
+        const mainMat = new THREE.LineBasicMaterial({ color: 0xffffff });
+        const mainLine = new THREE.LineSegments(lineGeo, mainMat);
+        scene.add(mainLine);
+    }
+    createDashedLine();
+
+    // Ball Trail
+    const trailParticles = [];
+    const trailCount = 15;
+    const trailMaterial = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.5 });
+    for(let i=0; i<trailCount; i++) {
+        const p = new THREE.Mesh(new THREE.SphereGeometry(BALL_RADIUS * 0.8, 8, 8), trailMaterial.clone());
+        p.visible = false;
+        scene.add(p);
+        trailParticles.push({ mesh: p, life: 0 });
+    }
+
+    // --- Game State ---
+    let ballVel = new THREE.Vector3(INITIAL_SPEED, (Math.random() - 0.5) * INITIAL_SPEED, 0);
+    function resetBall(winner) {
+        ball.position.set(0, 0, 0);
+        ballVel.set(winner === 'left' ? -INITIAL_SPEED : INITIAL_SPEED, (Math.random() - 0.5) * INITIAL_SPEED, 0);
+    }
+
+    // --- Animation Loop ---
+    function animate() {
+        requestAnimationFrame(animate);
+
+        // Ball Physics
+        ball.position.add(ballVel);
+
+        // Wall Bounce (Top/Bottom)
+        if (Math.abs(ball.position.y) > HEIGHT / 2 - BALL_RADIUS) {
+            ballVel.y *= -1;
+            ball.position.y = Math.sign(ball.position.y) * (HEIGHT / 2 - BALL_RADIUS);
+        }
+
+        // Paddle Collision Logic
+        const checkPaddleCollision = (paddle) => {
+            const dx = Math.abs(ball.position.x - paddle.position.x);
+            const dy = Math.abs(ball.position.y - paddle.position.y);
+            if (dx < (PADDLE_WIDTH/2 + BALL_RADIUS) && dy < (PADDLE_HEIGHT/2 + BALL_RADIUS)) {
+                // Reflect X
+                ballVel.x *= -1;
+                // Prevent sticking: push ball out of paddle
+                ball.position.x = paddle.position.x + Math.sign(ball.position.x - paddle.position.x) * (PADDLE_WIDTH/2 + BALL_RADIUS);
+                // Speed up
+                ballVel.multiplyScalar(SPEED_MULTIPLIER);
+            }
+        };
+
+        checkPaddleCollision(leftPaddle);
+        checkPaddleCollision(rightPaddle);
+
+        // Score Check
+        if (ball.position.x < -WIDTH / 2) {
+            scores.right++;
+            updateScoreUI();
+            resetBall('right');
+        } else if (ball.position.x > WIDTH / 2) {
+            scores.left++;
+            updateScoreUI();
+            resetBall('left');
+        }
+
+        // AI Paddle Logic
+        const aiMove = (paddle) => {
+            const jitter = (Math.random() - 0.5) * 0.04;
+            const targetY = ball.position.y + jitter;
+            paddle.position.y += (targetY - paddle.position.y) * 0.07;
+            // Clamp
+            paddle.position.y = Math.max(-HEIGHT/2 + PADDLE_HEIGHT/2, Math.min(HEIGHT/2 - PADDLE_HEIGHT/2, paddle.position.y));
+        };
+        aiMove(leftPaddle);
+        aiMove(rightPaddle);
+
+        // Trail Update
+        trailParticles.shift();
+        const newTrail = { 
+            mesh: trailParticles[trailCount-1].mesh, // reuse mesh object logic
+            life: 1.0 
+        };
+        // Simplified trail: just cycle through existing meshes
+        let latestIdx = (trailParticles.length - 1);
+        // We need to store history properly. Let's use a simple array of pos and life.
+    }
+
+    // Redefining Trail for better stability
+    const trailHistory = [];
+    function updateTrail() {
+        trailHistory.push({ pos: ball.position.clone(), life: 1.0 });
+        if (trailHistory.length > 20) trailHistory.shift();
+
+        trailParticles.forEach((p, i) => {
+            const hist = trailHistory[i];
+            if (hist) {
+                p.mesh.visible = true;
+                p.mesh.position.copy(hist.pos);
+                p.mesh.material.opacity = hist.life * 0.4;
+            } else {
+                p.mesh.visible = false;
+            }
+        });
+
+        for (let i = 0; i < trailHistory.length; i++) {
+            trailHistory[i].life -= 0.05;
+        }
+        // Clean up dead history
+        while(trailHistory.length > 0 && trailHistory[0].life <= 0) {
+            trailHistory.shift();
+        }
+    }
+
+    // Final Render Loop structure
+    function loop() {
+        requestAnimationFrame(loop);
+
+        // Ball Physics
+        ball.position.add(ballVel);
+        if (Math.abs(ball.position.y) > HEIGHT / 2 - BALL_RADIUS) {
+            ballVel.y *= -1;
+            ball.position.y = Math.sign(ball.position.y) * (HEIGHT/2 - BALL_RADIUS);
+        }
+
+        const checkPaddleCollision = (paddle) => {
+            if (Math.abs(ball.position.x - paddle.position.x) < (PADDLE_WIDTH/2 + BALL_RADIUS) && 
+                Math.abs(ball.position.y - paddle.position.y) < (PADDLE_HEIGHT/2)) {
+                ballVel.x *= -1;
+                ball.position.x = paddle.position.x + Math.sign(ball.position.x - paddle.position.x) * (PADDLE_WIDTH/2 + BALL_RADIUS);
+                ballVel.multiplyScalar(SPEED_MULTIPLIER);
+            }
+        };
+        checkPaddleCollision(leftPaddle);
+        checkPaddleCollision(rightPaddle);
+
+        if (ball.position.x < -WIDTH / 2) { scores.right++; updateScoreUI(); resetBall('right'); }
+        else if (ball.position.x > WIDTH / 2) { scores.left++; updateScoreUI(); resetBall('left'); }
+
+        const aiMove = (paddle) => {
+            paddle.position.y += (ball.position.y - paddle.position.y) * 0.07 + (Math.random() - 0.5) * 0.03;
+            paddle.position.y = Math.max(-HEIGHT/2 + PADDLE_HEIGHT/2, Math.min(HEIGHT/2 - PADDLE_HEIGHT/2, paddle.position.y));
+        };
+        aiMove(leftPaddle);
+        aiMove(rightPaddle);
+
+        // Trail Logic
+        trailHistory.push({ pos: ball.position.clone(), life: 1.0 });
+        if (trailHistory.length > 30) trailHistory.shift();
+        trailParticles.forEach((p, i) => {
+            const hist = trailHistory[i]; // This index is slightly off but works for a visual effect
+            // Let's use more direct approach:
+        });
+        // Re-correcting Trail Implementation for simplicity/reliability
+    }
+
+    // --- Corrected Loop Implementation ---
+    const ballTrailPoints = [];
+    function tick() {
+        requestAnimationFrame(tick);
+
+        ball.position.add(ballVel);
+        if (Math.abs(ball.position.y) > HEIGHT / 2 - BALL_RADIUS) {
+            ballVel.y *= -1;
+            ball.position.y = Math.sign(ball.position.y) * (HEIGHT/2 - BALL_RADIUS);
+        }
+
+        const checkPaddleCollision = (paddle) => {
+            if (Math.abs(ball.position.x - paddle.position.x) < (PADDLE_WIDTH/2 + BALL_RADIUS) && 
+                Math.abs(ball.position.y - paddle.position.y) < (PADDLE_HEIGHT/2)) {
+                ballVel.x *= -1;
+                ball.position.x = paddle.position.x + Math.sign(ball.position.x - paddle.position.x) * (PADDLE_WIDTH/2 + BALL_RADIUS);
+                ballVel.multiplyScalar(SPEED_MULTIPLIER);
+            }
+        };
+        checkPaddleCollision(leftPaddle);
+        checkPaddleCollision(rightPaddle);
+
+        if (ball.position.x < -WIDTH / 2) { scores.right++; updateScoreUI(); resetBall('right'); }
+        else if (ball.position.x > WIDTH / 2) { scores.left++; updateScoreUI(); resetBall('left'); }
+
+        const aiMove = (paddle) => {
+            paddle.position.y += (ball.position.y - paddle.position.y) * 0.07 + (Math.random() - 0.5) * 0.03;
+            paddle.position.y = Math.max(-HEIGHT/2 + PADDLE_HEIGHT/2, Math.min(HEIGHT/2 - PADDLE_HEIGHT/2, paddle.position.y));
+        };
+        aiMove(leftPaddle);
+        aiMove(rightPaddle);
+
+        // Trail Logic Refined
+        ballTrailPoints.push({ pos: ball.position.clone(), life: 1.0 });
+        for (let i = ballTrailPoints.length - 1; i >= 0; i--) {
+            ballTrailPoints[i].life -= 0.03;
+        }
+        while(ballTrailPoints.length > 0 && ballTrailPoints[0].life <= 0) {
+            ballTrailPoints.shift();
+        }
+
+        trailParticles.forEach((p, i) => {
+            const histIdx = ballTrailPoints.length - 1 - i;
+            if (histIdx >= 0) {
+                p.mesh.visible = true;
+                p.mesh.position.copy(ballTrailPoints[histIdx].pos);
+                p.mesh.material.opacity = ballTrailPoints[histIdx].life * 0.5;
+            } else {
+                p.mesh.visible = false;
+            }
+        });
+
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        const aspect = window.innerWidth / window.innerHeight;
+        const viewW = WIDTH * aspect;
+        camera.left = -viewW/2;
+        camera.right = viewW/2;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    tick();
+
+</script>
+</body>
+</html>

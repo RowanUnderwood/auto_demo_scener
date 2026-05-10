@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>CHRONOS_VOID // DEMO</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: monospace; }
+        #ui { position: absolute; bottom: 20px; left: 20px; color: #0ff; pointer-events: none; text-shadow: 0 0 5px #0ff; font-size: 12px; letter-spacing: 2px; }
+    </style>
+</head>
+<body>
+    <div id="ui">SYSTEM_STATUS: DREAMING... <br>CORE_TEMP: 0xDEADBEEF</div>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        /** 
+         * IDEA: "CHRONOS VOID"
+         * A hybrid of a 4D Tesseract projection, a Raymarched SDF landscape, 
+         * and a Vector Field Streamline system. 
+         * The "Hyper-Landscape" is an SDF surface that warps according to a 4D rotation matrix,
+         * creating a world that feels like it's folding into itself.
+         */
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Shader for the Hyper-Landscape (Raymarching + 4D SDF)
+        const fragmentShader = `
+            uniform float time;
+            uniform vec2 resolution;
+            uniform vec3 cameraPos;
+
+            mat2 rot(float a) { return mat2(cos(a), -sin(a), sin(a), cos(a)); }
+
+            // 4D rotation helper for the SDF folding
+            vec4 rotate4D(vec4 p, float t) {
+                p.xy *= rot(t * 0.3);
+                p.zw *= rot(t * 0.5);
+                return p;
+            }
+
+            float sdBox(vec3 p, vec3 b) {
+                vec3 q = abs(p) - b;
+                return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
+            }
+
+            float map(vec3 p) {
+                // Inject 4D time-warping into the 3D space via a projection-like effect
+                vec4 p4 = vec4(p, sin(time * 0.2));
+                p4 = rotate4D(p4, time);
+                vec3 q = p4.xyz;
+
+                // Fractal repetition of boxes
+                float d = sdBox(mod(q + 2.0, 4.0) - 2.0, vec3(0.8));
+                
+                // Add a "pulse" using the W component (the 4th dimension)
+                d -= sin(p4.w * 2.0) * 0.2;
+                return d;
+            }
+
+            vec3 getNormal(vec3 p) {
+                vec2 e = vec2(0.01, 0);
+                return normalize(vec3(
+                    map(p + e.xyy) - map(p - e.xyy),
+                    map(p + e.yxy) - map(p - e.yxy),
+                    map(p + e.yyx) - map(p - e.yyx)
+                ));
+            }
+
+            void main() {
+                vec2 uv = (gl_FragCoord.xy - 0.5 * resolution.xy) / min(resolution.y, resolution.x);
+                vec3 ro = cameraPos;
+                vec3 rd = normalize(vec3(uv, -1.0));
+
+                // Rotate ray direction to follow camera orbit
+                rd.xz *= rot(time * 0.2);
+                rd.yz *= rot(sin(time*0.5)*0.5);
+
+                float t = 0.0;
+                for(int i=0; i<80; i++) {
+                    vec3 p = ro + rd * t;
+                    float d = map(p);
+                    if(d < 0.001 || t > 40.0) break;
+                    t += d;
+                }
+
+                vec3 col = vec3(0.0);
+                if(t < 40.0) {
+                    vec3 p = ro + rd * t;
+                    vec3 n = getNormal(p);
+                    float diff = max(dot(n, normalize(vec3(1,2,3))), 0.0);
+                    
+                    // Color based on position and normal (iridescent effect)
+                    col = 0.5 + 0.5 * cos(time * 0.1 + p.xyx + vec3(0, 2, 4));
+                    col *= diff;
+                    
+                    // Fog/Depth
+                    col *= exp(-0.05 * t);
+                }
+
+                // Add a "scanline" glitch effect
+                float scanline = sin(gl_FragCoord.y * 1.5 + time * 10.0) * 0.04;
+                col -= scanline;
+
+                gl_FragColor = vec4(col, 1.0);
+            }
+        `;
+
+        const vertexShader = `
+            void main() { gl_Position = vec4(position, 1.0); }
+        `;
+
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const uniforms = {
+            time: { value: 0 },
+            resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+            cameraPos: { value: new THREE.Vector3(0, 0, 5) }
+        };
+
+        const material = new THREE.ShaderMaterial({
+            uniforms,
+            vertexShader,
+            fragmentShader
+        });
+
+        const quad = new THREE.Mesh(geometry, material);
+        scene.add(quad);
+
+        // Add a particle "starfield" on top for depth
+        const starGeo = new THREE.BufferGeometry();
+        const starCount = 3000;
+        const posArr = new Float32Array(starCount * 3);
+        for(let i=0; i<starCount*3; i++) posArr[i] = (Math.random() - 0.5) * 100;
+        starGeo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+        const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.05, transparent: true, opacity: 0.8 });
+        const stars = new THREE.Points(starGeo, starMat);
+        scene.add(stars);
+
+        // Add a wireframe "Tesseract" overlay
+        const tesseractGroup = new THREE.Group();
+        const edgeMat = new THREE.LineBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.3 });
+        
+        function createHyperCube() {
+            // Simple 8-vertex cube for visual feedback of the 4D rotation
+            const pts = [];
+            for(let i=0; i<8; i++) pts.push(new THREE.Vector3((i&1?1:-1), (i&2?1:-1), (i&4?1:-1)));
+            
+            const indices = [0,1, 1,3, 3,2, 2,0, 4,5, 5,7, 7,6, 6,4, 0,4, 1,5, 2,6, 3,7];
+            const geo = new THREE.BufferGeometry().setFromPoints(pts);
+            // This is a simplified representation for the overlay
+            const wireframe = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(2,2,2)), edgeMat);
+            tesseractGroup.add(wireframe);
+        }
+        createHyperCube();
+        scene.add(tesseractGroup);
+
+        camera.position.z = 5;
+
+        window.addEventListener('resize', () => {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+        });
+
+        function animate(t) {
+            requestAnimationFrame(animate);
+            const time = t * 0.001;
+            uniforms.time.value = time;
+
+            // Animate the Tesseract overlay
+            tesseractGroup.rotation.y = time * 0.5;
+            tesseractGroup.rotation.z = time * 0.3;
+            tesseractGroup.scale.setScalar(1 + Math.sin(time) * 0.2);
+
+            // Move stars
+            stars.rotation.y += 0.001;
+
+            renderer.render(scene, camera);
+        }
+
+        animate(0);
+    </script>
+</body>
+</html>

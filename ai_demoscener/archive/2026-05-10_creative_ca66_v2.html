@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CHRONOS_KALEIDOSCOPE</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #050505; font-family: 'Courier New', monospace; }
+        canvas { display: block; }
+        #overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.6);
+            pointer-events: none;
+            font-size: 10px;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+        }
+    </style>
+</head>
+<body>
+    <div id="overlay">Temporal_Flux: Active // Geometry: Recursive_Hypercube</div>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        /**
+         * CONCEPT: "CHRONOS KALEIDOSCOPE"
+         * A departure from the Menger Void into a crystalline, hyper-structured dimension.
+         * Instead of a central sponge, we use iterative space folding (KIFS) 
+         * to create kaleidoscopic geometry with high-frequency specular highlights.
+         * Aesthetic: Iridescent, sharp, gold/silver/deep blue palette.
+         */
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const uniforms = {
+            u_time: { value: 0 },
+            u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+            u_mouse: { value: new THREE.Vector2(0.5, 0.5) }
+        };
+
+        const fragmentShader = `
+            uniform float u_time;
+            uniform vec2 u_resolution;
+            uniform vec2 u_mouse;
+
+            #define MAX_STEPS 100
+            #define SURF_DIST 0.002
+            #define MAX_DIST 25.0
+
+            mat2 rot(float a) {
+                float s = sin(a), c = cos(a);
+                return mat2(c, -s, s, c);
+            }
+
+            // Kaleidoscope folding
+            vec3 fold(vec3 p) {
+                p.xy *= rot(u_time * 0.1 + u_mouse.x * 2.0);
+                p.xz *= rot(u_time * 0.15);
+                
+                float s = 1.5;
+                for(int i = 0; i < 5; i++) {
+                    p = abs(p) - vec3(0.4, 0.8, 0.4);
+                    p.xy *= rot(0.5);
+                    p.yz *= rot(0.3);
+                    p *= 1.6;
+                }
+                return p / 1.6; // Normalize scale back
+            }
+
+            float map(vec3 p) {
+                // Distance to a base central box/cube structure
+                float box = length(max(abs(p) - vec3(0.7), 0.0)) - 0.02;
+                
+                // Fold space into fractal patterns
+                vec3 fp = p;
+                for(int i=0; i<4; i++) {
+                    fp = abs(fp) - 0.5;
+                    fp.xy *= rot(u_time * 0.2 + float(i));
+                    fp *= 1.3;
+                }
+                float fractal = length(fp) * 0.4;
+                
+                return mix(box, fractal, 0.6);
+            }
+
+            vec3 getNormal(vec3 p) {
+                vec2 e = vec2(0.001, 0);
+                return normalize(vec3(
+                    map(p + e.xyy) - map(p - e.xyy),
+                    map(p + e.yxy) - map(p - e.yxy),
+                    map(p + e.yyx) - map(p - e.yyx)
+                ));
+            }
+
+            vec3 getPalette(float t) {
+                // Iridescent metallic palette: Gold, Silver, Deep Blue
+                vec3 col1 = vec3(0.9, 0.7, 0.4); // Gold
+                vec3 col2 = vec3(0.4, 0.5, 0.9); // Blue
+                vec3 col3 = vec3(0.9, 0.9, 1.0); // Silver
+                
+                float p1 = smoothstep(0.0, 0.5, sin(t * 1.2));
+                float p2 = smoothstep(0.4, 0.9, cos(t * 0.8 + 1.0));
+                
+                return mix(mix(col1, col2, p1), col3, p2);
+            }
+
+            void main() {
+                vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / min(u_resolution.y, u_resolution.x);
+                
+                // Camera setup: slight zoom/movement effect
+                vec3 ro = vec3(0, 0, -4.0 + sin(u_time * 0.2) * 0.5);
+                vec3 rd = normalize(vec3(uv, 1.8));
+
+                // Raymarching
+                float dO = 0.0;
+                for(int i=0; i<MAX_STEPS; i++) {
+                    vec3 p = ro + rd * dO;
+                    float dS = map(p);
+                    dO += dS;
+                    if(dO > MAX_DIST || abs(dS) < SURF_DIST) break;
+                }
+
+                vec3 color = vec3(0.02, 0.03, 0.05); // Deep space background
+
+                if(dO < MAX_DIST) {
+                    vec3 p = ro + rd * dO;
+                    vec3 n = getNormal(p);
+                    
+                    // Lighting logic: Sharp specular highlights
+                    vec3 lightPos = vec3(2.0, 4.0, -3.0);
+                    vec3 l = normalize(lightPos - p);
+                    float diff = max(dot(n, l), 0.0);
+                    float spec = pow(max(dot(reflect(-l, n), -rd), 0.0), 64.0);
+                    float fresnel = pow(1.0 + dot(rd, n), 5.0);
+
+                    // Base color based on position/time
+                    vec3 baseCol = getPalette(length(p) * 0.2 + u_time * 0.1);
+                    
+                    color = baseCol * diff;
+                    color += spec * vec3(1.0, 0.9, 0.8); // Specular glint
+                    color += fresnel * getPalette(u_time * 0.5) * 0.5; // Rim light
+
+                    // Depth fog
+                    color = mix(color, vec3(0.01), 1.0 - exp(-0.15 * dO));
+                } else {
+                    // Background: Distant crystalline dust
+                    float dust = pow(fract(sin(dot(uv, vec2(12.989, 78.233))) * 43758.5), 50.0);
+                    color += dust * getPalette(u_time * 0.1) * 0.2;
+                }
+
+                // Post: Grain & Vignette
+                float vig = smoothstep(1.2, 0.4, length(uv));
+                color *= vig;
+                
+                float grain = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) * 0.04;
+                color += grain;
+
+                gl_FragColor = vec4(color, 1.0);
+            }
+        `;
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: uniforms,
+            fragmentShader: fragmentShader,
+            vertexShader: `void main() { gl_Position = vec4(position, 1.0); }`
+        });
+
+        const quad = new THREE.Mesh(geometry, material);
+        scene.add(quad);
+
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            uniforms.u_time.value = clock.getElapsedTime();
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            uniforms.u_resolution.value.set(window.innerWidth, window.innerHeight);
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            uniforms.u_mouse.value.set(e.clientX / window.innerWidth, 1 - e.clientY / window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

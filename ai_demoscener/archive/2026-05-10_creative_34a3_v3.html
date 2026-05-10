@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { margin: 0; overflow: hidden; background: #020205; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+</script>
+<script type="module">
+    import * as THREE from 'three';
+
+    /**
+     * CONCEPT: "CHRONOS SYNAPSE"
+     * A reimagining of the kinetic nebula. Instead of crystalline shards in a fog, 
+     * we create a hyper-structured "digital clockwork" or "neural lattice".
+     * Core elements: 
+     * 1. A procedural geometric lattice (Wireframe Spheres/Torus knots).
+     * 2. High-velocity light streaks (simulating data flow).
+     * 3. A monochromatic, deep-blue aesthetic with gold accents.
+     */
+
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x020205, 0.08);
+
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    document.body.appendChild(renderer.domElement);
+
+    // --- 1. THE DATA LATTICE (Central Structure) ---
+    const latticeGroup = new THREE.Group();
+    scene.add(latticeGroup);
+
+    const createLatticeLayer = (radius, detail, wireframeColor) => {
+        const geometry = new THREE.IcosahedronGeometry(radius, detail);
+        const material = new THREE.MeshBasicMaterial({
+            color: wireframeColor,
+            wireframe: true,
+            transparent: true,
+            opacity: 0.15
+        });
+        return new THREE.Mesh(geometry, material);
+    };
+
+    for (let i = 0; i < 4; i++) {
+        const layer = createLatticeLayer(2 + i * 1.5, i === 3 ? 3 : 1, i % 2 === 0 ? 0x00ffff : 0xffd700);
+        latticeGroup.add(layer);
+    }
+
+    // --- 2. NEURAL PULSES (Fast Moving Particles) ---
+    const pulseCount = 1500;
+    const pGeo = new THREE.BufferGeometry();
+    const posArr = new Float32Array(pulseCount * 3);
+    const colArr = new Float32Array(pulseCount * 3);
+    const sizes = new Float32Array(pulseCount);
+    // Custom attribute for movement speed/direction logic in shader or manual loop
+    const lifeArr = new Float32Array(pulseCount);
+
+    for (let i = 0; i < pulseCount; i++) {
+        resetParticle(i, posArr, colArr, sizes, lifeArr);
+    }
+
+    pGeo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+    pGeo.setAttribute('color', new THREE.BufferAttribute(colArr, 3));
+    pGeo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+    const pMat = new THREE.PointsMaterial({
+        size: 0.05,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.8,
+        blending: THREE.AdditiveBlending
+    });
+
+    const pulses = new THREE.Points(pGeo, pMat);
+    scene.add(pulses);
+
+    function resetParticle(i, pos, col, siz, life) {
+        // Start at a random point on one of the lattice spheres
+        const r = 2 + Math.random() * 6;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(2 * Math.random() - 1);
+
+        pos[i*3] = r * Math.sin(phi) * Math.cos(theta);
+        pos[i*3+1] = r * Math.sin(phi) * Math.sin(theta);
+        pos[i*3+2] = r * Math.cos(phi);
+
+        // Color: Cyan or Gold
+        const isGold = Math.random() > 0.7;
+        const color = new THREE.Color(isGold ? 0xffd700 : 0x00ffff);
+        col[i*3] = color.r;
+        col[i*3+1] = color.g;
+        col[i*3+2] = color.b;
+
+        siz[i] = Math.random() * 2.0 + 0.5;
+        life[i] = Math.random(); // Life from 0 to 1
+    }
+
+    // --- 3. AMBIENT GLOW (Background Post-Processing Simulation) ---
+    const glowGeo = new THREE.SphereGeometry(15, 32, 32);
+    const glowMat = new THREE.ShaderMaterial({
+        uniforms: {
+            time: { value: 0 },
+            color: { value: new THREE.Color(0x0a0a1a) }
+        },
+        vertexShader: `
+            varying vec3 vNormal;
+            void main() {
+                vNormal = normalize(normalMatrix * normal);
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `,
+        fragmentShader: `
+            uniform float time;
+            uniform vec3 color;
+            varying vec3 vNormal;
+            void main() {
+                float intensity = pow(0.6 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 4.0);
+                gl_FragColor = vec4(color + (sin(time * 0.5) * 0.1), 1.0) * intensity;
+            }
+        `,
+        side: THREE.BackSide,
+        transparent: true,
+        blending: THREE.AdditiveBlending
+    });
+    const glowMesh = new THREE.Mesh(glowGeo, glowMat);
+    scene.add(glowMesh);
+
+    // --- LIGHTING ---
+    const pLight1 = new THREE.PointLight(0x00ffff, 5, 20);
+    pLight1.position.set(5, 5, 5);
+    scene.add(pLight1);
+
+    const pLight2 = new THREE.PointLight(0xffd700, 5, 20);
+    pLight2.position.set(-5, -5, 5);
+    scene.add(pLight2);
+
+    // --- ANIMATION LOOP ---
+    camera.position.z = 15;
+    let time = 0;
+
+    function animate() {
+        requestAnimationFrame(animate);
+        time += 0.015;
+
+        latticeGroup.rotation.y += 0.001;
+        latticeGroup.rotation.x += 0.0005;
+
+        latticeGroup.children.forEach((layer, i) => {
+            layer.rotation.z += 0.002 * (i + 1);
+            layer.scale.setScalar(1 + Math.sin(time * 0.5 + i) * 0.05);
+        });
+
+        const positions = pGeo.attributes.position.array;
+        const life = lifeArr; // We use the local array for speed
+
+        for (let i = 0; i < pulseCount; i++) {
+            const idx = i * 3;
+            
+            // Move outward from center with noise-like direction
+            const speed = 0.1 + Math.sin(time + life[i] * 10) * 0.05;
+            
+            // Calculate normalized direction based on current pos (radial movement)
+            const mag = Math.sqrt(positions[idx]**2 + positions[idx+1]**2 + positions[idx+2]**2);
+            positions[idx] += (positions[idx] / mag) * speed;
+            positions[idx+1] += (positions[idx+1] / mag) * speed;
+            positions[idx+2] += (positions[idx+2] / mag) * speed;
+
+            // Update life
+            life[i] += 0.005;
+
+            // Reset if too far or life ended
+            if (life[i] > 1.0 || mag > 20) {
+                resetParticle(i, positions, colArr, sizes, life);
+            }
+        }
+        pGeo.attributes.position.needsUpdate = true;
+
+        glowMat.uniforms.time.value = time;
+
+        // Camera drift
+        camera.position.x = Math.sin(time * 0.2) * 5;
+        camera.position.y = Math.cos(time * 0.3) * 3;
+        camera.lookAt(0, 0, 0);
+
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+</script>
+</body>
+</html>

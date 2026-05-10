@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sorting Visualizer</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #111; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+</script>
+<script type="module">
+    import * as THREE from 'three';
+
+    const COUNT = 200;
+    const BAR_WIDTH = 0.8;
+    const MAX_VAL = 50;
+    const VIEW_DISTANCE = 100; // Increased to ensure all bars are in view
+
+    let scene, camera, renderer, bars = [], values = [];
+    let generator, currentAlgoIndex = 0;
+    const algos = ['bubble', 'quick', 'merge'];
+    let activeIndices = [];
+    let frameCount = 0;
+    const SPEED = 1; 
+
+    function init() {
+        scene = new THREE.Scene();
+        const aspect = window.innerWidth / window.innerHeight;
+        camera = new THREE.OrthographicCamera(-VIEW_DISTANCE * aspect, VIEW_DISTANCE * aspect, VIEW_DISTANCE, -VIEW_DISTANCE, 1, 1000);
+        camera.position.set(0, 0, 50);
+        camera.lookAt(0, 0, 0);
+
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const geometry = new THREE.BoxGeometry(BAR_WIDTH, 1, 1);
+        // Translate once so the pivot is at the bottom of the box
+        geometry.translate(0, 0.5, 0); 
+        
+        for (let i = 0; i < COUNT; i++) {
+            const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            const bar = new THREE.Mesh(geometry, material);
+            bar.position.x = (i - COUNT / 2) * (BAR_WIDTH + 0.1);
+            bar.position.y = 0;
+            scene.add(bar);
+            bars.push(bar);
+        }
+
+        resetData();
+        startNextAlgorithm();
+        animate();
+    }
+
+    function resetData() {
+        values = [];
+        for (let i = 0; i < COUNT; i++) {
+            values.push(Math.random() * MAX_VAL + 1);
+        }
+        updateBars();
+    }
+
+    function shuffle() {
+        for (let i = values.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [values[i], values[j]] = [values[j], values[i]];
+        }
+    }
+
+    function updateBars() {
+        for (let i = 0; i < COUNT; i++) {
+            bars[i].scale.y = values[i];
+            const hue = (values[i] / MAX_VAL) * 0.7 + 0.5; 
+            bars[i].userData.baseColor = new THREE.Color().setHSL(hue, 0.8, 0.5);
+        }
+    }
+
+    function* bubbleSort(arr) {
+        const n = arr.length;
+        for (let i = 0; i < n; i++) {
+            for (let j = 0; j < n - i - 1; j++) {
+                yield { type: 'compare', indices: [j, j + 1] };
+                if (arr[j] > arr[j + 1]) {
+                    [arr[j], arr[j + 1]] = [arr[j + 1], arr[j]];
+                    yield { type: 'swap', indices: [j, j + 1] };
+                }
+            }
+        }
+    }
+
+    function* quickSort(arr, low, high) {
+        if (low < high) {
+            let pivotIdx = yield* partition(arr, low, high);
+            yield* quickSort(arr, low, pivotIdx - 1);
+            yield* quickSort(arr, pivotIdx + 1, high);
+        }
+    }
+
+    function* partition(arr, low, high) {
+        let pivot = arr[high];
+        yield { type: 'compare', indices: [high] };
+        let i = low - 1;
+        for (let j = low; j < high; j++) {
+            yield { type: 'compare', indices: [j, high] };
+            if (arr[j] < pivot) {
+                i++;
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+                yield { type: 'swap', indices: [i, j] };
+            }
+        }
+        [arr[i + 1], arr[high]] = [arr[high], arr[i + 1]];
+        yield { type: 'swap', indices: [i + 1, high] };
+        return i + 1;
+    }
+
+    function* mergeSort(arr, start, end) {
+        if (start >= end) return;
+        const mid = Math.floor((start + end) / 2);
+        yield* mergeSort(arr, start, mid);
+        yield* mergeSort(arr, mid + 1, end);
+
+        let leftIdx = start;
+        let rightIdx = mid + 1;
+        const temp = [];
+
+        while (leftIdx <= mid && rightIdx <= end) {
+            yield { type: 'compare', indices: [leftIdx, rightIdx] };
+            if (arr[leftIdx] <= arr[rightIdx]) {
+                temp.push(arr[leftIdx++]);
+            } else {
+                temp.push(arr[rightIdx++]);
+            }
+        }
+        while (leftIdx <= mid) temp.push(arr[leftIdx++]);
+        while (rightIdx <= end) temp.push(arr[rightIdx++]);
+
+        for (let i = 0; i < temp.length; i++) {
+            arr[start + i] = temp[i];
+            yield { type: 'swap', indices: [start + i] };
+        }
+    }
+
+    function startNextAlgorithm() {
+        const algoName = algos[currentAlgoIndex];
+        shuffle();
+        updateBars();
+        
+        if (algoName === 'bubble') generator = bubbleSort(values);
+        else if (algoName === 'quick') generator = quickSort(values, 0, COUNT - 1);
+        else if (algoName === 'merge') generator = mergeSort(values, 0, COUNT - 1);
+
+        currentAlgoIndex = (currentAlgoIndex + 1) % algos.length;
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+        frameCount++;
+
+        if (frameCount % SPEED === 0) {
+            const result = generator.next();
+            
+            if (result.done) {
+                startNextAlgorithm();
+                activeIndices = [];
+            } else {
+                activeIndices = result.value.indices;
+                for (let i = 0; i < COUNT; i++) {
+                    bars[i].scale.y = values[i];
+                }
+            }
+        }
+
+        for (let i = 0; i < COUNT; i++) {
+            if (activeIndices.indexOf(i) !== -1) {
+                bars[i].material.color.set(0xffffff);
+            } else {
+                bars[i].material.color.copy(bars[i].userData.baseColor);
+            }
+        }
+
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        const aspect = window.innerWidth / window.innerHeight;
+        camera.left = -VIEW_DISTANCE * aspect;
+        camera.right = VIEW_DISTANCE * aspect;
+        camera.top = VIEW_DISTANCE;
+        camera.bottom = -VIEW_DISTANCE;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    init();
+</script>
+</body>
+</html>

@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #050505; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+    </style>
+</head>
+<body>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.body.appendChild(renderer.domElement);
+
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const uniforms = {
+            u_time: { value: 0.0 },
+            u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+        };
+
+        const material = new THREE.ShaderMaterial({
+            uniforms,
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float u_time;
+                uniform vec2 u_resolution;
+                varying vec2 vUv;
+
+                // Helper for color palette generation
+                vec3 palette(float t) {
+                    vec3 a = vec3(0.5, 0.5, 0.5);
+                    vec3 b = vec3(0.5, 0.5, 0.5);
+                    vec3 c = vec3(1.0, 1.0, 1.0);
+                    vec3 d = vec3(0.263, 0.416, 0.557);
+                    return a + b * cos(6.28318 * (c * t + d));
+                }
+
+                void main() {
+                    // Aspect ratio correction
+                    vec2 uv = (vUv - 0.5);
+                    uv.x *= u_resolution.x / u_resolution.y;
+
+                    float r = length(uv);
+                    float angle = atan(uv.y, uv.x);
+
+                    // Create a swirling fluid motion using polar interference
+                    // We combine radius and angle with time to create spiral waves
+                    float swirl = sin(r * 8.0 - u_time * 1.2 + angle * 3.0);
+                    float ripples = sin(r * 25.0 - u_time * 4.0);
+                    float nebula = sin(angle * 5.0 + r * 2.0 + u_time * 0.5);
+
+                    // Combine components into a complex scalar field
+                    float pattern = swirl * 0.5 + ripples * 0.2 + nebula * 0.3;
+                    
+                    // Map the pattern to a color spectrum
+                    // Using the pattern value as a phase for our palette function
+                    vec3 col = palette(pattern * 0.5 + u_time * 0.1);
+
+                    // Apply depth/vignette using radial falloff
+                    float vignette = smoothstep(1.2, 0.2, r);
+                    
+                    // Add a "glow" effect by layering the pattern brightness
+                    float glow = pow(abs(pattern), 3.0) * 0.5;
+                    col += glow * palette(u_time * 0.05);
+
+                    // Final composite: Pattern color * Vignette + Glow intensity
+                    vec3 finalColor = col * vignette;
+                    
+                    // Darken the extreme edges for a cinematic feel
+                    finalColor *= smoothstep(1.5, 0.4, r);
+
+                    gl_FragColor = vec4(finalColor, 1.0);
+                }
+            `
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        function animate(time) {
+            uniforms.u_time.value = time * 0.001;
+            renderer.render(scene, camera);
+            requestAnimationFrame(animate);
+        }
+
+        window.addEventListener('resize', () => {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            renderer.setSize(width, height);
+            uniforms.u_resolution.value.set(width, height);
+        });
+
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>

@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mandelbrot Zoom</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+    </style>
+</head>
+<body>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const uniforms = {
+            u_time: { value: 0 },
+            u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+        };
+
+        const material = new THREE.ShaderMaterial({
+            uniforms,
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float u_time;
+                uniform vec2 u_resolution;
+                varying vec2 vUv;
+
+                void main() {
+                    // Aspect ratio correction
+                    vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / min(u_resolution.y, u_resolution.x);
+                    
+                    // Center and zoom parameters
+                    vec2 center = vec2(-0.745, 0.1);
+                    float scale = exp(-u_time * 0.3);
+                    
+                    // Map UV to C plane
+                    vec2 c = center + uv * scale;
+                    
+                    // Mandelbrot iteration
+                    vec2 z = vec2(0.0);
+                    float iter = 0.0;
+                    const float max_iter = 200.0;
+                    
+                    for(float i = 0.0; i < max_iter; i++) {
+                        // z = z^2 + c -> (x+iy)^2 + (cx+icy) = x^2-y^2+cx + i(2xy+cy)
+                        z = vec2(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + c;
+                        if(dot(z, z) > 16.0) break; // Escape radius squared
+                        iter++;
+                    }
+
+                    vec3 color = vec3(0.0);
+                    if(iter < max_iter) {
+                        // Smooth iteration count (Renormalization)
+                        float log_zn = log(dot(z, z)) / 2.0;
+                        float nu = log(log_zn / log(2.0)) / log(2.0);
+                        float smooth_iter = iter + 1.0 - nu;
+
+                        // Sin-based palette: color = 0.5 + 0.5 * sin(freq * val + phase)
+                        color = 0.5 + 0.5 * sin(vec3(0.0, 2.0, 4.0) + smooth_iter * 0.15);
+                    }
+
+                    gl_FragColor = vec4(color, 1.0);
+                }
+            `
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        function animate(time) {
+            uniforms.u_time.value = time * 0.001;
+            renderer.render(scene, camera);
+            requestAnimationFrame(animate);
+        }
+
+        window.addEventListener('resize', () => {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            renderer.setSize(w, h);
+            uniforms.u_resolution.value.set(w, h);
+        });
+
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>

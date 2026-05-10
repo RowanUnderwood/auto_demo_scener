@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Three.js Shader Effect</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+    </style>
+</head>
+<body>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const uniforms = {
+            uTime: { value: 0 },
+            uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+        };
+
+        const material = new THREE.ShaderMaterial({
+            uniforms,
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float uTime;
+                uniform vec2 uResolution;
+                varying vec2 vUv;
+
+                void main() {
+                    // Center UVs and adjust for aspect ratio
+                    vec2 uv = (vUv - 0.5) * 2.0;
+                    uv.x *= uResolution.x / uResolution.y;
+
+                    // Rotation matrix calculation
+                    float angle = uTime * 0.3;
+                    float s_rot = sin(angle);
+                    float c_rot = cos(angle);
+                    mat2 rotationMatrix = mat2(c_rot, -s_rot, s_rot, c_rot);
+
+                    // Apply rotation
+                    vec2 rotatedUv = rotationMatrix * uv;
+
+                    // Scale factor calculation
+                    float scale = 1.5 + sin(uTime) * 0.7;
+                    
+                    // We apply a base tiling multiplier to make the checkerboard visible,
+                    // then multiply by the dynamic scale.
+                    vec2 p = rotatedUv * (scale * 8.0);
+
+                    // Procedural checker logic: floor(p.x) + floor(p.y) mod 2
+                    // Using fract() on coordinates allows for infinite tiling visualization
+                    float check = mod(floor(p.x) + floor(p.y), 2.0);
+
+                    // Contrasting colors
+                    vec3 colorA = vec3(0.05, 0.1, 0.2); // Deep Navy
+                    vec3 colorB = vec3(0.0, 0.9, 0.7);  // Bright Cyan/Mint
+
+                    vec3 finalColor = mix(colorA, colorB, check);
+
+                    gl_FragColor = vec4(finalColor, 1.0);
+                }
+            `
+        });
+
+        const quad = new THREE.Mesh(geometry, material);
+        scene.add(quad);
+
+        function animate(time) {
+            uniforms.uTime.value = time * 0.001;
+            renderer.render(scene, camera);
+            requestAnimationFrame(animate);
+        }
+
+        window.addEventListener('resize', () => {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+        });
+
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>

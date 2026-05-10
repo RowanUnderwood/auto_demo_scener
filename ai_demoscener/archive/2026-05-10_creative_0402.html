@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEON_SYNAPSE // DEMO</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: monospace; }
+        canvas { display: block; }
+        #ui { position: absolute; bottom: 20px; left: 20px; color: #0ff; pointer-events: none; text-shadow: 0 0 5px #0ff; font-size: 12px; letter-spacing: 2px; }
+    </style>
+</head>
+<body>
+    <div id="ui">SYSTEM_STATUS: NEURAL_LINK_ACTIVE // SIGNAL_STRENGTH: 98%</div>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        /** 
+         * CONCEPT: NEON SYNAPSE
+         * A hybrid of "Boids Flocking", "Vector Field Streamlines", and "Raymarched Scene".
+         * Thousands of light-emitting particles (synapses) follow a complex, shifting 
+         * electromagnetic field represented by an invisible raymarched SDF. 
+         * As they pass through high-density zones, the background "brain" geometry glows.
+         */
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.body.appendChild(renderer.domElement);
+
+        // --- SHADERS ---
+
+        const backgroundVertex = `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `;
+
+        const backgroundFragment = `
+            uniform float time;
+            varying vec2 vUv;
+
+            mat2 rot(float a) { return mat2(cos(a), -sin(a), sin(a), cos(a)); }
+
+            float smin(float a, float b, float k) {
+                float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+                return mix(b, a, h) - k * h * (1.0 - h);
+            }
+
+            float map(vec3 p) {
+                p.z += time * 0.5;
+                p.xy *= rot(time * 0.1);
+                vec3 q = mod(p, 4.0) - 2.0;
+                float d = length(q) - 0.8; // Central sphere core
+                d = smin(d, length(mod(p, 6.0) - 3.0) - 1.5, 1.5); // Pulsing nodes
+                return d;
+            }
+
+            void main() {
+                vec2 uv = vUv * 2.0 - 1.0;
+                uv.x *= ratio; // Handled via uniform or aspect ratio logic in real code, here simplified
+                
+                // Simple raymarching for background "glow" structure
+                vec3 ro = vec3(0, 0, -5);
+                vec3 rd = normalize(vec3(uv, 1.2));
+                float t = 0.0;
+                for(int i=0; i<40; i++) {
+                    float d = map(ro + rd * t);
+                    if(d < 0.001 || t > 20.0) break;
+                    t += d;
+                }
+
+                vec3 col = vec3(0.0);
+                if(t < 20.0) {
+                    float glow = exp(-t * 0.2);
+                    col = vec3(0.1, 0.0, 0.2) * glow;
+                }
+
+                // Vignette and color tint
+                col *= 1.0 - length(uv) * 0.5;
+                gl_FragColor = vec4(col, 1.0);
+            }
+        `;
+
+        // --- OBJECTS ---
+
+        // Background "Brain" Mesh (Raymarched Quad)
+        const bgGeom = new THREE.PlaneGeometry(20, 20);
+        const bgMat = new THREE.ShaderMaterial({
+            uniforms: {
+                time: { value: 0 },
+                ratio: { value: window.innerWidth / window.innerHeight }
+            },
+            vertexShader: backgroundVertex,
+            fragmentShader: backgroundFragment,
+            depthWrite: false,
+            depthTest: false
+        });
+        const bgMesh = new THREE.Mesh(bgGeom, bgMat);
+        bgMesh.position.z = -5;
+        scene.add(bgMesh);
+
+        // Particles (The Synapses)
+        const particleCount = 8000;
+        const posArray = new Float32Array(particleCount * 3);
+        const velArray = new Float32Array(particleCount * 3);
+        const colorArray = new Float32Array(particleCount * 3);
+
+        for (let i = 0; i < particleCount; i++) {
+            posArray[i * 3] = (Math.random() - 0.5) * 15;
+            posArray[i * 3 + 1] = (Math.random() - 0.5) * 15;
+            posArray[i * 3 + 2] = (Math.random() - 0.5) * 20;
+
+            velArray[i * 3] = (Math.random() - 0.5) * 0.05;
+            velArray[i * 3 + 1] = (Math.random() - 0.5) * 0.05;
+            velArray[i * 3 + 2] = Math.random() * 0.1 + 0.02;
+
+            const hue = 0.5 + Math.random() * 0.2; // Cyan to Purple
+            const color = new THREE.Color().setHSL(hue, 0.8, 0.6);
+            colorArray[i * 3] = color.r;
+            colorArray[i * 3 + 1] = color.g;
+            colorArray[i * 3 + 2] = color.b;
+        }
+
+        const partGeom = new THREE.BufferGeometry();
+        partGeom.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+        partGeom.setAttribute('color', new THREE.BufferAttribute(colorArray, 3));
+
+        const partMat = new THREE.PointsMaterial({
+            size: 0.05,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.8,
+            blending: THREE.AdditiveBlending
+        });
+
+        const synapses = new THREE.Points(partGeom, partMat);
+        scene.add(synapses);
+
+        camera.position.z = 5;
+
+        // --- ANIMATION LOOP ---
+
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const t = clock.getElapsedTime();
+            bgMat.uniforms.time.value = t;
+
+            const positions = partGeom.attributes.position.array;
+            
+            for (let i = 0; i < particleCount; i++) {
+                const ix = i * 3;
+                const iy = i * 3 + 1;
+                const iz = i * 3 + 2;
+
+                // Vector field: swirling noise-like motion
+                const x = positions[ix];
+                const y = positions[iy];
+                const z = positions[iz];
+
+                // Influence from a "magnetic" center
+                const distToCenter = Math.sqrt(x*x + y*y);
+                const force = Math.sin(t * 0.5 + distToCenter * 0.5) * 0.01;
+                
+                velArray[ix] += Math.cos(y * 0.5 + t) * 0.002 + force * (x/distToCenter);
+                velArray[iy] += Math.sin(x * 0.5 + t) * 0.002 + force * (y/distToCenter);
+                velArray[iz] += 0.01; // Constant forward drift
+
+                // Apply velocity
+                positions[ix] += velArray[ix];
+                positions[iy] += velArray[iy];
+                positions[iz] += velArray[iz];
+
+                // Friction / Damping
+                velArray[ix] *= 0.98;
+                velArray[iy] *= 0.98;
+                velArray[iz] *= 0.98;
+
+                // Boundary Respawn
+                if (positions[iz] > 15 || Math.abs(positions[ix]) > 12 || Math.abs(positions[iy]) > 12) {
+                    positions[ix] = (Math.random() - 0.5) * 15;
+                    positions[iy] = (Math.random() - 0.5) * 15;
+                    positions[iz] = -20;
+                    velArray[ix] = (Math.random() - 0.5) * 0.02;
+                    velArray[iy] = (Math.random() - 0.5) * 0.02;
+                    velArray[iz] = Math.random() * 0.1;
+                }
+            }
+
+            partGeom.attributes.position.needsUpdate = true;
+
+            // Camera subtle movement
+            camera.position.x = Math.sin(t * 0.3) * 2;
+            camera.position.y = Math.cos(t * 0.4) * 1;
+            camera.lookAt(0, 0, 0);
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            bgMat.uniforms.ratio.value = window.innerWidth / window.innerHeight;
+        });
+
+        animate();
+    </script>
+</body>
+</html>

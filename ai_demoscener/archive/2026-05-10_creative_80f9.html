@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>NEON_HYPERSPACE // SYNTHETIC_DREAM</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', Courier, monospace; }
+        canvas { display: block; }
+        #ui {
+            position: absolute; top: 20px; left: 20px; color: #0f0;
+            pointer-events: none; text-shadow: 0 0 5px #0f0;
+            font-size: 12px; letter-spacing: 2px;
+        }
+    </style>
+</head>
+<body>
+    <div id="ui">SYSTEM_STATUS: RUNNING...<br>CORE_TEMP: NOMINAL<br>DIMENSION: [NULL]</div>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        /** 
+         * IDEA: "CHRONOS_RECURSION"
+         * A hybrid effect combining a Raymarched SDF Fractal, 4D Tesseract rotations, 
+         * and a feedback-loop Post-process. We render a rotating hypercube structure 
+         * inside a raymarched field of "temporal ripples".
+         */
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // --- SHADERS ---
+
+        const fragmentShader = `
+            uniform float time;
+            uniform vec2 resolution;
+            uniform float tesseractAngle;
+
+            #define MAX_STEPS 100
+            #define SURF_DIST 0.001
+            #define MAX_DIST 20.0
+
+            // Rotation matrix for 4D projection logic inside SDF
+            mat2 rot(float a) {
+                float s = sin(a), c = cos(a);
+                return mat2(c, -s, s, c);
+            }
+
+            float smin(float a, float b, float k) {
+                float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+                return mix(b, a, h) - k * h * (1.0 - h);
+            }
+
+            // A fractal-like distance function for the "Hypercube" essence
+            float sdHyperCube(vec3 p, float size) {
+                p = abs(p) - size;
+                return length(max(p, 0.0)) + min(max(p.x, max(p.y, p.z)), 0.0);
+            }
+
+            float getDist(vec3 p) {
+                // Temporal ripples (Sine-wave terrain in SDF)
+                float ripple = sin(p.x * 2.0 + time) * sin(p.y * 2.0 + time * 0.5) * sin(p.z * 2.0) * 0.2;
+                
+                // The "Core": A morphing geometry using smooth min of rotating cubes
+                vec3 p1 = p;
+                p1.xz *= rot(time * 0.3);
+                p1.xy *= rot(time * 0.5);
+                float d1 = sdHyperCube(p1, 1.0);
+
+                vec3 p2 = p;
+                p2.yz *= rot(time * 0.7);
+                p2.xz *= rot(-time * 0.4);
+                float d2 = sdHyperCube(p2, 0.6);
+
+                float core = smin(d1, d2, 0.5);
+                
+                // Combine core with temporal ripples
+                return core + ripple;
+            }
+
+            vec3 getNormal(vec3 p) {
+                vec2 e = vec2(0.01, 0);
+                float d = getDist(p);
+                vec3 n = d - vec3(
+                    getDist(p - e.xyy),
+                    getDist(p - e.yxy),
+                    getDist(p - e.yyx)
+                );
+                return normalize(n);
+            }
+
+            void main() {
+                vec2 uv = (gl_FragCoord.xy - 0.5 * resolution.xy) / min(resolution.y, resolution.x);
+                vec3 ro = vec3(0, 0, -4); // Ray Origin
+                vec3 rd = normalize(vec3(uv, 1.2)); // Ray Direction
+
+                float dO = 0.0;
+                float dS;
+                vec3 p;
+
+                // Raymarching loop
+                for(int i=0; i<MAX_STEPS; i++) {
+                    p = ro + rd * dO;
+                    dS = getDist(p);
+                    dO += dS;
+                    if(dO > MAX_DIST || abs(dS) < SURF_DIST) break;
+                }
+
+                vec3 color = vec3(0.0);
+
+                if(dO < MAX_DIST) {
+                    vec3 n = getNormal(p);
+                    float diffuse = dot(n, normalize(vec3(1, 2, -3))) * 0.5 + 0.5;
+                    
+                    // Color based on position and normal (Cyberpunk Palette)
+                    vec3 baseColor = mix(vec3(0.1, 0.0, 0.3), vec3(0.0, 1.0, 0.8), n.y * 0.5 + 0.5);
+                    baseColor = mix(baseColor, vec3(1.0, 0.0, 0.5), sin(p.z + time) * 0.5 + 0.5);
+                    
+                    color = baseColor * diffuse;
+                    
+                    // Specular highlight
+                    vec3 viewDir = normalize(ro - p);
+                    vec3 reflectDir = reflect(-normalize(vec3(1,2,-3)), n);
+                    float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32.0);
+                    color += vec3(1.0) * spec * 0.4;
+
+                    // Fog/Depth
+                    color *= exp(-0.1 * dO);
+                }
+
+                // Background "Starfield" via UV noise
+                if (dO >= MAX_DIST) {
+                   float stars = pow(fract(sin(dot(rd.xy, vec2(12.9898, 78.233))) * 43758.5453), 20.0);
+                   color += vec3(stars) * (0.5 + 0.5 * sin(time));
+                }
+
+                // Glitch/Chromatic Aberration simulation via UV offset color mix logic would go here, 
+                // but we'll do a simple scanline effect instead.
+                float scanline = sin(gl_FragCoord.y * 1.5) * 0.04;
+                color -= scanline;
+
+                gl_FragColor = vec4(color, 1.0);
+            }
+        `;
+
+        const vertexShader = `
+            void main() {
+                gl_Position = vec4(position, 1.0);
+            }
+        `;
+
+        // --- INITIALIZATION ---
+
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const uniforms = {
+            time: { value: 0 },
+            resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+            tesseractAngle: { value: 0 }
+        };
+
+        const material = new THREE.ShaderMaterial({
+            uniforms,
+            vertexShader,
+            fragmentShader
+        });
+
+        const quad = new THREE.Mesh(geometry, material);
+        scene.add(quad);
+
+        camera.position.z = 1; // Orthographic-like view for fullscreen quad
+
+        // --- ANIMATION LOOP ---
+
+        function animate(t) {
+            requestAnimationFrame(animate);
+            const time = t * 0.001;
+            uniforms.time.value = time;
+            
+            // Rotate the "tesseract" logic internally
+            uniforms.tesseractAngle.value = time;
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            renderer.setSize(w, h);
+            camera.aspect = w / h;
+            camera.updateProjectionMatrix();
+            uniforms.resolution.value.set(w, h);
+        });
+
+        animate(0);
+    </script>
+</body>
+</html>

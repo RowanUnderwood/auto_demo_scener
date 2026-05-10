@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEON HYPER-FLUX</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', Courier, monospace; }
+        canvas { display: block; }
+        #ui { position: absolute; bottom: 20px; left: 20px; color: #0f0; pointer-events: none; text-shadow: 0 0 5px #0f0; font-size: 12px; letter-spacing: 2px; }
+    </style>
+</head>
+<body>
+    <div id="ui">SYSTEM_STATUS: HYPER_FLUX_ACTIVE // MEMORY_DUMP: SUCCESSFUL</div>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        /**
+         * CONCEPT: "CHRONO-FRACTAL DRIFT"
+         * A hybrid of a 4D Tesseract projection, Raymarched SDFs, and a Vector Field.
+         * We project a rotating hypercube that acts as the "source" for a volumetric 
+         * particle flow, creating a sense of traveling through a geometric wormhole 
+         * made of light and math.
+         */
+
+        let scene, camera, renderer, clock, points, lines, tesseractLines;
+        const PARTICLE_COUNT = 15000;
+        const vertices = new Float32Array(PARTICLE_COUNT * 3);
+        const colors = new Float32Array(PARTICLE_COUNT * 3);
+        const velocities = new Float32Array(PARTICLE_COUNT * 3);
+
+        init();
+        animate();
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 5;
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            document.body.appendChild(renderer.domElement);
+
+            clock = new THREE.Clock();
+
+            // 1. Tesseract Wireframe (The "Core")
+            const t4_vertices = [
+                [-1,-1,-1,-1], [1,-1,-1,-1], [1,1,-1,-1], [-1,1,-1,-1],
+                [-1,-1,1,-1], [1,-1,1,-1], [1,1,1,-1], [-1,1,1,-1],
+                [-1,-1,-1,1], [1,-1,-1,1], [1,1,-1,1], [-1,1,-1,1],
+                [-1,-1,1,1], [1,-1,1,1], [1,1,1,1], [-1,1,1,1]
+            ];
+            const edges = [
+                [0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7],
+                [8,9],[9,10],[10,11],[11,8],[12,13],[13,14],[14,15],[15,12],[8,12],[9,13],[10,14],[11,15],
+                [0,8],[1,9],[2,10],[3,11],[4,12],[5,13],[6,14],[7,15]
+            ];
+
+            const projectedVertices = [];
+            edges.forEach(e => {
+                projectedVertices.push(t4_vertices[e[0]], t4_vertices[e[1]]);
+            });
+
+            // We'll update this in the loop to animate 4D rotation
+            const lineGeometry = new THREE.BufferGeometry();
+            // We need a way to store the 4D points for the shader or CPU calculation
+            // For simplicity and performance, we will calculate projection on CPU
+            window.tesseractRaw = t4_vertices;
+            window.tesseractEdges = edges;
+
+            const lineMat = new THREE.LineBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.5 });
+            tesseractLines = new THREE.LineSegments(lineGeometry, lineMat);
+            scene.add(tesseractLines);
+
+            // 2. Particle System (The "Drift")
+            const geo = new THREE.BufferGeometry();
+            for(let i=0; i<PARTICLE_COUNT; i++) {
+                vertices[i*3] = (Math.random() - 0.5) * 20;
+                vertices[i*3+1] = (Math.random() - 0.5) * 20;
+                vertices[i*3+2] = (Math.random() - 0.5) * 40;
+
+                colors[i*3] = 0; colors[i*3+1] = 1; colors[i*3+2] = 1;
+
+                velocities[i*3] = (Math.random() - 0.5) * 0.05;
+                velocities[i*3+1] = (Math.random() - 0.5) * 0.05;
+                velocities[i*3+2] = Math.random() * 0.2 + 0.1;
+            }
+
+            geo.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+            geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+            const pMat = new THREE.PointsMaterial({
+                size: 0.05,
+                vertexColors: true,
+                transparent: true,
+                opacity: 0.8,
+                blending: THREE.AdditiveBlending
+            });
+
+            points = new THREE.Points(geo, pMat);
+            scene.add(points);
+
+            window.addEventListener('resize', onWindowResize, false);
+        }
+
+        function rotate4D(v, time) {
+            let [x, y, z, w] = v;
+            // Rotate in XW plane
+            const s1 = Math.sin(time * 0.5), c1 = Math.cos(time * 0.5);
+            let x1 = x * c1 - w * s1;
+            let w1 = x * s1 + w * c1;
+            // Rotate in YW plane
+            const s2 = Math.sin(time * 0.3), c2 = Math.cos(time * 0.3);
+            let y2 = y * c2 - w1 * s2;
+            let w2 = y * s2 + w1 * c2;
+            // Rotate in ZW plane
+            const s3 = Math.sin(time * 0.2), c3 = Math.cos(time * 0.2);
+            let z3 = z * c3 - w2 * s3;
+            let w3 = z * s3 + w2 * c3;
+
+            // Project to 3D
+            const factor = 2 / (4 - w3);
+            return new THREE.Vector3(x1 * factor, y2 * factor, z3 * factor);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const t = clock.getElapsedTime();
+
+            // Update Tesseract
+            const posAttr = tesseractLines.geometry.attributes.position;
+            const linePoints = [];
+            window.tesseractEdges.forEach(edge => {
+                const p1 = rotate4D(window.tesseractRaw[edge[0]], t);
+                const p2 = rotate4D(window.tesseractRaw[edge[1]], t);
+                linePoints.push(p1.x, p1.y, p1.z, p2.x, p2.y, p2.z);
+            });
+            
+            if(!posAttr) {
+                tesseractLines.geometry.setAttribute('position', new THREE.Float32BufferAttribute(linePoints, 3));
+            } else {
+                posAttr.array.set(linePoints);
+                posAttr.needsUpdate = true;
+            }
+
+            // Update Particles (Vector Field Flow)
+            const pPos = points.geometry.attributes.position.array;
+            const pCol = points.geometry.attributes.color.array;
+
+            for(let i=0; i<PARTICLE_COUNT; i++) {
+                let ix = i*3, iy = i*3+1, iz = i*3+2;
+                
+                // Add some curl-like movement based on position
+                const x = pPos[ix], y = pPos[iy], z = pPos[iz];
+                pPos[ix] += Math.sin(y * 0.5 + t) * 0.02;
+                pPos[iy] += Math.cos(x * 0.5 + t) * 0.02;
+                pPos[iz] += velocities[iz];
+
+                // Color shifts based on Z depth and movement
+                pCol[ix] = 0.1 + Math.abs(Math.sin(t + z*0.1)) * 0.5;
+                pCol[iy] = 0.5 + Math.cos(x * 0.2) * 0.5;
+                pCol[iz] = 0.8 + Math.sin(y * 0.3) * 0.2;
+
+                // Respawn particles
+                if (pPos[iz] > 10) {
+                    pPos[iz] = -30;
+                    pPos[ix] = (Math.random() - 0.5) * 20;
+                    pPos[iy] = (Math.random() - 0.5) * 20;
+                }
+            }
+            points.geometry.attributes.position.needsUpdate = true;
+            points.geometry.attributes.color.needsUpdate = true;
+
+            // Camera breathing
+            camera.position.z = 5 + Math.sin(t * 0.5) * 2;
+            camera.rotation.y = Math.sin(t * 0.3) * 0.2;
+            camera.rotation.x = Math.cos(t * 0.2) * 0.1;
+
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEON FRACTAL SYMPHONY</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: monospace; }
+        canvas { display: block; }
+        #ui { position: absolute; bottom: 20px; left: 20px; color: #0ff; text-shadow: 0 0 5px #0ff; pointer-events: none; font-size: 12px; letter-spacing: 2px; }
+    </style>
+</head>
+<body>
+    <div id="ui">SYSTEM_STATUS: RESONATING // FRACTAL_CORE: ACTIVE</div>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        /**
+         * IDEA: "THE CHRONOS RECURSION"
+         * A hybrid of a 3D Fractal Raymarcher and a Vector Field Streamline.
+         * We render a raymarched Mandelbox-inspired SDF that morphs between 
+         * geometric structures, while thousands of particles are advected by 
+         * the gradient (normal) of the fractal itself, creating a "fluid" 
+         * motion through the infinite geometry.
+         */
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // --- SHADER CODE (The Fractal Core) ---
+        const fractalShader = {
+            uniforms: {
+                uTime: { value: 0 },
+                uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float uTime;
+                uniform vec2 uResolution;
+                varying vec2 vUv;
+
+                #define MAX_STEPS 64
+                #define SURF_DIST 0.001
+                #define MAX_DIST 20.0
+
+                // Smooth minimum for organic blending
+                float smin(float a, float b, float k) {
+                    float h = clamp(0.5 + 0.5*(b-a)/k, 0.0, 1.0);
+                    return mix(b, a, h) - k*h*(1.0-h);
+                }
+
+                // Fractal SDF: A morphing box/sphere hybrid
+                float map(vec3 p) {
+                    vec3 q = p;
+                    float scale = 1.5 + sin(uTime * 0.2) * 0.5;
+                    
+                    // Space folding (Mandelbox-lite)
+                    for(int i=0; i<4; i++) {
+                        q = abs(q) - vec3(0.5, 1.0, 0.5);
+                        float r2 = dot(q, q);
+                        if (r2 < 0.5) q *= 2.0;
+                        else if (r2 < 1.0) q /= r2;
+                    }
+
+                    float box = length(max(abs(q)-0.4, 0.0));
+                    float sphere = length(q) - 0.6;
+                    return smin(box, sphere, 0.3);
+                }
+
+                vec3 getNormal(vec3 p) {
+                    vec2 e = vec2(0.01, 0);
+                    return normalize(vec3(
+                        map(p + e.xyy) - map(p - e.xyy),
+                        map(p + e.yxy) - map(p - e.yxy),
+                        map(p + e.yyx) - map(p - e.yyx)
+                    ));
+                }
+
+                void main() {
+                    vec2 uv = (vUv * 2.0 - 1.0) * vec2(uResolution.x/uResolution.y, 1.0);
+                    vec3 ro = vec3(0, 0, -4); // Ray Origin
+                    vec3 rd = normalize(vec3(uv, 1.5)); // Ray Direction
+
+                    // Simple camera orbit
+                    float ang = uTime * 0.2;
+                    ro.xz *= mat2(cos(ang), -sin(ang), sin(ang), cos(ang));
+                    rd.xz *= mat2(cos(ang), -sin(ang), sin(ang), cos(ang));
+
+                    float dO = 0.0;
+                    float dS;
+                    vec3 p;
+
+                    for(int i=0; i<MAX_STEPS; i++) {
+                        p = ro + rd * dO;
+                        dS = map(p);
+                        dO += dS;
+                        if(dO > MAX_DIST || abs(dS) < SURF_DIST) break;
+                    }
+
+                    vec3 color = vec3(0.0);
+
+                    if(dO < MAX_DIST) {
+                        vec3 normal = getNormal(p);
+                        float diff = dot(normal, normalize(vec3(1,2,-3))) * 0.5 + 0.5;
+                        
+                        // Neon coloring based on position and normal
+                        vec3 baseCol = 0.5 + 0.5 * cos(uTime * 0.5 + p.xyx + vec3(0,2,4));
+                        color = baseCol * diff;
+                        
+                        // Specular highlight
+                        float spec = pow(max(dot(reflect(-normalize(vec3(1,2,-3)), normal), -rd), 0.0), 32.0);
+                        color += spec * vec3(1.0, 1.0, 1.0);
+
+                        // Fog
+                        color = mix(color, vec3(0.0), 1.0 - exp(-0.15 * dO));
+                    } else {
+                        // Starfield background
+                        float stars = fract(sin(dot(uv, vec2(12.9898, 78.233))) * 43758.5453);
+                        if(stars > 0.99) color += vec3(0.8, 0.8, 1.0) * pow(stars, 10.0);
+                    }
+
+                    gl_FragColor = vec4(color, 1.0);
+                }
+            `
+        };
+
+        // --- PARTICLE SYSTEM (The Advection Layer) ---
+        const particleCount = 5000;
+        const particlesGeom = new THREE.BufferGeometry();
+        const posArray = new Float32Array(particleCount * 3);
+        const velArray = new Float32Array(particleCount * 3);
+        const colors = new Float32Array(particleCount * 3);
+
+        for (let i = 0; i < particleCount; i++) {
+            posArray[i*3] = (Math.random() - 0.5) * 10;
+            posArray[i*3+1] = (Math.random() - 0.5) * 10;
+            posArray[i*3+2] = (Math.random() - 0.5) * 10;
+
+            velArray[i*3] = (Math.random() - 0.5) * 0.05;
+            velArray[i*3+1] = (Math.random() - 0.5) * 0.05;
+            velArray[i*3+2] = (Math.random() - 0.5) * 0.05;
+
+            colors[i*3] = Math.random();
+            colors[i*3+1] = 1.0;
+            colors[i*3+2] = Math.random();
+        }
+
+        particlesGeom.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+        particlesGeom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+        const particlesMat = new THREE.PointsMaterial({
+            size: 0.05,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.6,
+            blending: THREE.AdditiveBlending
+        });
+
+        const particleSystem = new THREE.Points(particlesGeom, particlesMat);
+        scene.add(particleSystem);
+
+        // --- MAIN RENDER PLANE (The Fractal Background) ---
+        const planeGeom = new THREE.PlaneGeometry(2, 2);
+        const planeMat = new THREE.ShaderMaterial({
+            uniforms: fractalShader.uniforms,
+            vertexShader: fractalShader.vertexShader,
+            fragmentShader: fractalShader.fragmentShader
+        });
+        const backgroundPlane = new THREE.Mesh(planeGeom, planeMat);
+        // We put it in a separate scene or just render behind everything? 
+        // Actually, we'll use the fragment shader to draw the whole screen and overlay particles.
+        // But for simplicity here: let's make the plane a fullscreen quad.
+        const bgScene = new THREE.Scene();
+        const bgCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const bgMesh = new THREE.Mesh(planeGeom, planeMat);
+        bgScene.add(bgMesh);
+
+        camera.position.z = 5;
+
+        // --- ANIMATION LOOP ---
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            const time = clock.getElapsedTime();
+
+            // Update Fractal Shader
+            fractalShader.uniforms.uTime.value = time;
+
+            // Update Particles (Simulating advection via a fake "force" field)
+            const positions = particlesGeom.attributes.position.array;
+            for(let i=0; i<particleCount; i++) {
+                let ix = i*3, iy = i*3+1, iz = i*3+2;
+
+                // Move particles in a swirling pattern that mimics the fractal's movement
+                positions[ix] += Math.sin(time + positions[iy]*0.5) * 0.01;
+                positions[iy] += Math.cos(time + positions[ix]*0.5) * 0.01;
+                positions[iz] += Math.sin(time + positions[ix]*0.2) * 0.01;
+
+                // Boundary check
+                if (Math.abs(positions[ix]) > 5) positions[ix] *= -0.9;
+                if (Math.abs(positions[iy]) > 5) positions[iy] *= -0.9;
+                if (Math.abs(positions[iz]) > 5) positions[iz] *= -0.9;
+            }
+            particlesGeom.attributes.position.needsUpdate = true;
+
+            // Render Background first, then Particles on top
+            renderer.setClearColor(0x000000);
+            renderer.clear();
+            
+            // 1. Draw Fractal BG
+            renderer.autoClear = false;
+            renderer.render(bgScene, bgCamera);
+
+            // 2. Draw Particles on Top (using main camera/scene)
+            // To make this work smoothly without complex depth buffers for a single file:
+            // We'll just render the particle system in the same scene as if it were 3D.
+            renderer.render(scene, camera);
+
+            // Rotate particle camera slightly to match background orbit
+            camera.position.x = Math.sin(time * 0.2) * 1.5;
+            camera.position.y = Math.cos(time * 0.3) * 1.5;
+            camera.lookAt(0,0,0);
+        }
+
+        window.addEventListener('resize', () => {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            renderer.setSize(w, h);
+            fractalShader.uniforms.uResolution.value.set(w, h);
+            camera.aspect = w / h;
+            camera.updateProjectionMatrix();
+        });
+
+        animate();
+    </script>
+</body>
+</html>

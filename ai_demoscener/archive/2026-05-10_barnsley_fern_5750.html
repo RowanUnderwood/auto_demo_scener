@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #050705; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="module">
+    import * as THREE from 'https://unpkg.com/three@0.150.1/build/three.module.js';
+
+    const count = 80000;
+    const scene = new THREE.Scene();
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    const aspect = window.innerWidth / window.innerHeight;
+    const viewSize = 12;
+    const camera = new THREE.OrthographicCamera(
+        -viewSize * aspect / 2, viewSize * aspect / 2,
+        viewSize / 2, -viewSize / 2,
+        0.1, 1000
+    );
+    camera.position.z = 10;
+
+    const geometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(count * 3);
+    const colors = new Float32Array(count * 3);
+
+    function generateFern() {
+        let x = 0, y = 0;
+        const mutationFactor = 0.16;
+
+        for (let i = 0; i < count; i++) {
+            const r = Math.random();
+            let nextX, nextY;
+
+            if (r < 0.01) {
+                nextX = 0;
+                nextY = mutationFactor * y;
+            } else if (r < 0.86) {
+                nextX = 0.85 * x + 0.04 * y;
+                nextY = -0.04 * x + 0.85 * y + 1.6;
+            } else if (r < 0.93) {
+                nextX = 0.2 * x - 0.26 * y;
+                nextY = 0.23 * x + 0.22 * y + 1.6;
+            } else {
+                nextX = -0.15 * x + 0.28 * y;
+                nextY = 0.26 * x + 0.24 * y + 0.44;
+            }
+
+            x = nextX;
+            y = nextY;
+
+            const idx = i * 3;
+            positions[idx] = x;
+            positions[idx + 1] = y - 5;
+            positions[idx + 2] = 0;
+
+            colors[idx]     = 0.1 + (Math.random() * 0.1); 
+            colors[idx + 1] = 0.5 + (Math.random() * 0.4);  
+            colors[idx + 2] = 0.1 + (Math.random() * 0.1);  
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    }
+
+    generateFern();
+
+    const material = new THREE.PointsMaterial({
+        size: 1.5,
+        sizeAttenuation: false,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.8
+    });
+
+    const points = new THREE.Points(geometry, material);
+    scene.add(points);
+
+    let time = 0;
+
+    function animate() {
+        requestAnimationFrame(animate);
+        time += 0.01;
+
+        points.rotation.y += 0.002;
+        points.rotation.z = Math.sin(time * 0.5) * 0.03;
+        points.position.x = Math.sin(time * 0.3) * 0.1;
+
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        const aspect = window.innerWidth / window.innerHeight;
+        camera.left = -viewSize * aspect / 2;
+        camera.right = viewSize * aspect / 2;
+        camera.top = viewSize / 2;
+        camera.bottom = -viewSize / 2;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+</script>
+</body>
+</html>

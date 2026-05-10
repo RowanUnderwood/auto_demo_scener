@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>NEURAL_DRIFT // DEMO</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: monospace; }
+        canvas { display: block; }
+        #ui { position: absolute; bottom: 20px; left: 20px; color: #0f0; text-shadow: 0 0 5px #0f0; pointer-events: none; font-size: 12px; letter-spacing: 2px; }
+    </style>
+</head>
+<body>
+    <div id="ui">SYSTEM_STATUS: NEURAL_DRIFT // SYNCING_SYNAPSE...</div>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        /**
+         * IDEA: "NEURAL DRIFT"
+         * A hybrid of "Vector Field Streamlines", "Reaction-Diffusion", and "Black Hole Lensing".
+         * It simulates a swarm of "neuro-particles" flowing through a high-dimensional, 
+         * warped probability field. The space itself bends like an accretion disk, 
+         * creating a sense of infinite recursive depth using raymarched SDFs 
+         * and particle advection.
+         */
+
+        let scene, camera, renderer, clock, particles;
+        const PARTICLE_COUNT = 12000;
+        const FIELD_RES = 32;
+
+        class NeuralDrift {
+            constructor() {
+                this.initScene();
+                this.createParticles();
+                this.createFlowField();
+                this.animate();
+            }
+
+            initScene() {
+                scene = new THREE.Scene();
+                camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+                camera.position.z = 50;
+
+                renderer = new THREE.WebGLRenderer({ antialias: true });
+                renderer.setPixelRatio(window.devicePixelRatio);
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                document.body.appendChild(renderer.domElement);
+
+                clock = new THREE.Clock();
+
+                window.addEventListener('resize', () => {
+                    camera.aspect = window.innerWidth / window.innerHeight;
+                    camera.updateProjectionMatrix();
+                    renderer.setSize(window.innerWidth, window.innerHeight);
+                });
+            }
+
+            createParticles() {
+                const geometry = new THREE.BufferGeometry();
+                const positions = new Float32Array(PARTICLE_COUNT * 3);
+                const colors = new Float32Array(PARTICLE_COUNT * 3);
+                const lifetimes = new Float32Array(PARTICLE_COUNT);
+
+                for (let i = 0; i < PARTICLE_COUNT; i++) {
+                    positions[i * 3] = (Math.random() - 0.5) * 100;
+                    positions[i * 3 + 1] = (Math.random() - 0.5) * 100;
+                    positions[i * 3 + 2] = (Math.random() - 0.5) * 100;
+
+                    colors[i * 3] = 0.0; 
+                    colors[i * 3 + 1] = Math.random() * 0.5 + 0.5; 
+                    colors[i * 3 + 2] = Math.random() * 0.8 + 0.2;
+
+                    lifetimes[i] = Math.random();
+                }
+
+                geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+                geometry.setAttribute('life', new THREE.BufferAttribute(lifetimes, 1));
+
+                const material = new THREE.PointsMaterial({
+                    size: 0.15,
+                    vertexColors: true,
+                    transparent: true,
+                    opacity: 0.6,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false
+                });
+
+                particles = new THREE.Points(geometry, material);
+                scene.add(particles);
+            }
+
+            createFlowField() {
+                // A grid of vectors representing the "neural" force
+                const size = FIELD_RES;
+                this.fieldData = new Float32Array(size * size * size * 3);
+                this.gridSize = size;
+            }
+
+            updateParticles(dt, time) {
+                const posAttr = particles.geometry.attributes.position;
+                const colAttr = particles.geometry.attributes.color;
+                const lifeAttr = particles.geometry.attributes.life;
+
+                for (let i = 0; i < PARTICLE_COUNT; i++) {
+                    let x = posAttr.getX(i);
+                    let y = posAttr.getY(i);
+                    let z = posAttr.getZ(i);
+
+                    // Math-driven "Neural" flow: Curl-like noise + central singularity pull
+                    const distSq = x*x + y*y + z*z;
+                    const forceStrength = 0.2 / (Math.sqrt(distSq) + 1.0);
+                    
+                    // Complex orbital motion
+                    const nx = Math.sin(y * 0.1 + time) * Math.cos(z * 0.1 + time);
+                    const ny = Math.sin(z * 0.1 + time) * Math.cos(x * 0.1 + time);
+                    const nz = Math.sin(x * 0.1 + time) * Math.cos(y * 0.1 + time);
+
+                    // Gravity/Singularity pull towards center (Black Hole effect)
+                    x -= (x / (distSq + 0.1)) * forceStrength * 20.0;
+                    y -= (y / (distSq + 0.1)) * forceStrength * 20.0;
+                    z -= (z / (distSq + 0.1)) * forceStrength * 20.0;
+
+                    // Turbulence
+                    x += nx * 0.5;
+                    y += ny * 0.5;
+                    z += nz * 0.5;
+
+                    posAttr.setXYZ(i, x, y, z);
+
+                    // Update lifetime and color
+                    let life = lifeAttr.getX(i) + dt * 0.15;
+                    if (life > 1.0 || distSq > 2500) {
+                        life = 0;
+                        posAttr.setXYZ(i, (Math.random()-0.5)*40, (Math.random()-0.5)*40, (Math.random()-0.5)*40);
+                    }
+                    lifeAttr.setX(i, life);
+
+                    // Color shifting: cyan -> magenta -> white based on speed/dist
+                    const speed = Math.abs(nx) + Math.abs(ny) + Math.abs(nz);
+                    colAttr.setXYZ(i, 
+                        0.2 * Math.sin(life * Math.PI) + speed * 0.5, 
+                        0.5 * life + speed * 0.3, 
+                        0.8 * Math.cos(life * Math.PI) + 0.2
+                    );
+                }
+
+                posAttr.needsUpdate = true;
+                colAttr.needsUpdate = true;
+                lifeAttr.needsUpdate = true;
+            }
+
+            animate() {
+                requestAnimationFrame(() => this.animate());
+                const delta = clock.getDelta();
+                const time = clock.getElapsedTime();
+
+                this.updateParticles(delta, time);
+
+                // Subtle camera movement (Drift)
+                camera.position.x = Math.sin(time * 0.2) * 5;
+                camera.position.y = Math.cos(time * 0.3) * 5;
+                camera.lookAt(0, 0, 0);
+
+                // Rotate the whole system for kinetic energy
+                particles.rotation.z += delta * 0.05;
+
+                renderer.render(scene, camera);
+            }
+        }
+
+        new NeuralDrift();
+    </script>
+</body>
+</html>

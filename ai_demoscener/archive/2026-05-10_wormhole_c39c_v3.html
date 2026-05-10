@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Neural Conduit</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #050505; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="module">
+    import * as THREE from 'https://unpkg.com/three@latest/build/three.module.js';
+
+    // Scene Setup
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x050505, 0.03);
+    
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.toneMapping = THREE.ReinhardToneMapping;
+    document.body.appendChild(renderer.domElement);
+
+    // Generate Complex Path using Perlin-like noise approach
+    const points = [];
+    const segments = 100;
+    for (let i = 0; i <= segments; i++) {
+        const t = i / segments;
+        const angle = t * Math.PI * 4;
+        const x = Math.sin(angle * 0.5) * 12 + Math.cos(t * 10) * 2;
+        const y = Math.cos(angle * 0.3) * 8 + Math.sin(t * 15) * 1;
+        const z = t * -60; // Deep longitudinal stretch
+        points.push(new THREE.Vector3(x, y, z));
+    }
+    const curve = new THREE.CatmullRomCurve3(points);
+
+    // Create a custom shader material for the "Pulse" effect
+    // This replaces the simple texture with a glowing energy flow
+    const tubeMaterial = new THREE.ShaderMaterial({
+        uniforms: {
+            uTime: { value: 0 },
+            uColor1: { value: new THREE.Color(0x00ffff) }, // Cyan
+            uColor2: { value: new THREE.Color(0xff00ff) }  // Magenta
+        },
+        vertexShader: `
+            varying vec2 vUv;
+            varying float vDistort;
+            uniform float uTime;
+            void main() {
+                vUv = uv;
+                // Add some vertex wobble
+                vec3 pos = position;
+                float wave = sin(pos.z * 0.5 + uTime * 3.0) * 0.1;
+                pos += normal * wave;
+                vDistort = sin(pos.z * 0.2 - uTime * 2.0);
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+            }
+        `,
+        fragmentShader: `
+            varying vec2 vUv;
+            varying float vDistort;
+            uniform float uTime;
+            uniform vec3 uColor1;
+            uniform vec3 uColor2;
+            void main() {
+                // Create traveling ring pulses
+                float pulse = sin(vUv.x * 50.0 - uTime * 10.0);
+                pulse = smoothstep(0.9, 1.0, pulse);
+                
+                // Base color gradient along the tube length
+                vec3 baseColor = mix(uColor1, uColor2, vUv.x + sin(uTime * 0.5) * 0.2);
+                
+                // Add bright energy veins
+                float vein = smoothstep(0.4, 0.5, sin(vUv.x * 100.0 - uTime * 15.0));
+                vec3 finalColor = baseColor + (vein * vec3(1.0, 1.0, 1.0) * pulse);
+                
+                // Darkness in crevices
+                finalColor *= (vUv.y * 0.5 + 0.5);
+
+                gl_FragColor = vec4(finalColor, 1.0);
+            }
+        `,
+        side: THREE.DoubleSide
+    });
+
+    // Tube Geometry - more segments for smoothness
+    const geometry = new THREE.TubeGeometry(curve, 300, 0.6, 32, false);
+    const tube = new THREE.Mesh(geometry, tubeMaterial);
+    scene.add(tube);
+
+    // Add "Particles" floating in the void
+    const particleCount = 1500;
+    const pGeometry = new THREE.BufferGeometry();
+    const pPositions = new Float32Array(particleCount * 3);
+    for (let i = 0; i < particleCount; i++) {
+        pPositions[i * 3] = (Math.random() - 0.5) * 100;
+        pPositions[i * 3 + 1] = (Math.random() - 0.5) * 100;
+        pPositions[i * 3 + 2] = (Math.random() - 0.5) * 150;
+    }
+    pGeometry.setAttribute('position', new THREE.BufferAttribute(pPositions, 3));
+    const pMaterial = new THREE.PointsMaterial({ color: 0xffffff, size: 0.05, transparent: true, opacity: 0.5 });
+    const particles = new THREE.Points(pGeometry, pMaterial);
+    scene.add(particles);
+
+    // Post-processing Lite (Emissive glow via PointLights)
+    const light1 = new THREE.PointLight(0x00ffff, 2, 30);
+    scene.add(light1);
+    const light2 = new THREE.PointLight(0xff00ff, 2, 30);
+    scene.add(light2);
+
+    const clock = new THREE.Clock();
+
+    function animate() {
+        requestAnimationFrame(animate);
+        const time = clock.getElapsedTime();
+
+        // Update Shader Uniforms
+        tubeMaterial.uniforms.uTime.value = time;
+
+        // Camera Flight Logic
+        // We travel through the path, but wrap around smoothly
+        const speed = 0.08;
+        const t = (time * speed) % 1.0;
+        
+        // Position camera slightly behind the center point for a "chase" feel
+        const lookAheadT = Math.min(t + 0.02, 1.0);
+        const pos = curve.getPointAt(t);
+        const target = curve.getPointAt(lookAheadT);
+        
+        camera.position.copy(pos);
+        // Offset camera slightly for dynamic angle
+        camera.position.lerp(new THREE.Vector3(pos.x, pos.y + 0.5, pos.z), 0.5);
+        camera.lookAt(target);
+
+        // Move lights with camera
+        light1.position.set(pos.x + 2, pos.y + 2, pos.z);
+        light2.position.set(pos.x - 2, pos.y - 2, pos.z);
+
+        // Slow rotation of particles for depth
+        particles.rotation.z = time * 0.05;
+        particles.rotation.y = time * 0.02;
+
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+</script>
+</body>
+</html>

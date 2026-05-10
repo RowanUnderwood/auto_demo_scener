@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { margin: 0; overflow: hidden; background: #050505; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="module">
+    import * as THREE from 'https://cdn.skypack.dev/three@0.136.0';
+
+    // 1. Scene Setup with Fog for depth
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x050505, 0.015);
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // 2. Create an Organic Hyper-Curve
+    const points = [];
+    for (let i = 0; i < 20; i++) {
+        points.push(new THREE.Vector3(
+            Math.sin(i * 0.4) * 35 + Math.cos(i * 0.2) * 10,
+            Math.cos(i * 0.5) * 25 + Math.sin(i * 0.8) * 5,
+            Math.sin(i * 0.3) * 40
+        ));
+    }
+    const curve = new THREE.CatmullRomCurve3(points);
+
+    // 3. Create a Neon Pulse Texture (Radial Glow & Grid)
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+    
+    const gradient = ctx.createRadialGradient(256, 256, 0, 256, 256, 256);
+    gradient.addColorStop(0, '#ffffff');
+    gradient.addColorStop(0.1, '#ff00ff');
+    gradient.addColorStop(0.4, '#00ffff');
+    gradient.addColorStop(1, '#000000');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 512, 512);
+
+    // Add a digital grid overlay
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 512; i += 32) {
+        ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 512); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(512, i); ctx.stroke();
+    }
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+
+    // 4. Create a more complex geometry (Tube with varying radius/segments)
+    const tubeGeo = new THREE.TubeGeometry(curve, 300, 2.5, 64, true);
+    
+    // Using MeshStandardMaterial for light reactivity
+    const material = new THREE.MeshStandardMaterial({ 
+        map: texture, 
+        side: THREE.BackSide,
+        emissive: new THREE.Color(0x220033),
+        roughness: 0.1,
+        metalness: 0.8
+    });
+
+    const tube = new THREE.Mesh(tubeGeo, material);
+    scene.add(tube);
+
+    // Floating Light Orbs (Visual interest inside the tunnel)
+    const orbGeom = new THREE.SphereGeometry(0.5, 16, 16);
+    for(let i = 0; i < 30; i++) {
+        const orbMat = new THREE.MeshBasicMaterial({ color: Math.random() > 0.5 ? 0x00ffff : 0xff00ff });
+        const orb = new THREE.Mesh(orbGeom, orbMat);
+        const t = Math.random();
+        orb.position.copy(curve.getPointAt(t));
+        orb.userData.offset = Math.random() * 10;
+        scene.add(orb);
+    }
+
+    // Lighting: Point light follows the camera like a headlight
+    const headlight = new THREE.PointLight(0x00ffff, 2, 50);
+    scene.add(headlight);
+    const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+    scene.add(ambientLight);
+
+    // 5. Animation Loop
+    function animate(time) {
+        requestAnimationFrame(animate);
+        const t_sec = time * 0.001;
+
+        // Texture scrolling: moving through the grid pattern
+        texture.offset.u += 0.005;
+        texture.offset.v += 0.002;
+
+        // Movement along curve (speed controlled by multiplier)
+        const speed = 0.04;
+        const progress = (t_sec * speed) % 1;
+        
+        const pos = curve.getPointAt(progress);
+        camera.position.copy(pos);
+
+        // Smoothly orient camera to look ahead
+        const lookAhead = (progress + 0.02) % 1;
+        const targetPos = curve.getPointAt(lookAhead);
+        camera.lookAt(targetPos);
+
+        // Update headlight position
+        headlight.position.copy(pos);
+        headlight.position.add(targetPos.clone().sub(pos).normalize().multiplyScalar(2));
+
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    requestAnimationFrame(animate);
+</script>
+</body>
+</html>

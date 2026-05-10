@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Mystify Effect</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+</script>
+<script type="module">
+    import * as THREE from 'three';
+
+    const WIDTH = 800;
+    const HEIGHT = 600;
+    const MAX_HISTORY = 30;
+    const NUM_POLYGONS = 2;
+    const POINTS_PER_POLY = 4;
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.OrthographicCamera(
+        -WIDTH / 2, WIDTH / 2, HEIGHT / 2, -HEIGHT / 2, 0.1, 1000
+    );
+    camera.position.z = 10;
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setClearColor(0x000000);
+    document.body.appendChild(renderer.domElement);
+
+    class Polygon {
+        constructor() {
+            this.points = [];
+            this.velocities = [];
+            for (let i = 0; i < POINTS_PER_POLY; i++) {
+                // Random position within bounds
+                this.points.push(new THREE.Vector2(
+                    (Math.random() - 0.5) * (WIDTH * 0.6),
+                    (Math.random() - 0.5) * (HEIGHT * 0.6)
+                ));
+                // Random velocity
+                this.velocities.push(new THREE.Vector2(
+                    (Math.random() - 0.5) * 4,
+                    (Math.random() - 0.5) * 4
+                ));
+            }
+            this.history = []; // Stores snapshots of points
+        }
+
+        update() {
+            // Save snapshot
+            const snapshot = this.points.map(p => p.clone());
+            this.history.push(snapshot);
+            if (this.history.length > MAX_HISTORY) {
+                this.history.shift();
+            }
+
+            for (let i = 0; i < POINTS_PER_POLY; i++) {
+                const p = this.points[i];
+                const v = this.velocities[i];
+
+                p.x += v.x;
+                p.y += v.y;
+
+                // Wall collisions (with padding)
+                const padX = WIDTH / 2 - 20;
+                const padY = HEIGHT / 2 - 20;
+
+                if (p.x > padX || p.x < -padX) {
+                    v.x *= -1;
+                    p.x = p.x > 0 ? padX : -padX;
+                }
+                if (p.y > padY || p.y < -padY) {
+                    v.y *= -1;
+                    p.y = p.y > 0 ? padY : -padY;
+                }
+            }
+        }
+    }
+
+    const polygons = Array.from({ length: NUM_POLYGONS }, () => new Polygon());
+
+    // We will use a single BufferGeometry for all trails to be efficient, 
+    // but since they vary in age/color, we'll manage them via individual line segments or one large buffer.
+    // For simplicity and exact requirement of "30 snapshots as Line meshes", we create objects per snapshot.
+
+    const trailGroup = new THREE.Group();
+    scene.add(trailGroup);
+
+    let hueOffset = 0;
+
+    function animate() {
+        requestAnimationFrame(animate);
+
+        hueOffset += 0.005;
+
+        // Clear old trails
+        while (trailGroup.children.length > 0) {
+            const child = trailGroup.children[0];
+            child.geometry.dispose();
+            child.material.dispose();
+            trailGroup.remove(child);
+        }
+
+        polygons.forEach((poly, polyIdx) => {
+            poly.update();
+
+            poly.history.forEach((snapshot, ageIndex) => {
+                // ageIndex 0 is oldest, MAX_HISTORY-1 is newest
+                const ageFactor = (ageIndex + 1) / MAX_HISTORY; // 0 to 1
+                const opacity = ageFactor * 0.6;
+                const hue = (hueOffset + (polyIdx * 0.5) + (ageFactor * 0.2)) % 1;
+
+                const geometry = new THREE.BufferGeometry();
+                const vertices = [];
+
+                for (let i = 0; i < POINTS_PER_POLY; i++) {
+                    const start = snapshot[i];
+                    const end = snapshot[(i + 1) % POINTS_PER_POLY];
+                    vertices.push(start.x, start.y, 0);
+                    vertices.push(end.x, end.y, 0);
+                }
+
+                geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+
+                const material = new THREE.LineBasicMaterial({
+                    color: new THREE.Color().setHSL(hue, 1.0, 0.5),
+                    transparent: true,
+                    opacity: opacity,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false
+                });
+
+                const line = new THREE.LineSegments(geometry, material);
+                trailGroup.add(line);
+            });
+        });
+
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        renderer.setSize(width, height);
+        // Adjust camera to keep aspect ratio or just fill screen? 
+        // Mystify was fixed res, but let's scale the view.
+        const aspect = width / height;
+        if (aspect > (WIDTH / HEIGHT)) {
+            camera.left = -WIDTH / 2 * aspect;
+            camera.right = WIDTH / 2 * aspect;
+        } else {
+            camera.top = HEIGHT / 2 / aspect;
+            camera.bottom = -HEIGHT / 2 / aspect;
+        }
+        camera.updateProjectionMatrix();
+    });
+
+    // Initial resize call
+    window.dispatchEvent(new Event('resize'));
+    animate();
+</script>
+</body>
+</html>

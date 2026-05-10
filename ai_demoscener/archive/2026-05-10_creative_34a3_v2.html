@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { margin: 0; overflow: hidden; background: #050505; }
+        canvas { display: block; }
+    </style>
+</head>
+<body l>
+<script type="importmap">
+    { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+</script>
+<script type="module">
+    import * as THREE from 'three';
+
+    /**
+     * CONCEPT: "KINETIC CRYSTALLINE NEBULA"
+     * Instead of neural filaments, we use geometric crystalline fractals (Icosahedral-based geometry)
+     * combined with a raymarched volumetric fog/nebula background. 
+     * Particles are now "energy shards" that orbit and collide with the structures.
+     */
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    document.body.appendChild(renderer.domElement);
+
+    // --- 1. VOLUMETRIC NEBULA (Raymarched Background) ---
+    const nebulaFs = `
+        uniform float time;
+        uniform vec2 resolution;
+
+        mat2 rot(float a) { return mat2(cos(a), -sin(a), sin(a), cos(a)); }
+
+        // Noise function for organic volumetric feel
+        float noise(vec3 p) {
+            return fract(sin(dot(p, vec3(12.9898, 78.233, 45.164))) * 43758.5453);
+        }
+
+        // Fractal Brownian Motion for the nebula clouds
+        float fbm(vec3 p) {
+            float v = 0.0;
+            float a = 0.5;
+            for (int i = 0; i < 4; i++) {
+                v += a * length(sin(p)); // Simplified volumetric noise proxy
+                p *= 2.0;
+                a *= 0.5;
+            }
+            return v;
+        }
+
+        void main() {
+            vec2 uv = (gl_FragCoord.xy - 0.5 * resolution.xy) / min(resolution.y, resolution.x);
+            vec3 ro = vec3(0.0, 0.0, 2.0);
+            vec3 rd = normalize(vec3(uv, -1.5));
+
+            // Raymarching through a fractal density field
+            float d = 0.0;
+            vec3 col = vec3(0.0);
+            float t = 0.0;
+
+            for(int i=0; i<32; i++) {
+                vec3 p = ro + rd * t;
+                // Create a swirling field using sine-based domain warping
+                p.xy *= rot(time * 0.1);
+                float density = sin(p.x * 2.0 + time) * cos(p.y * 2.0 + time) * sin(p.z * 2.0);
+                density = abs(density);
+                
+                // Accumulate color based on distance and density
+                float weight = smoothstep(0.5, 0.0, density);
+                col += vec3(0.1, 0.05, 0.2) * weight * (0.1 / (t + 0.5));
+                col += vec3(0.0, 0.4, 0.5) * (weight * 0.05);
+                
+                t += 0.2;
+                if(t > 5.0) break;
+            }
+
+            gl_FragColor = vec4(col + vec3(0.02, 0.01, 0.05), 1.0);
+        }
+    `;
+
+    const nebulaMat = new THREE.ShaderMaterial({
+        uniforms: {
+            time: { value: 0 },
+            resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+        },
+        vertexShader: `void main() { gl_Position = vec4(position, 1.0); }`,
+        fragmentShader: nebulaFs,
+        depthWrite: false
+    });
+
+    const bgQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), nebulaMat);
+    scene.add(bgQuad);
+
+    // --- 2. CRYSTALLINE STRUCTURES (Geometric Shards) ---
+    const crystalGroup = new THREE.Group();
+    scene.add(crystalGroup);
+
+    const createCrystal = () => {
+        const geo = new THREE.IcosahedronGeometry(Math.random() * 1.5 + 0.5, 0);
+        const mat = new THREE.MeshPhongMaterial({
+            color: 0xffffff,
+            emissive: new THREE.Color().setHSL(Math.random(), 0.8, 0.2),
+            specular: 0xffffff,
+            shininess: 100,
+            flatShading: true,
+            transparent: true,
+            opacity: 0.7
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.set((Math.random()-0.5)*12, (Math.random()-0.5)*12, (Math.random()-0.5)*10);
+        mesh.rotation.set(Math.random()*Math.PI, Math.random()*Math.PI, 0);
+        // Random scale for variety
+        const s = Math.random() * 0.8 + 0.2;
+        mesh.scale.set(s, s, s);
+        return mesh;
+    };
+
+    for(let i=0; i<12; i++) {
+        crystalGroup.add(createCrystal());
+    }
+
+    // Lights for crystals
+    const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+    scene.add(ambientLight);
+    const pointLight = new THREE.PointLight(0x00ffff, 2, 20);
+    pointLight.position.set(0, 0, 5);
+    scene.add(pointLight);
+
+    // --- 3. ENERGY SHARDS (Particle System) ---
+    const particleCount = 4000;
+    const pGeo = new THREE.BufferGeometry();
+    const posArr = new Float32Array(particleCount * 3);
+    const velArr = new Float32Array(particleCount * 3);
+    const colorArr = new Float32Array(particleCount * 3);
+
+    for(let i=0; i<particleCount; i++) {
+        posArr[i*3] = (Math.random()-0.5) * 20;
+        posArr[i*3+1] = (Math.random()-0.5) * 20;
+        posArr[i*3+2] = (Math.random()-0.5) * 20;
+
+        velArr[i*3] = (Math.random()-0.5) * 0.02;
+        velArr[i*3+1] = (Math.random()-0.5) * 0.02;
+        velArr[i*3+2] = (Math.random()-0.5) * 0.02;
+
+        const col = new THREE.Color().setHSL(Math.random() * 0.1 + 0.5, 1.0, 0.8);
+        colorArr[i*3] = col.r;
+        colorArr[i*3+1] = col.g;
+        colorArr[i*3+2] = col.b;
+    }
+
+    pGeo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+    pGeo.setAttribute('color', new THREE.BufferAttribute(colorArr, 3));
+
+    const pMat = new THREE.PointsMaterial({
+        size: 0.04,
+        vertexColors: true,
+        blending: THREE.AdditiveBlending,
+        transparent: true,
+        opacity: 0.6
+    });
+
+    const particles = new THREE.Points(pGeo, pMat);
+    scene.add(particles);
+
+    // --- ANIMATION LOOP ---
+    camera.position.z = 12;
+    let time = 0;
+
+    function animate() {
+        requestAnimationFrame(animate);
+        time += 0.01;
+
+        nebulaMat.uniforms.time.value = time;
+        
+        // Rotate crystals and structures
+        crystalGroup.rotation.y += 0.002;
+        crystalGroup.children.forEach((c, i) => {
+            c.rotation.x += 0.01 * (i % 2 ? 1 : -1);
+            c.position.y += Math.sin(time + i) * 0.005;
+        });
+
+        // Animate particles with a slight swirl effect
+        const positions = pGeo.attributes.position.array;
+        for(let i=0; i<particleCount; i++) {
+            const ix = i * 3;
+            const iy = i * 3 + 1;
+            const iz = i * 3 + 2;
+
+            // Move
+            positions[ix] += velArr[ix];
+            positions[iy] += velArr[iy];
+            positions[iz] += velArr[iz];
+
+            // Swirl toward center
+            const dx = positions[ix];
+            const dy = positions[iy];
+            const dz = positions[iz];
+            const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+
+            if (dist > 15 || dist < 0.1) {
+                // Reset particle to outer shell
+                const angle = Math.random() * Math.PI * 2;
+                const rad = 10 + Math.random() * 5;
+                positions[ix] = Math.cos(angle) * rad;
+                positions[iy] = Math.sin(angle) * rad;
+                positions[iz] = (Math.random()-0.5) * 10;
+            }
+
+            // Apply vortex force
+            positions[ix] += dy * 0.01;
+            positions[iy] -= dx * 0.01;
+        }
+        pGeo.attributes.position.needsUpdate = true;
+
+        // Camera movement
+        camera.position.x = Math.sin(time * 0.3) * 4;
+        camera.position.y = Math.cos(time * 0.2) * 2;
+        camera.lookAt(0, 0, 0);
+
+        // Light pulse
+        pointLight.intensity = 1.5 + Math.sin(time * 2) * 0.5;
+        pointLight.position.x = Math.sin(time) * 5;
+        pointLight.position.z = Math.cos(time) * 5;
+
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        nebulaMat.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+</script>
+</body>
+</html>

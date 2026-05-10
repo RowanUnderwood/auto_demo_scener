@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
+    <script>
+        const COUNT = 2000;
+        const SPEED = 0.3;
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(COUNT * 3);
+
+        for (let i = 0; i < COUNT; i++) {
+            positions[i * 3] = (Math.random() * 2) - 1;     // X: [-1, 1]
+            positions[i * 3 + 1] = (Math.random() * 2) - 1; // Y: [-1, 1]
+            positions[i * 3 + 2] = (Math.random() * (-1 - (-100))) + (-100); // Z: [-100, -1]
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+        const material = new THREE.PointsMaterial({
+            color: 0xffffff,
+            size: 0.02,
+            sizeAttenuation: true
+        });
+
+        const stars = new THREE.Points(geometry, material);
+        scene.add(stars);
+
+        // Camera at origin looking down -Z
+        camera.position.set(0, 0, 0);
+        camera.lookAt(0, 0, -1);
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const posAttr = geometry.attributes.position;
+            for (let i = 0; i < COUNT; i++) {
+                let zIdx = i * 3 + 2;
+                posAttr.array[zIdx] += SPEED;
+
+                if (posAttr.array[zIdx] > 0) {
+                    posAttr.array[zIdx] = -100;
+                    posAttr.array[i * 3] = (Math.random() * 2) - 1;
+                    posAttr.array[i * 3 + 1] = (Math.random() * 2) - 1;
+                }
+            }
+            posAttr.needsUpdate = true;
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>
