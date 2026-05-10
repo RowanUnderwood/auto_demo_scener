@@ -37,7 +37,7 @@ def wait_for_result(timeout: float) -> dict | None:
 PROBE_JS = r"""
 (function(){
   var _drawCount=0, _frameCount=0, _lastFpsTs=performance.now();
-  var _hasDrawn=false, _errorSent=false;
+  var _hasDrawn=false, _errorSent=false, _glCtxs=[];
 
   function send(msg){ try{ window.parent.postMessage(msg,'*'); }catch(e){} }
 
@@ -59,17 +59,36 @@ PROBE_JS = r"""
   }
   var _origGetCtx=HTMLCanvasElement.prototype.getContext;
   HTMLCanvasElement.prototype.getContext=function(t,o){
+    if(t==='webgl'||t==='webgl2'||t==='experimental-webgl')
+      o=Object.assign({},o,{preserveDrawingBuffer:true});
     var c=_origGetCtx.call(this,t,o);
-    if(t==='webgl'||t==='webgl2')patchCtx(c);
+    if((t==='webgl'||t==='webgl2'||t==='experimental-webgl')&&c){
+      patchCtx(c);
+      _glCtxs.push(c);
+    }
     return c;
   };
+
+  function sampleBright(gl){
+    var w=gl.drawingBufferWidth,h=gl.drawingBufferHeight;
+    if(!w||!h)return 0;
+    var bright=0,px=new Uint8Array(4);
+    for(var xi=0;xi<4;xi++)for(var yi=0;yi<4;yi++){
+      gl.readPixels(Math.floor((xi+0.5)/4*w),Math.floor((yi+0.5)/4*h),1,1,gl.RGBA,gl.UNSIGNED_BYTE,px);
+      if(0.299*px[0]+0.587*px[1]+0.114*px[2]>8)bright++;
+    }
+    return bright;
+  }
 
   function tick(ts){
     _frameCount++;
     requestAnimationFrame(tick);
     var elapsed=ts-_lastFpsTs;
     if(elapsed>=1000){
-      send({type:'probe_heartbeat',fps:_frameCount/(elapsed/1000),draws:_drawCount,hasDrawn:_hasDrawn});
+      var bright=0;
+      for(var _i=0;_i<_glCtxs.length;_i++){try{bright=Math.max(bright,sampleBright(_glCtxs[_i]));}catch(e){}}
+      send({type:'probe_heartbeat',fps:_frameCount/(elapsed/1000),draws:_drawCount,hasDrawn:_hasDrawn,
+            brightPixels:_glCtxs.length>0?bright:null});
       _frameCount=0; _drawCount=0; _lastFpsTs=ts;
     }
   }

@@ -294,7 +294,8 @@ window.addEventListener('message', (ev) => {
     if (auditTimer) { clearTimeout(auditTimer); auditTimer = null; }
     concludeAudition();
   } else if (msg.type === 'probe_heartbeat') {
-    auditHeartbeats.push({ fps: msg.fps, draws: msg.draws, hasDrawn: msg.hasDrawn });
+    auditHeartbeats.push({ fps: msg.fps, draws: msg.draws, hasDrawn: msg.hasDrawn,
+                            brightPixels: msg.brightPixels ?? null });
   }
 });
 
@@ -322,7 +323,13 @@ function concludeAudition() {
       result = 'BLANK';
       error  = `Average FPS ${avgFps.toFixed(1)} below minimum ${minFps}`;
     } else {
-      result = 'OK';
+      const pixelData = auditHeartbeats.filter(h => h.brightPixels !== null);
+      if (pixelData.length >= blankSec && pixelData.every(h => h.brightPixels === 0)) {
+        result = 'BLANK';
+        error  = 'WebGL active but no visible content detected';
+      } else {
+        result = 'OK';
+      }
     }
   }
 
