@@ -1,0 +1,437 @@
+/* ── Reset & base ────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; }
+
+body {
+  font-family: 'Courier New', 'Lucida Console', monospace;
+  font-size: clamp(11px, min(2.2vh, 1.4vw), 18px);
+  transition: background 0.3s, color 0.3s;
+}
+
+/* ── Palettes ─────────────────────────────────────────────────────────────── */
+body.amber_crt {
+  --bg:        #0d0800;
+  --bg2:       #1a1200;
+  --fg:        #ffb000;
+  --fg-dim:    #7a5500;
+  --accent:    #ff8800;
+  --keyword:   #ff6622;
+  --string:    #aadd44;
+  --comment:   #664422;
+  --number:    #dddd00;
+  --builtin:   #44aaff;
+  --linenum:   #553300;
+  --cursor:    #ffb000;
+  --scanlines: rgba(0,0,0,0.15);
+  --glow:      0 0 8px rgba(255,176,0,0.5);
+  --border:    #331a00;
+  --titlebar:  #1a1000;
+  --btn:       #2a1a00;
+}
+
+body.green_phosphor {
+  --bg:        #000d00;
+  --bg2:       #001200;
+  --fg:        #33ff33;
+  --fg-dim:    #195519;
+  --accent:    #00ff00;
+  --keyword:   #88ff44;
+  --string:    #66ff99;
+  --comment:   #1a4d1a;
+  --number:    #aaff00;
+  --builtin:   #00ffcc;
+  --linenum:   #0d330d;
+  --cursor:    #33ff33;
+  --scanlines: rgba(0,0,0,0.12);
+  --glow:      0 0 8px rgba(51,255,51,0.4);
+  --border:    #003300;
+  --titlebar:  #001400;
+  --btn:       #002200;
+}
+
+body.borland_blue {
+  --bg:        #0000aa;
+  --bg2:       #000088;
+  --fg:        #ffffff;
+  --fg-dim:    #aaaaaa;
+  --accent:    #ffff00;
+  --keyword:   #ffff00;
+  --string:    #00ffff;
+  --comment:   #aaaaaa;
+  --number:    #ff8888;
+  --builtin:   #44ffff;
+  --linenum:   #0000cc;
+  --cursor:    #ffffff;
+  --scanlines: rgba(0,0,0,0.05);
+  --glow:      none;
+  --border:    #000066;
+  --titlebar:  #000066;
+  --btn:       #000088;
+}
+
+body.solarized_dark {
+  --bg:        #002b36;
+  --bg2:       #073642;
+  --fg:        #839496;
+  --fg-dim:    #586e75;
+  --accent:    #268bd2;
+  --keyword:   #859900;
+  --string:    #2aa198;
+  --comment:   #586e75;
+  --number:    #d33682;
+  --builtin:   #268bd2;
+  --linenum:   #073642;
+  --cursor:    #839496;
+  --scanlines: rgba(0,0,0,0.05);
+  --glow:      none;
+  --border:    #073642;
+  --titlebar:  #073642;
+  --btn:       #00232d;
+}
+
+body.notepad_pp {
+  --bg:        #ffffff;
+  --bg2:       #f0f0f0;
+  --fg:        #000000;
+  --fg-dim:    #666666;
+  --accent:    #0070c0;
+  --keyword:   #0000ff;
+  --string:    #a31515;
+  --comment:   #008000;
+  --number:    #09885a;
+  --builtin:   #267f99;
+  --linenum:   #d0d0d0;
+  --cursor:    #000000;
+  --scanlines: transparent;
+  --glow:      none;
+  --border:    #cccccc;
+  --titlebar:  #e8e8e8;
+  --btn:       #d8d8d8;
+}
+
+body.synthwave {
+  --bg:        #0a0016;
+  --bg2:       #12002a;
+  --fg:        #f0a0ff;
+  --fg-dim:    #6a3080;
+  --accent:    #ff44cc;
+  --keyword:   #ff44cc;
+  --string:    #44ffcc;
+  --comment:   #4a2060;
+  --number:    #ffcc00;
+  --builtin:   #44ccff;
+  --linenum:   #1a003a;
+  --cursor:    #ff44cc;
+  --scanlines: rgba(0,0,0,0.1);
+  --glow:      0 0 12px rgba(255,68,204,0.4);
+  --border:    #2a0050;
+  --titlebar:  #0d0020;
+  --btn:       #1a0035;
+}
+
+body.mac_classic {
+  --bg:        #ffffff;
+  --bg2:       #dddddd;
+  --fg:        #000000;
+  --fg-dim:    #444444;
+  --accent:    #000000;
+  --keyword:   #000000;
+  --string:    #333333;
+  --comment:   #666666;
+  --number:    #000000;
+  --builtin:   #000000;
+  --linenum:   #e0e0e0;
+  --cursor:    #000000;
+  --scanlines: transparent;
+  --glow:      none;
+  --border:    #888888;
+  --titlebar:  linear-gradient(to bottom, #dddddd, #aaaaaa);
+  --btn:       #dddddd;
+}
+
+/* ── Layout ────────────────────────────────────────────────────────────────── */
+#app {
+  width: 100vw;
+  height: 100vh;
+  position: relative;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+/* Demo iframe — full viewport, always rendering */
+#demoFrame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+  z-index: 1;
+  opacity: 0;
+  transition: opacity 0.6s ease;
+}
+#demoFrame.visible { opacity: 1; }
+
+/* Mock-OS overlay — covers iframe during generate/validate */
+#mockOS {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  background: var(--bg);
+  opacity: 1;
+  transition: opacity 0.6s ease;
+  pointer-events: auto;
+}
+#mockOS.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Scanline overlay */
+#mockOS::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 2px,
+    var(--scanlines) 2px,
+    var(--scanlines) 4px
+  );
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* ── Title bar ─────────────────────────────────────────────────────────────── */
+#titleBar {
+  background: var(--titlebar);
+  border-bottom: 1px solid var(--border);
+  padding: 0.3em 0.8em;
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  user-select: none;
+}
+
+.win-btn {
+  width: 0.9em;
+  height: 0.9em;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--btn);
+  flex-shrink: 0;
+}
+
+#titleText {
+  flex: 1;
+  text-align: center;
+  color: var(--fg);
+  font-weight: bold;
+  letter-spacing: 0.1em;
+  text-shadow: var(--glow);
+  font-size: 0.9em;
+}
+
+#modeChip {
+  font-size: 0.75em;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  padding: 0.1em 0.4em;
+  border-radius: 2px;
+}
+
+/* ── Editor pane ───────────────────────────────────────────────────────────── */
+#editorPane {
+  display: flex;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+#lineNumbers {
+  background: var(--bg2);
+  border-right: 1px solid var(--border);
+  color: var(--linenum);
+  padding: 0.4em 0.5em;
+  text-align: right;
+  font-size: 0.85em;
+  line-height: 1.5;
+  white-space: pre;
+  overflow: hidden;
+  flex-shrink: 0;
+  min-width: 3em;
+  user-select: none;
+}
+
+#editorContent {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: auto;
+  padding: 0.4em 0.6em;
+  line-height: 1.5;
+}
+
+#editorContent::-webkit-scrollbar { width: 6px; height: 6px; }
+#editorContent::-webkit-scrollbar-track { background: var(--bg2); }
+#editorContent::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+#editorCode {
+  display: block;
+  white-space: pre;
+  font-size: 0.9em;
+  line-height: 1.5;
+  tab-size: 2;
+  color: var(--fg);
+}
+
+/* Cursor blink */
+#cursor {
+  display: inline-block;
+  width: 0.6em;
+  height: 1.1em;
+  background: var(--cursor);
+  vertical-align: text-bottom;
+  animation: blink 1s step-end infinite;
+  box-shadow: var(--glow);
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+/* ── Syntax highlighting ───────────────────────────────────────────────────── */
+.hl-keyword { color: var(--keyword); }
+.hl-string  { color: var(--string); }
+.hl-comment { color: var(--comment); font-style: italic; }
+.hl-number  { color: var(--number); }
+.hl-builtin { color: var(--builtin); }
+
+/* ── Status bar ────────────────────────────────────────────────────────────── */
+#statusBar {
+  background: var(--bg2);
+  border-top: 1px solid var(--border);
+  padding: 0.2em 0.8em;
+  display: flex;
+  align-items: center;
+  gap: 1em;
+  font-size: 0.8em;
+  color: var(--fg-dim);
+  user-select: none;
+}
+
+#statusText {
+  flex: 1;
+  color: var(--accent);
+  font-weight: bold;
+  letter-spacing: 0.05em;
+  text-shadow: var(--glow);
+}
+
+.stat-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.3em;
+}
+
+.stat-bar {
+  width: 40px;
+  height: 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.stat-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.8s ease;
+}
+
+/* ── Idle / splash ─────────────────────────────────────────────────────────── */
+#idleOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1em;
+  transition: opacity 0.5s;
+}
+#idleOverlay.hidden { opacity: 0; pointer-events: none; }
+
+#idleLogo {
+  font-size: clamp(1.5em, 5vw, 4em);
+  font-weight: bold;
+  color: var(--accent);
+  text-shadow: var(--glow);
+  letter-spacing: 0.2em;
+}
+
+#idleSub {
+  color: var(--fg-dim);
+  font-size: 0.85em;
+  letter-spacing: 0.1em;
+}
+
+/* ── Delete confirmation overlay ───────────────────────────────────────────── */
+#deleteConfirm {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  background: rgba(0, 0, 0, 0.78);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 1;
+  transition: opacity 0.2s;
+}
+#deleteConfirm.hidden { opacity: 0; pointer-events: none; }
+
+#deleteBox {
+  background: var(--bg2);
+  border: 2px solid var(--accent);
+  padding: 2em 3em;
+  text-align: center;
+  border-radius: 4px;
+  box-shadow: var(--glow);
+  max-width: 80vw;
+}
+
+#deleteMsg {
+  color: var(--accent);
+  font-size: 1.4em;
+  font-weight: bold;
+  letter-spacing: 0.08em;
+  margin-bottom: 0.4em;
+  text-shadow: var(--glow);
+}
+
+#deleteFilename {
+  color: var(--fg-dim);
+  font-size: 0.8em;
+  margin-bottom: 1.4em;
+  word-break: break-all;
+}
+
+#deleteBtns {
+  display: flex;
+  gap: 1em;
+  justify-content: center;
+}
+
+#deleteBtns button {
+  padding: 0.4em 1.6em;
+  font-family: inherit;
+  font-size: 1em;
+  font-weight: bold;
+  cursor: pointer;
+  border: none;
+  border-radius: 3px;
+  letter-spacing: 0.05em;
+  transition: filter 0.15s;
+}
+#deleteBtns button:hover { filter: brightness(1.2); }
+#deleteYes { background: var(--accent); color: var(--bg); }
+#deleteNo  { background: var(--btn); color: var(--fg); border: 1px solid var(--border); }

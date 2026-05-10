@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Demoscener — Config</title>
+  <link rel="stylesheet" href="/static/config.css">
+</head>
+<body>
+<div id="wrapper">
+
+  <header>
+    <h1>⚙ AI DEMOSCENER CONFIG</h1>
+    <div id="liveStatus">
+      <div id="stateDot"></div>
+      <span id="stateLabel">connecting…</span>
+      &nbsp;·&nbsp;
+      <button class="btn btn-sm" id="skipBtn" onclick="skip()">⏭ SKIP</button>
+      <a class="btn btn-sm btn-muted" href="/display" target="_blank">↗ display</a>
+    </div>
+  </header>
+
+  <!-- Mode -->
+  <div class="section">
+    <div class="section-header" onclick="toggle(this)"><h2>MODE</h2><span class="arrow">▾</span></div>
+    <div class="section-body full">
+      <div class="mode-toggle">
+        <div class="mode-btn" id="modeGenerate" onclick="setMode('generate', true)">GENERATE</div>
+        <div class="mode-btn" id="modeReplay"   onclick="setMode('replay', true)">REPLAY</div>
+      </div>
+      <div style="margin-top:0.75rem">
+        <label style="font-size:0.8rem;color:var(--c-muted)">Sub-mode weights (0 = disabled)</label>
+        <div class="weight-grid" style="margin-top:0.4rem">
+          <span class="weight-label">Creative</span>
+          <input type="range" min="0" max="10" id="wCreative" oninput="showW(this,'wCreativeV')">
+          <span class="range-val" id="wCreativeV">1</span>
+
+          <span class="weight-label">Update</span>
+          <input type="range" min="0" max="10" id="wUpdate" oninput="showW(this,'wUpdateV')">
+          <span class="range-val" id="wUpdateV">1</span>
+
+          <span class="weight-label">Stock</span>
+          <input type="range" min="0" max="10" id="wStock" oninput="showW(this,'wStockV')">
+          <span class="range-val" id="wStockV">2</span>
+        </div>
+      </div>
+      <div class="save-row"><button class="btn btn-primary" onclick="saveSection('mode')">Save</button><span class="save-msg" id="modeSaved"></span></div>
+    </div>
+  </div>
+
+  <!-- LM Studio -->
+  <div class="section">
+    <div class="section-header" onclick="toggle(this)"><h2>LM STUDIO</h2><span class="arrow">▾</span></div>
+    <div class="section-body">
+      <div class="field"><label>Base URL</label><input type="url" id="lmUrl" placeholder="http://192.168.x.x:1234"></div>
+      <div class="field">
+        <label>Model <button class="btn btn-sm btn-muted" onclick="refreshModels()" style="margin-left:0.5rem">Refresh</button></label>
+        <select id="lmModel"></select>
+      </div>
+      <div class="field"><label>Max tokens</label><input type="number" id="lmMaxTokens" min="512" max="32768"></div>
+      <div class="field"><label>Temperature</label>
+        <div class="range-row"><input type="range" id="lmTemp" min="0" max="2" step="0.05" oninput="showW(this,'lmTempV')"><span class="range-val" id="lmTempV">0.9</span></div>
+      </div>
+      <div class="field"><label>Timeout (seconds)</label><input type="number" id="lmTimeout" min="30" max="600"></div>
+      <div class="field"><label>Context ceiling (tokens)</label><input type="number" id="lmCeiling" min="4096" max="131072"></div>
+    </div>
+    <div style="padding:0 1rem 0.75rem"><div class="save-row"><button class="btn btn-primary" onclick="saveSection('lmStudio')">Save</button><span class="save-msg" id="lmSaved"></span></div></div>
+  </div>
+
+  <!-- Display -->
+  <div class="section">
+    <div class="section-header" onclick="toggle(this)"><h2>DISPLAY</h2><span class="arrow">▾</span></div>
+    <div class="section-body">
+      <div class="field"><label>Demo runtime (seconds)</label><input type="number" id="demoRuntime" min="10" max="3600"></div>
+      <div class="field"><label>Min typing (seconds)</label><input type="number" id="minTyping" min="1" max="60"></div>
+      <div class="field"><label>Typing speed (chars/sec)</label><input type="number" id="displayCharsPerSec" min="50" max="2000"></div>
+      <div class="field"><label>Palette</label>
+        <select id="palette">
+          <option value="amber_crt">Amber CRT</option>
+          <option value="green_phosphor">Green Phosphor</option>
+          <option value="borland_blue">Borland Blue</option>
+          <option value="solarized_dark">Solarized Dark</option>
+          <option value="notepad_pp">Notepad++</option>
+          <option value="synthwave">Synthwave</option>
+          <option value="mac_classic">Mac Classic</option>
+        </select>
+      </div>
+      <div class="field"><label class="check-row"><input type="checkbox" id="showStatusBar"> Show status bar</label></div>
+      <div class="field"><label class="check-row"><input type="checkbox" id="showRetry"> Show retry messages</label></div>
+    </div>
+    <div style="padding:0 1rem 0.75rem"><div class="save-row"><button class="btn btn-primary" onclick="saveSection('display')">Save</button><span class="save-msg" id="displaySaved"></span></div></div>
+  </div>
+
+  <!-- Validation -->
+  <div class="section">
+    <div class="section-header" onclick="toggle(this)"><h2>VALIDATION</h2><span class="arrow">▾</span></div>
+    <div class="section-body">
+      <div class="field"><label>Max repair attempts</label><input type="number" id="maxRepair" min="0" max="5"></div>
+      <div class="field"><label>Audition window (seconds)</label><input type="number" id="auditionSecs" min="2" max="30"></div>
+      <div class="field"><label>Blank detection (seconds)</label><input type="number" id="blankSecs" min="1" max="15"></div>
+      <div class="field"><label>Min FPS</label><input type="number" id="minFps" min="1" max="60"></div>
+    </div>
+    <div style="padding:0 1rem 0.75rem"><div class="save-row"><button class="btn btn-primary" onclick="saveSection('validation')">Save</button><span class="save-msg" id="validationSaved"></span></div></div>
+  </div>
+
+  <!-- Archive -->
+  <div class="section">
+    <div class="section-header" onclick="toggle(this)"><h2>ARCHIVE</h2><span class="arrow">▾</span></div>
+    <div class="section-body">
+      <div class="field"><label>Directory</label><input type="text" id="archiveDir"></div>
+      <div class="field"><label>Max files</label><input type="number" id="maxFiles" min="10" max="10000"></div>
+      <div class="field">
+        <label>Archive contents</label>
+        <div id="archiveCount" style="color:var(--c-muted);font-size:0.85rem">Loading…</div>
+      </div>
+    </div>
+    <div style="padding:0 1rem 0.75rem"><div class="save-row"><button class="btn btn-primary" onclick="saveSection('archive')">Save</button><span class="save-msg" id="archiveSaved"></span></div></div>
+  </div>
+
+  <!-- System prompts -->
+  <div class="section">
+    <div class="section-header collapsed" onclick="toggle(this)"><h2>SYSTEM PROMPTS</h2><span class="arrow">▾</span></div>
+    <div class="section-body full collapsed">
+      <div class="field"><label>Stock prompt</label><textarea id="promptStock" rows="5"></textarea></div>
+      <div class="field"><label>Creative prompt</label><textarea id="promptCreative" rows="5"></textarea></div>
+      <div class="field"><label>Update prompt</label><textarea id="promptUpdate" rows="5"></textarea></div>
+      <div class="field"><label>Repair prompt <small style="color:var(--c-muted)">(use {error})</small></label><textarea id="promptRepair" rows="5"></textarea></div>
+      <div class="save-row"><button class="btn btn-primary" onclick="saveSection('prompts')">Save</button><span class="save-msg" id="promptsSaved"></span></div>
+    </div>
+  </div>
+
+  <!-- Prompts CSV -->
+  <div class="section">
+    <div class="section-header collapsed" onclick="toggle(this)"><h2>PROMPTS CSV</h2><span class="arrow">▾</span></div>
+    <div class="section-body full collapsed">
+      <div style="display:flex;gap:0.5rem;margin-bottom:0.5rem">
+        <button class="btn btn-sm btn-muted" onclick="addPromptRow()">+ Add row</button>
+        <span style="color:var(--c-muted);font-size:0.8rem;margin-left:auto" id="csvRowCount"></span>
+      </div>
+      <div style="overflow-x:auto">
+        <table id="promptsTable">
+          <thead><tr><th style="width:180px">Effect</th><th>Three.js prompt</th><th style="width:40px"></th></tr></thead>
+          <tbody id="promptsTbody"></tbody>
+        </table>
+      </div>
+      <div class="save-row" style="margin-top:0.5rem"><button class="btn btn-primary" onclick="savePrompts()">Save CSV</button><span class="save-msg" id="csvSaved"></span></div>
+    </div>
+  </div>
+
+  <!-- Live log -->
+  <div class="section">
+    <div class="section-header" onclick="toggle(this)"><h2>LIVE LOG</h2><span class="arrow">▾</span></div>
+    <div class="section-body full">
+      <div id="logTail">Connecting…</div>
+      <div style="margin-top:0.4rem;display:flex;gap:0.5rem">
+        <button class="btn btn-sm btn-muted" onclick="refreshLog()">Refresh</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+<script src="/static/config.js"></script>
+</body>
+</html>

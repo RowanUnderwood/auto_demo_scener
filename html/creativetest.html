@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Demoscene: Sonic Singularity</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', Courier, monospace; }
+        canvas { display: block; }
+        #ui {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            text-align: center; color: #0ff; z-index: 10; cursor: pointer;
+            padding: 20px; border: 1px solid #0ff; background: rgba(0,0,0,0.8);
+            transition: opacity 0.5s;
+        }
+        #ui:hover { background: rgba(0,255,255,0.1); }
+        #label { position: absolute; bottom: 20px; left: 20px; color: #0ff; font-size: 12px; pointer-events: none; opacity: 0.5; }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <h1>SONIC SINGULARITY</h1>
+        <p>[ CLICK TO INITIALIZE ]</p>
+        <small>REQUIRES MICROPHONE ACCESS</small>
+    </div>
+    <div id="label">SYNTHESIZED EFFECT: AUDIO-METABALL-GLITCH</div>
+
+    <!-- Three.js CDN -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        let scene, camera, renderer, material, analyser, dataArray;
+        let audioInitialized = false;
+
+        const ui = document.getElementById('ui');
+
+        // --- SHADER CODE ---
+        const vertexShader = `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `;
+
+        const fragmentShader = `
+            uniform float u_time;
+            uniform vec2 u_resolution;
+            uniform float u_audio[32]; // Low-mid frequency data
+            uniform float u_glitch;    // High frequency trigger
+            varying vec2 vUv;
+
+            #define MAX_STEPS 80
+            #define SURF_DIST 0.001
+            #define MAX_DIST 20.0
+
+            // Smooth minimum for metaball effect
+            float smin(float a, float b, float k) {
+                float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+                return mix(b, a, h) - k * h * (1.0 - h);
+            }
+
+            float sdSphere(vec3 p, float s) {
+                return length(p) - s;
+            }
+
+            // Distance Function: The "Singularity" core
+            float getDist(vec3 p) {
+                // Base movement driven by time and audio
+                float bass = u_audio[0] * 1.5;
+                float mid = u_audio[10] * 0.8;
+
+                vec3 p1 = vec3(sin(u_time*0.5)*2.0, cos(u_time*0.3)*1.5, 0.0);
+                vec3 p2 = vec3(cos(u_time*0.7)*2.5, sin(u_time*0.4)*2.0, sin(u_time)*1.0);
+                vec3 p3 = vec3(sin(u_time*0.8)*3.0, 0.0, cos(u_time*0.5)*3.0);
+
+                float d1 = sdSphere(p - p1, 1.0 + bass * 0.5);
+                float d2 = sdSphere(p - p2, 0.8 + mid);
+                float d3 = sdSphere(p - p3, 1.2 + u_audio[5] * 0.4);
+
+                // The k parameter (smoothness) is driven by audio intensity
+                float k = 0.5 + (u_audio[2] * 1.2); 
+                float d = smin(d1, d2, k);
+                d = smin(d, d3, k);
+
+                return d;
+            }
+
+            vec3 getNormal(vec3 p) {
+                float d = getDist(p);
+                vec2 e = vec2(0.01, 0);
+                vec3 n = d - vec3(
+                    getDist(p - e.xyy),
+                    getDist(p - e.yxy),
+                    getDist(p - e.yyx)
+                );
+                return normalize(n);
+            }
+
+            void main() {
+                // Glitch logic: shift UVs based on high-frequency audio
+                vec2 uv = vUv;
+                float glitchShift = u_glitch * 0.05;
+                
+                // Chromatic Aberration effect
+                float r = texture2D(vec2(uv.x + glitchShift, uv.y), vec2(0.0)).r; // Placeholder logic for actual color split below
+                
+                // Raymarching setup
+                vec3 ro = vec3(0, 0, -7); // Ray origin
+                vec3 rd = normalize(vec3(uv - 0.5, 1.0)); // Ray direction
+
+                float dO = 0.0;
+                for(int i=0; i<MAX_STEPS; i++) {
+                    vec3 p = ro + rd * dO;
+                    float dS = getDist(p);
+                    dO += dS;
+                    if(dO > MAX_DIST || abs(dS) < SURF_DIST) break;
+                }
+
+                vec3 color = vec3(0.0);
+
+                if(dO < MAX_DIST) {
+                    vec3 p = ro + rd * dO;
+                    vec3 n = getNormal(p);
+                    float diff = dot(n, normalize(vec3(1,2,3))) * 0.5 + 0.5;
+                    
+                    // Color palette driven by audio and position
+                    vec3 baseCol = vec3(0.1, 0.4, 0.9); // Deep blue
+                    vec3 accentCol = vec3(u_audio[2], 0.2, u_audio[15]); // Pink/Purple shift
+                    color = mix(baseCol, accentCol, sin(p.y + u_time)*0.5+0.5);
+                    
+                    color *= diff;
+                    // Add a glow based on distance to camera (fake fog)
+                    color *= exp(-0.1 * dO);
+                }
+
+                // Post-process: Glitch/Chromatic Aberration simulation
+                // We simulate the split by sampling the color with an offset if u_glitch is high
+                if(u_glitch > 0.2) {
+                    color.r += glitchShift;
+                    color.b -= glitchShift;
+                }
+
+                // Final Bloom-like glow (simple additive)
+                color += vec3(0.1, 0.05, 0.2) * (1.0 / (dO + 0.5));
+
+                gl_FragColor = vec4(color, 1.0);
+            }
+        `;
+
+        // --- CORE LOGIC ---
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            const geometry = new THREE.PlaneGeometry(2, 2);
+            material = new THREE.ShaderMaterial({
+                uniforms: {
+                    u_time: { value: 0 },
+                    u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+                    u_audio: { value: new Array(32).fill(0) },
+                    u_glitch: { value: 0 }
+                },
+                vertexShader,
+                fragmentShader
+            });
+
+            const mesh = new THREE.Mesh(geometry, material);
+            scene.add(mesh);
+
+            window.addEventListener('resize', onWindowResize);
+            animate();
+        }
+
+        async function setupAudio() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const source = audioCtx.createMediaStreamSource(stream);
+                analyser = audioCtx.createAnalyser();
+                analyser.fftSize = 128; // Small for performance and specific frequency focus
+                source.connect(analyser);
+                dataArray = new Uint8Array(analyser.frequencyBinCount);
+                audioInitialized = true;
+                ui.style.opacity = '0';
+                setTimeout(() => ui.remove(), 500);
+            } catch (err) {
+                alert("Microphone access is required for the Sonic Singularity effect.");
+            }
+        }
+
+        function onWindowResize() {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            material.uniforms.u_resolution.value.set(window.innerWidth, window.innerHeight);
+        }
+
+        function animate(time) {
+            requestAnimationFrame(animate);
+            
+            material.uniforms.u_time.value = time * 0.001;
+
+            if (audioInitialized) {
+                analyser.getByteFrequencyData(dataArray);
+                
+                // Map frequency data to uniform array
+                const audioValues = new Float32Array(32);
+                let highFreqSum = 0;
+                for(let i=0; i<32; i++) {
+                    audioValues[i] = dataArray[i] / 255.0;
+                    if (i > 20) highFreqSum += audioValues[i];
+                }
+                material.uniforms.u_audio.value = audioValues;
+                
+                // High frequency triggers the "glitch" uniform
+                material.uniforms.u_glitch.value = highFreqSum * 5.0; 
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        ui.addEventListener('click', () => {
+            setupAudio();
+        });
+
+        init();
+    </script>
+</body>
+</html>

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Demoscener</title>
+  <link rel="stylesheet" href="/static/display.css">
+</head>
+<body class="amber_crt">
+<div id="app">
+
+  <!-- Demo iframe — full viewport, always rendering under mock-OS -->
+  <iframe id="demoFrame" sandbox="allow-scripts" src="about:blank"></iframe>
+
+  <!-- Idle / startup splash -->
+  <div id="idleOverlay">
+    <div id="idleLogo">DEMOWRITER&nbsp;1.0</div>
+    <div id="idleSub">AI DEMOSCENE STATION — INITIALISING…</div>
+  </div>
+
+  <!-- Mock-OS editor overlay -->
+  <div id="mockOS" class="hidden">
+    <!-- Title bar -->
+    <div id="titleBar">
+      <div class="win-btn"></div>
+      <div class="win-btn"></div>
+      <div class="win-btn"></div>
+      <div id="titleText">DEMOWRITER 1.0</div>
+      <div id="modeChip">STOCK</div>
+    </div>
+
+    <!-- Editor pane -->
+    <div id="editorPane">
+      <div id="lineNumbers">1</div>
+      <div id="editorContent">
+        <code id="editorCode"></code><span id="cursor"></span>
+      </div>
+    </div>
+
+    <!-- Status bar -->
+    <div id="statusBar">
+      <span id="statusText">READY</span>
+      <span id="posInfo">Ln 1 Col 1</span>
+      <span class="stat-pill">
+        CPU
+        <span class="stat-bar"><span class="stat-fill" id="cpuBar" style="width:20%"></span></span>
+        <span id="cpuPct">20%</span>
+      </span>
+      <span class="stat-pill">
+        MEM
+        <span class="stat-bar"><span class="stat-fill" id="memBar" style="width:35%"></span></span>
+        <span id="memPct">35%</span>
+      </span>
+      <span id="filenameInfo"></span>
+    </div>
+  </div>
+
+  <!-- Delete confirmation overlay -->
+  <div id="deleteConfirm" class="hidden">
+    <div id="deleteBox">
+      <div id="deleteMsg">DELETE THIS DEMO?</div>
+      <div id="deleteFilename"></div>
+      <div id="deleteBtns">
+        <button id="deleteYes">YES — DELETE</button>
+        <button id="deleteNo">CANCEL</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+<script src="/static/display.js"></script>
+</body>
+</html>
