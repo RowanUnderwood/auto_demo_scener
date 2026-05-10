@@ -119,6 +119,22 @@
     <div style="padding:0 1rem 0.75rem"><div class="save-row"><button class="btn btn-primary" onclick="saveSection('archive')">Save</button><span class="save-msg" id="archiveSaved"></span></div></div>
   </div>
 
+  <!-- Preview -->
+  <div class="section">
+    <div class="section-header collapsed" onclick="togglePreview(this)"><h2>PREVIEW</h2><span class="arrow">▾</span></div>
+    <div class="section-body full collapsed">
+      <div style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.5rem">
+        <button class="btn btn-sm btn-muted" onclick="previewNav(-1)">◀</button>
+        <select id="previewSelect" style="flex:1;min-width:0" onchange="previewLoad(this.value)"></select>
+        <button class="btn btn-sm btn-muted" onclick="previewNav(1)">▶</button>
+        <button class="btn btn-sm btn-danger" onclick="previewDelete()">✕ Delete</button>
+      </div>
+      <div style="position:relative;width:100%;padding-top:56.25%;background:#000;border:1px solid var(--c-border);border-radius:4px;overflow:hidden">
+        <iframe id="previewFrame" sandbox="allow-scripts" style="position:absolute;inset:0;width:100%;height:100%;border:none" src="about:blank"></iframe>
+      </div>
+    </div>
+  </div>
+
   <!-- System prompts -->
   <div class="section">
     <div class="section-header collapsed" onclick="toggle(this)"><h2>SYSTEM PROMPTS</h2><span class="arrow">▾</span></div>

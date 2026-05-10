@@ -16,6 +16,11 @@ const cpuPct      = document.getElementById('cpuPct');
 const memBar      = document.getElementById('memBar');
 const memPct      = document.getElementById('memPct');
 
+// Sync line numbers scroll position with editor content
+editorContent.addEventListener('scroll', () => {
+  lineNumbers.scrollTop = editorContent.scrollTop;
+});
+
 // ── State ─────────────────────────────────────────────────────────────────────
 let rawCode = '';
 let displayQueue = [];

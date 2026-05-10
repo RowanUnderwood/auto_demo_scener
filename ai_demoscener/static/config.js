@@ -3,6 +3,7 @@
 let currentCfg = {};
 let promptRows = [];
 let promptStats = {};
+let previewFiles = [];
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', async () => {
@@ -216,8 +217,12 @@ async function savePrompts() {
 async function loadArchive() {
   const r = await fetch('/api/archive');
   const data = await r.json();
-  document.getElementById('archiveCount').textContent =
-    `${data.files.length} files`;
+  previewFiles = data.files || [];
+  document.getElementById('archiveCount').textContent = `${previewFiles.length} files`;
+  const sel = document.getElementById('previewSelect');
+  sel.innerHTML = previewFiles.length === 0
+    ? '<option value="">No archive files</option>'
+    : previewFiles.map(f => `<option value="${esc(f)}">${esc(f)}</option>`).join('');
 }
 
 // ── Skip button ───────────────────────────────────────────────────────────────
@@ -232,6 +237,44 @@ async function shutdown() {
   btn.textContent = 'Shutting down…';
   btn.disabled = true;
   await fetch('/api/shutdown', { method: 'POST' });
+}
+
+// ── Preview section ───────────────────────────────────────────────────────────
+function togglePreview(header) {
+  toggle(header);
+  if (!header.classList.contains('collapsed')) loadArchive();
+}
+
+function previewLoad(filename) {
+  if (!filename) return;
+  document.getElementById('previewSelect').value = filename;
+  document.getElementById('previewFrame').src = `/archive/${encodeURIComponent(filename)}`;
+}
+
+function previewNav(dir) {
+  const sel = document.getElementById('previewSelect');
+  const idx = previewFiles.indexOf(sel.value);
+  if (idx === -1 && previewFiles.length) { previewLoad(previewFiles[0]); return; }
+  if (!previewFiles.length) return;
+  previewLoad(previewFiles[(idx + dir + previewFiles.length) % previewFiles.length]);
+}
+
+async function previewDelete() {
+  const filename = document.getElementById('previewSelect').value;
+  if (!filename || !confirm(`Delete ${filename}?`)) return;
+  const r = await fetch(`/api/archive/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+  const data = await r.json();
+  if (data.ok) {
+    const nextIdx = Math.max(0, Math.min(previewFiles.indexOf(filename), previewFiles.length - 2));
+    previewFiles = previewFiles.filter(f => f !== filename);
+    const sel = document.getElementById('previewSelect');
+    sel.innerHTML = previewFiles.length
+      ? previewFiles.map(f => `<option value="${esc(f)}">${esc(f)}</option>`).join('')
+      : '<option value="">No archive files</option>';
+    document.getElementById('archiveCount').textContent = `${previewFiles.length} files`;
+    if (previewFiles.length) previewLoad(previewFiles[nextIdx]);
+    else document.getElementById('previewFrame').src = 'about:blank';
+  }
 }
 
 // ── Log tail ──────────────────────────────────────────────────────────────────

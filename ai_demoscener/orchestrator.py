@@ -25,6 +25,8 @@ class Orchestrator:
         self._stop = threading.Event()
         self._skip = threading.Event()
         self._lm_unavailable = False
+        self._stock_deck: list[dict] = []
+        self._replay_deck: list[Path] = []
         self.state = "IDLE"
         self.current_file: Path | None = None
         self.last_state_msg: dict = {"type": "state", "state": "IDLE"}
@@ -84,12 +86,24 @@ class Orchestrator:
     # ── Replay ─────────────────────────────────────────────────────────────────
 
     def _replay_cycle(self, cfg: dict) -> None:
-        path = archive_mod.pick_random(cfg)
+        if not self._replay_deck:
+            files = archive_mod.list_files(cfg)
+            if not files:
+                log.info("Archive empty; sleeping")
+                self._push_status("ARCHIVE EMPTY — waiting for demos")
+                time.sleep(15)
+                return
+            self._replay_deck = files.copy()
+            random.shuffle(self._replay_deck)
+            log.info("Replay deck refilled: %d files", len(self._replay_deck))
+        path = None
+        while self._replay_deck:
+            candidate = self._replay_deck.pop()
+            if candidate.exists():
+                path = candidate
+                break
         if path is None:
-            log.info("Archive empty; sleeping")
-            self._push_status("ARCHIVE EMPTY — waiting for demos")
-            time.sleep(15)
-            return
+            return  # all candidates were deleted; next cycle refills
         self._tx("DISPLAY", url=f"/archive/{path.name}", runtime=cfg["display"]["demo_runtime_seconds"])
         self._run_timer(cfg["display"]["demo_runtime_seconds"])
 
@@ -230,19 +244,23 @@ class Orchestrator:
         if not csv_path.exists():
             log.error("prompts.csv not found")
             return None
-        try:
-            with open(csv_path, "r", encoding="utf-8", newline="") as f:
-                rows = list(csv.DictReader(f))
+        if not self._stock_deck:
+            try:
+                with open(csv_path, "r", encoding="utf-8", newline="") as f:
+                    rows = list(csv.DictReader(f))
+            except Exception:
+                log.exception("Failed to read prompts.csv")
+                return None
             if not rows:
                 return None
-            row = random.choice(rows)
-            return {
-                "effect": row.get("Effect", "unknown"),
-                "prompt": row.get("Three.js prompt", ""),
-            }
-        except Exception:
-            log.exception("Failed to read prompts.csv")
-            return None
+            self._stock_deck = rows.copy()
+            random.shuffle(self._stock_deck)
+            log.info("Stock deck refilled: %d prompts", len(self._stock_deck))
+        row = self._stock_deck.pop()
+        return {
+            "effect": row.get("Effect", "unknown"),
+            "prompt": row.get("Three.js prompt", ""),
+        }
 
     def _csv_text_for_creative(self, cfg: dict) -> str:
         csv_path = BASE / "prompts.csv"
