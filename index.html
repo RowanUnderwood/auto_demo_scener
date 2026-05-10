@@ -240,7 +240,7 @@ body {
 
 const ARCHIVE_BASE = 'ai_demoscener/archive/';
 const params  = new URLSearchParams(location.search);
-const RUNTIME = Math.max(5, parseInt(params.get('runtime') || '60', 10));
+const RUNTIME = Math.max(5, parseInt(params.get('runtime') || '15', 10));
 
 const demoFrame   = document.getElementById('demoFrame');
 const overlay     = document.getElementById('overlay');
