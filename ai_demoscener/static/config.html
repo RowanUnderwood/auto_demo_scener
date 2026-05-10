@@ -16,6 +16,7 @@
       <span id="stateLabel">connecting…</span>
       &nbsp;·&nbsp;
       <button class="btn btn-sm" id="skipBtn" onclick="skip()">⏭ SKIP</button>
+      <button class="btn btn-sm btn-danger" id="shutdownBtn" onclick="shutdown()">⏹ SHUTDOWN</button>
       <a class="btn btn-sm btn-muted" href="/display" target="_blank">↗ display</a>
     </div>
   </header>
@@ -63,6 +64,7 @@
       </div>
       <div class="field"><label>Timeout (seconds)</label><input type="number" id="lmTimeout" min="30" max="600"></div>
       <div class="field"><label>Context ceiling (tokens)</label><input type="number" id="lmCeiling" min="4096" max="131072"></div>
+      <div class="field"><label class="check-row"><input type="checkbox" id="lmFallback"> Auto-replay if LM Studio unreachable</label></div>
     </div>
     <div style="padding:0 1rem 0.75rem"><div class="save-row"><button class="btn btn-primary" onclick="saveSection('lmStudio')">Save</button><span class="save-msg" id="lmSaved"></span></div></div>
   </div>

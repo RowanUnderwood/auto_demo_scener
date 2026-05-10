@@ -34,6 +34,7 @@ function populateForm(c) {
   setVal('lmTimeout',   c.lm_studio?.request_timeout_seconds ?? 180);
   setVal('lmCeiling',   c.lm_studio?.context_ceiling_tokens ?? 16384);
   set('lmTemp', c.lm_studio?.temperature ?? 0.9, 'lmTempV');
+  setChecked('lmFallback', c.lm_fallback_to_replay ?? true);
   // Model dropdown gets populated by refreshModels() if called
   populateModelDropdown([c.lm_studio?.model ?? ''], c.lm_studio?.model ?? '');
 
@@ -82,6 +83,7 @@ async function saveSection(section) {
       cfg.lm_studio.temperature              = +getVal('lmTemp');
       cfg.lm_studio.request_timeout_seconds  = +getVal('lmTimeout');
       cfg.lm_studio.context_ceiling_tokens   = +getVal('lmCeiling');
+      cfg.lm_fallback_to_replay = getChecked('lmFallback');
       break;
     case 'display':
       cfg.display.demo_runtime_seconds  = +getVal('demoRuntime');
@@ -221,6 +223,15 @@ async function loadArchive() {
 // ── Skip button ───────────────────────────────────────────────────────────────
 async function skip() {
   await fetch('/api/skip', { method: 'POST' });
+}
+
+// ── Shutdown button ───────────────────────────────────────────────────────────
+async function shutdown() {
+  if (!confirm('Shut down the server?')) return;
+  const btn = document.getElementById('shutdownBtn');
+  btn.textContent = 'Shutting down…';
+  btn.disabled = true;
+  await fetch('/api/shutdown', { method: 'POST' });
 }
 
 // ── Log tail ──────────────────────────────────────────────────────────────────

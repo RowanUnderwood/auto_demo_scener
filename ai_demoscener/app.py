@@ -1,6 +1,8 @@
 import csv
 import json
 import logging
+import os
+import time
 import threading
 from pathlib import Path
 
@@ -150,6 +152,16 @@ def api_models():
 @app.route("/api/skip", methods=["POST"])
 def api_skip():
     orc.skip()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/shutdown", methods=["POST"])
+def api_shutdown():
+    orc.stop()
+    def _exit():
+        time.sleep(0.5)
+        os._exit(0)
+    threading.Thread(target=_exit, daemon=True).start()
     return jsonify({"ok": True})
 
 

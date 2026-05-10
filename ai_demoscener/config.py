@@ -6,6 +6,7 @@ BASE = Path(__file__).parent
 DEFAULTS: dict = {
     "schema_version": 1,
     "boot_mode": "generate",
+    "lm_fallback_to_replay": True,
     "generate_mode_weights": {"creative": 1, "update": 1, "stock": 2},
     "lm_studio": {
         "base_url": "http://192.168.2.192:1234",

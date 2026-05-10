@@ -24,6 +24,7 @@ class Orchestrator:
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
         self._skip = threading.Event()
+        self._lm_unavailable = False
         self.state = "IDLE"
         self.current_file: Path | None = None
         self.last_state_msg: dict = {"type": "state", "state": "IDLE"}
@@ -67,6 +68,10 @@ class Orchestrator:
                 cfg = cfg_mod.load()
                 if cfg["boot_mode"] == "replay":
                     self._replay_cycle(cfg)
+                elif self._lm_unavailable and cfg.get("lm_fallback_to_replay", True):
+                    self._push_status("LM Studio unreachable — replaying archive")
+                    self._replay_cycle(cfg)
+                    self._probe_lm(cfg)
                 else:
                     self._generate_cycle(cfg)
             except Exception:
@@ -84,6 +89,15 @@ class Orchestrator:
             return
         self._tx("DISPLAY", url=f"/archive/{path.name}", runtime=cfg["display"]["demo_runtime_seconds"])
         self._run_timer(cfg["display"]["demo_runtime_seconds"])
+
+    def _probe_lm(self, cfg: dict) -> None:
+        try:
+            lm_client.list_models(cfg["lm_studio"]["base_url"])
+            self._lm_unavailable = False
+            log.info("LM Studio reachable again — resuming generate mode")
+            self._push_status("LM Studio reconnected — resuming generate mode")
+        except lm_client.LMClientError:
+            pass
 
     # ── Generate cycle ─────────────────────────────────────────────────────────
 
@@ -305,9 +319,8 @@ class Orchestrator:
             html = validator.strip_fences("".join(tokens))
             return html, "output was truncated at token limit"
         except lm_client.LMClientError as e:
-            log.error("LLM error: %s", e)
-            self._push_status(f"LLM UNREACHABLE — {e} — retrying in 30s")
-            time.sleep(30)
+            log.error("LM Studio unreachable: %s", e)
+            self._lm_unavailable = True
             return None, None
 
         # Wait for display to drain the typing queue
