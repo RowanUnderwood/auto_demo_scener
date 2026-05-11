@@ -12,6 +12,18 @@
   <!-- Demo iframe — full viewport, always rendering under mock-OS -->
   <iframe id="demoFrame" sandbox="allow-scripts" src="about:blank"></iframe>
 
+  <!-- Title card overlay — shown briefly at start of each DISPLAY -->
+  <div id="titleCard" class="hidden">
+    <div id="titleCardInner">
+      <div id="titleCardTitle"></div>
+      <div id="titleCardDesc"></div>
+      <div id="titleCardFile"></div>
+    </div>
+  </div>
+
+  <!-- Progress bar — sweeps across bottom during demo playback -->
+  <div id="progressBar"></div>
+
   <!-- Idle / startup splash -->
   <div id="idleOverlay">
     <div id="idleLogo">DEMOWRITER&nbsp;1.0</div>
@@ -34,6 +46,9 @@
       <div id="lineNumbers">1</div>
       <div id="editorContent">
         <code id="editorCode"></code><span id="cursor"></span>
+      </div>
+      <div id="spinnerOverlay">
+        <span id="spinnerChar">⠋</span><span id="spinnerVerb">Generating…</span>
       </div>
     </div>
 

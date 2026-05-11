@@ -104,7 +104,27 @@ class Orchestrator:
                 break
         if path is None:
             return  # all candidates were deleted; next cycle refills
-        self._tx("DISPLAY", url=f"/archive/{path.name}", runtime=cfg["display"]["demo_runtime_seconds"])
+        entry = archive_mod.get_meta(path.name, cfg)
+        meta = {
+            "effect": entry.get("effect", ""),
+            "title": entry.get("title", ""),
+            "description": entry.get("description", ""),
+        }
+        self._tx("DISPLAY", url=f"/archive/{path.name}",
+                 runtime=cfg["display"]["demo_runtime_seconds"], meta=meta)
+        # Enrich title in background if missing and LM is available
+        if not meta["title"] and not self._lm_unavailable:
+            _path = path
+            def _enrich():
+                try:
+                    html = _path.read_text(encoding="utf-8")
+                    result = self._generate_title_meta(cfg_mod.load(), html)
+                    if result:
+                        archive_mod.update_meta(_path.name, result, cfg_mod.load())
+                        log.info("Enriched title for %s", _path.name)
+                except Exception:
+                    log.exception("Title enrichment failed for %s", _path.name)
+            threading.Thread(target=_enrich, daemon=True).start()
         self._run_timer(cfg["display"]["demo_runtime_seconds"])
 
     def _probe_lm(self, cfg: dict) -> None:
@@ -183,15 +203,28 @@ class Orchestrator:
 
         # DISPLAY
         runtime = cfg["display"]["demo_runtime_seconds"]
-        self._tx("DISPLAY", url=f"/temp/{temp_path.name}", runtime=runtime)
+        source_path = prompt_data.get("source_path") if isinstance(prompt_data, dict) else None
+        effect_slug = prompt_data.get("effect", mode) if isinstance(prompt_data, dict) else mode
+        self._tx("DISPLAY", url=f"/temp/{temp_path.name}", runtime=runtime,
+                 meta={"effect": effect_slug, "title": "", "description": ""})
+
+        # Kick off title generation in background while demo plays
+        _html_for_meta = html
+        _meta_result: list = [None]
+        def _fetch_meta():
+            _meta_result[0] = self._generate_title_meta(cfg, _html_for_meta)
+        meta_thread = threading.Thread(target=_fetch_meta, daemon=True)
+        meta_thread.start()
+
         self._run_timer(runtime)
 
         # ARCHIVE
         self._tx("ARCHIVE")
-        source_path = prompt_data.get("source_path") if isinstance(prompt_data, dict) else None
-        effect_slug = prompt_data.get("effect", mode) if isinstance(prompt_data, dict) else mode
-        archive_mod.save(html, effect_slug, mode, cfg, source_path=source_path)
+        archive_path = archive_mod.save(html, effect_slug, mode, cfg, source_path=source_path)
         temp_path.unlink(missing_ok=True)
+        meta_thread.join(timeout=0)
+        if _meta_result[0]:
+            archive_mod.update_meta(archive_path.name, _meta_result[0], cfg)
 
         self._tx("IDLE")
 
@@ -373,6 +406,36 @@ class Orchestrator:
         ]
         repaired, _ = self._stream(cfg, messages)
         return repaired
+
+    # ── Title / description generation ────────────────────────────────────────
+
+    def _generate_title_meta(self, cfg: dict, html: str) -> dict | None:
+        import json as _json
+        prompt = cfg["system_prompts"].get("title", "")
+        if not prompt:
+            return None
+        lm = cfg["lm_studio"]
+        messages = [
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": html[:6000]},
+        ]
+        try:
+            text = lm_client.chat(
+                messages=messages,
+                base_url=lm["base_url"],
+                model=lm["model"],
+                max_tokens=128,
+                temperature=0.7,
+                timeout=30,
+            )
+            data = _json.loads(text)
+            return {
+                "title": str(data.get("title", "")),
+                "description": str(data.get("description", "")),
+            }
+        except Exception as e:
+            log.warning("Title generation failed: %s", e)
+            return None
 
     # ── Temp file & audition ───────────────────────────────────────────────────
 

@@ -476,3 +476,80 @@ body.mac_classic {
 #deleteBtns button:hover { filter: brightness(1.2); }
 #deleteYes { background: var(--accent); color: var(--bg); }
 #deleteNo  { background: var(--btn); color: var(--fg); border: 1px solid var(--border); }
+
+/* ── Title card overlay ────────────────────────────────────────────────────── */
+#titleCard {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  background: rgba(0, 0, 0, 0.82);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 1;
+  transition: opacity 0.5s ease;
+  pointer-events: none;
+}
+#titleCard.hidden { opacity: 0; }
+
+#titleCardInner {
+  text-align: center;
+  padding: 2em;
+  max-width: 70%;
+}
+
+#titleCardTitle {
+  font-size: clamp(1.4em, 4vw, 3em);
+  color: var(--accent);
+  text-shadow: var(--glow);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.4em;
+}
+
+#titleCardDesc {
+  font-size: clamp(0.8em, 1.5vw, 1.1em);
+  color: var(--fg);
+  margin-bottom: 0.6em;
+  font-style: italic;
+  opacity: 0.85;
+}
+
+#titleCardFile {
+  font-size: 0.7em;
+  color: var(--border);
+}
+
+/* ── Progress bar ──────────────────────────────────────────────────────────── */
+#progressBar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  width: 0%;
+  background: var(--accent);
+  box-shadow: var(--glow);
+  opacity: 0;
+  z-index: 6;
+  pointer-events: none;
+}
+
+/* ── Spinner overlay ───────────────────────────────────────────────────────── */
+#editorPane { position: relative; }
+
+#spinnerOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6em;
+  font-size: 1em;
+  color: var(--accent);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+#spinnerOverlay.active { opacity: 1; }
+#spinnerChar { font-size: 1.2em; }

@@ -24,6 +24,7 @@ DEFAULTS: dict = {
         "show_status_bar": True,
         "show_retry_messages": True,
         "display_chars_per_sec": 400,
+        "title_card_seconds": 4,
     },
     "validation": {
         "max_repair_attempts": 2,
@@ -58,6 +59,13 @@ DEFAULTS: dict = {
             "The HTML below failed to run. The error or symptom is: {error}. "
             "Fix the file and output the corrected complete HTML. "
             "Output ONLY the HTML, no commentary, no markdown fences."
+        ),
+        "title": (
+            "You are a creative naming assistant for demoscene visuals. "
+            "Given HTML/WebGL source code, output ONLY a valid JSON object with two fields: "
+            "\"title\" (3–6 evocative words, title-cased) and "
+            "\"description\" (exactly one poetic sentence, max 12 words). "
+            "No other text, no markdown."
         ),
     },
 }

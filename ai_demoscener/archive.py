@@ -87,6 +87,18 @@ def save(html: str, effect_slug: str, mode: str, cfg: dict, source_path: Path | 
     return dest
 
 
+def get_meta(filename: str, cfg: dict) -> dict:
+    return _load_index(_archive_dir(cfg)).get(filename, {})
+
+
+def update_meta(filename: str, updates: dict, cfg: dict) -> None:
+    archive_dir = _archive_dir(cfg)
+    index = _load_index(archive_dir)
+    if filename in index:
+        index[filename].update(updates)
+        _save_index(archive_dir, index)
+
+
 def list_files(cfg: dict) -> list[Path]:
     archive_dir = _archive_dir(cfg)
     return sorted(

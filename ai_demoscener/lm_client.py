@@ -90,5 +90,29 @@ def chat_stream(
         raise LMClientError(f"HTTP error {e.response.status_code}: {e}") from e
 
 
+def chat(
+    messages: list[dict],
+    base_url: str,
+    model: str,
+    max_tokens: int = 128,
+    temperature: float = 0.7,
+    timeout: int = 30,
+) -> str:
+    """Non-streaming chat completion. Returns the full response string."""
+    payload = {
+        "model": model,
+        "messages": messages,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "stream": False,
+    }
+    try:
+        r = requests.post(f"{base_url}/v1/chat/completions", json=payload, timeout=timeout)
+        r.raise_for_status()
+        return r.json()["choices"][0]["message"]["content"]
+    except Exception as e:
+        raise LMClientError(f"Chat failed: {e}") from e
+
+
 def estimate_tokens(text: str) -> int:
     return max(1, len(text) // 4)

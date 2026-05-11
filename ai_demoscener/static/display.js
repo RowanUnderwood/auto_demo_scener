@@ -15,11 +15,54 @@ const cpuBar      = document.getElementById('cpuBar');
 const cpuPct      = document.getElementById('cpuPct');
 const memBar      = document.getElementById('memBar');
 const memPct      = document.getElementById('memPct');
+const titleCard     = document.getElementById('titleCard');
+const titleCardTitle= document.getElementById('titleCardTitle');
+const titleCardDesc = document.getElementById('titleCardDesc');
+const titleCardFile = document.getElementById('titleCardFile');
+const progressBar   = document.getElementById('progressBar');
+const spinnerOverlay= document.getElementById('spinnerOverlay');
+const spinnerChar   = document.getElementById('spinnerChar');
+const spinnerVerb   = document.getElementById('spinnerVerb');
 
 // Sync line numbers scroll position with editor content
 editorContent.addEventListener('scroll', () => {
   lineNumbers.scrollTop = editorContent.scrollTop;
 });
+
+// ── Spinner ───────────────────────────────────────────────────────────────────
+const SPINNER_FRAMES = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏'];
+const SPINNER_VERBS = [
+  'Accomplishing','Actioning','Actualizing','Baking','Brewing','Calculating',
+  'Cerebrating','Churning','Clauding','Coalescing','Cogitating','Computing',
+  'Conjuring','Considering','Cooking','Crafting','Creating','Crunching',
+  'Deliberating','Determining','Doing','Effecting','Finagling','Forging',
+  'Forming','Generating','Hatching','Herding','Honking','Hustling','Ideating',
+  'Inferring','Manifesting','Marinating','Moseying','Mulling','Mustering',
+  'Musing','Noodling','Percolating','Pondering','Processing','Puttering',
+  'Reticulating','Ruminating','Schlepping','Shucking','Simmering','Smooshing',
+  'Spinning','Stewing','Synthesizing','Thinking','Transmuting','Vibing','Working',
+];
+
+let _spinFrame = 0, _spinInterval = null, _spinVerbInterval = null;
+
+function startSpinner() {
+  _spinFrame = 0;
+  spinnerVerb.textContent = SPINNER_VERBS[Math.floor(Math.random() * SPINNER_VERBS.length)] + '…';
+  spinnerOverlay.classList.add('active');
+  _spinInterval = setInterval(() => {
+    _spinFrame = (_spinFrame + 1) % SPINNER_FRAMES.length;
+    spinnerChar.textContent = SPINNER_FRAMES[_spinFrame];
+  }, 80);
+  _spinVerbInterval = setInterval(() => {
+    spinnerVerb.textContent = SPINNER_VERBS[Math.floor(Math.random() * SPINNER_VERBS.length)] + '…';
+  }, 2500);
+}
+
+function stopSpinner() {
+  spinnerOverlay.classList.remove('active');
+  if (_spinInterval)     { clearInterval(_spinInterval);     _spinInterval = null; }
+  if (_spinVerbInterval) { clearInterval(_spinVerbInterval); _spinVerbInterval = null; }
+}
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let rawCode = '';
@@ -87,6 +130,8 @@ function handleState(msg) {
   switch (s) {
     case 'IDLE':
       showIdle();
+      resetTitleCard();
+      stopSpinner();
       break;
 
     case 'PICK_MODE':
@@ -94,6 +139,8 @@ function handleState(msg) {
       showMockOS();
       hideDemoFrame();
       resetEditor();
+      resetTitleCard();
+      stopSpinner();
       setStatus('SELECTING MODE…');
       break;
 
@@ -102,20 +149,25 @@ function handleState(msg) {
       showMockOS();
       hideDemoFrame();
       resetEditor();
+      resetTitleCard();
       modeChip.textContent = (msg.mode || '').toUpperCase();
       setStatus('WRITING…');
+      startSpinner();
       break;
 
     case 'VALIDATE':
+      stopSpinner();
       setStatus(msg.attempt > 0 ? `VALIDATING (attempt ${msg.attempt})…` : 'VALIDATING…');
       break;
 
     case 'REPAIR':
       setStatus(`REPAIRING — ATTEMPT ${msg.attempt}/${msg.max}…`);
+      startSpinner();
       break;
 
     case 'DISPLAY':
       hideIdle();
+      stopSpinner();
       // Load iframe if not already loaded by audition
       if (msg.url && demoFrame.src !== location.origin + msg.url) {
         demoFrame.src = msg.url;
@@ -127,23 +179,31 @@ function handleState(msg) {
       setStatus('RUNNING');
       showDemoFrame();
       hideMockOS();
+      if (msg.meta) {
+        showTitleCard(msg.meta, (msg.url || '').split('/').pop(), msg.runtime || 60);
+      }
       break;
 
     case 'REPLAY':
       hideIdle();
       hideMockOS();
+      stopSpinner();
       setStatus('REPLAY MODE');
       break;
 
     case 'ARCHIVE':
       showMockOS();
       hideDemoFrame();
+      resetTitleCard();
+      stopSpinner();
       setStatus('SAVING TO ARCHIVE…');
       break;
 
     case 'DISCARD':
       showMockOS();
       hideDemoFrame();
+      resetTitleCard();
+      stopSpinner();
       if (msg.kind) {
         setStatus(`DISCARDING — ${msg.kind}`);
         showErrorOverlay(msg.kind, msg.error || '', 5);
@@ -164,11 +224,49 @@ function hideDemoFrame(){ demoFrame.classList.remove('visible'); }
 
 function setStatus(text) { statusText.textContent = text; }
 
+// ── Title card + progress bar ─────────────────────────────────────────────────
+let _progressRaf = null;
+
+function showTitleCard(meta, filename, runtime) {
+  const titleSecs = cfg?.display?.title_card_seconds ?? 4;
+  const title = meta?.title || meta?.effect || filename.replace(/\.[^.]+$/, '').replace(/_/g, ' ');
+  titleCardTitle.textContent = title.toUpperCase();
+  titleCardDesc.textContent  = meta?.description || '';
+  titleCardFile.textContent  = filename;
+  titleCard.classList.remove('hidden');
+
+  // Reset progress bar
+  if (_progressRaf) { cancelAnimationFrame(_progressRaf); _progressRaf = null; }
+  progressBar.style.transition = 'none';
+  progressBar.style.width = '0%';
+  progressBar.style.opacity = '0';
+
+  // After title card display duration, fade it out and start progress bar
+  setTimeout(() => {
+    titleCard.classList.add('hidden');
+    const remaining = Math.max(1, runtime - titleSecs);
+    progressBar.style.opacity = '1';
+    // Force reflow so transition fires from 0%
+    progressBar.getBoundingClientRect();
+    progressBar.style.transition = `width ${remaining}s linear`;
+    progressBar.style.width = '100%';
+  }, titleSecs * 1000);
+}
+
+function resetTitleCard() {
+  titleCard.classList.add('hidden');
+  if (_progressRaf) { cancelAnimationFrame(_progressRaf); _progressRaf = null; }
+  progressBar.style.transition = 'none';
+  progressBar.style.width = '0%';
+  progressBar.style.opacity = '0';
+}
+
 // ── Token queue + typing animation ────────────────────────────────────────────
 const CHARS_PER_TICK = 20;   // at ~50ms tick = 400 chars/sec
 const TICK_MS = 50;
 
 function queueToken(tok) {
+  stopSpinner();
   for (const ch of tok) displayQueue.push(ch);
 }
 
