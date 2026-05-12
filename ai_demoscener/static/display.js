@@ -172,24 +172,34 @@ function handleState(msg) {
       startSpinner();
       break;
 
-    case 'DISPLAY':
+    case 'DISPLAY': {
       hideIdle();
       stopSpinner();
+      const msgUrl = msg.url || '';
+      const isNewDemo = msgUrl !== _currentDisplayUrl;
       // Load iframe if not already loaded by audition
-      if (msg.url && demoFrame.src !== location.origin + msg.url) {
-        demoFrame.src = msg.url;
+      if (msgUrl && demoFrame.src !== location.origin + msgUrl) {
+        demoFrame.src = msgUrl;
       }
-      currentArchiveFilename = msg.url?.startsWith('/archive/')
-        ? msg.url.split('/').pop()
+      currentArchiveFilename = msgUrl.startsWith('/archive/')
+        ? msgUrl.split('/').pop()
         : null;
-      filenameInfo.textContent = (msg.url || '').split('/').pop();
+      filenameInfo.textContent = msgUrl.split('/').pop();
       setStatus('RUNNING');
       showDemoFrame();
       hideMockOS();
-      if (msg.meta) {
-        showTitleCard(msg.meta, (msg.url || '').split('/').pop(), msg.runtime || 60);
+      if (isNewDemo) {
+        _currentDisplayUrl = msgUrl;
+        _displayStartTime  = Date.now();
+        if (msg.meta) {
+          showTitleCard(msg.meta, msgUrl.split('/').pop(), msg.runtime || 60);
+        }
+      } else {
+        // WS reconnect to same demo — restore progress bar to correct position
+        restoreProgressBar(msg.runtime || 60);
       }
       break;
+    }
 
     case 'REPLAY':
       hideIdle();
@@ -232,7 +242,9 @@ function hideDemoFrame(){ demoFrame.classList.remove('visible'); }
 function setStatus(text) { statusText.textContent = text; }
 
 // ── Title card + progress bar ─────────────────────────────────────────────────
-let _progressRaf = null;
+let _titleCardTimer   = null;
+let _currentDisplayUrl = '';
+let _displayStartTime  = 0;
 
 function showTitleCard(meta, filename, runtime) {
   const titleSecs = cfg?.display?.title_card_seconds ?? 4;
@@ -242,27 +254,48 @@ function showTitleCard(meta, filename, runtime) {
   titleCardFile.textContent  = filename;
   titleCard.classList.remove('hidden');
 
-  // Reset progress bar
-  if (_progressRaf) { cancelAnimationFrame(_progressRaf); _progressRaf = null; }
+  // Reset progress bar (cancel any running animation first)
   progressBar.style.transition = 'none';
   progressBar.style.width = '0%';
   progressBar.style.opacity = '0';
 
-  // After title card display duration, fade it out and start progress bar
-  setTimeout(() => {
+  // Cancel any pending title-card timer so there is never more than one queued
+  if (_titleCardTimer) { clearTimeout(_titleCardTimer); _titleCardTimer = null; }
+
+  _titleCardTimer = setTimeout(() => {
+    _titleCardTimer = null;
     titleCard.classList.add('hidden');
     const remaining = Math.max(1, runtime - titleSecs);
     progressBar.style.opacity = '1';
-    // Force reflow so transition fires from 0%
-    progressBar.getBoundingClientRect();
+    progressBar.getBoundingClientRect(); // force reflow so transition fires from 0%
     progressBar.style.transition = `width ${remaining}s linear`;
     progressBar.style.width = '100%';
   }, titleSecs * 1000);
 }
 
+function restoreProgressBar(runtime) {
+  // Called on WS reconnect when the same demo is still playing.
+  // Jump the progress bar to the correct elapsed position.
+  const titleSecs = cfg?.display?.title_card_seconds ?? 4;
+  if (_displayStartTime === 0) return;
+  const elapsed    = (Date.now() - _displayStartTime) / 1000;
+  if (elapsed < titleSecs) return;  // still in title-card window; nothing to restore
+  const totalAnim  = Math.max(1, runtime - titleSecs);
+  const doneFrac   = Math.min(1, (elapsed - titleSecs) / totalAnim);
+  const remaining  = Math.max(0, totalAnim * (1 - doneFrac));
+  progressBar.style.transition = 'none';
+  progressBar.style.width      = `${(doneFrac * 100).toFixed(1)}%`;
+  progressBar.style.opacity    = '1';
+  progressBar.getBoundingClientRect(); // force reflow
+  progressBar.style.transition = `width ${remaining}s linear`;
+  progressBar.style.width      = '100%';
+}
+
 function resetTitleCard() {
+  _currentDisplayUrl = '';
+  _displayStartTime  = 0;
+  if (_titleCardTimer) { clearTimeout(_titleCardTimer); _titleCardTimer = null; }
   titleCard.classList.add('hidden');
-  if (_progressRaf) { cancelAnimationFrame(_progressRaf); _progressRaf = null; }
   progressBar.style.transition = 'none';
   progressBar.style.width = '0%';
   progressBar.style.opacity = '0';
