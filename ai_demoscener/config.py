@@ -25,6 +25,8 @@ DEFAULTS: dict = {
         "show_retry_messages": True,
         "display_chars_per_sec": 400,
         "title_card_seconds": 4,
+        "show_title_card": True,
+        "show_progress_bar": True,
     },
     "validation": {
         "max_repair_attempts": 2,

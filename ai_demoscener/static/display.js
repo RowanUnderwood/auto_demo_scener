@@ -191,12 +191,23 @@ function handleState(msg) {
       if (isNewDemo) {
         _currentDisplayUrl = msgUrl;
         _displayStartTime  = Date.now();
-        if (msg.meta) {
+        if (msg.meta && cfg?.display?.show_title_card !== false) {
           showTitleCard(msg.meta, msgUrl.split('/').pop(), msg.runtime || 60);
+        } else if (cfg?.display?.show_progress_bar !== false) {
+          // Title card disabled but progress bar enabled — start bar immediately
+          const runtime = msg.runtime || 60;
+          progressBar.style.transition = 'none';
+          progressBar.style.width = '0%';
+          progressBar.style.opacity = '1';
+          progressBar.getBoundingClientRect();
+          progressBar.style.transition = `width ${runtime}s linear`;
+          progressBar.style.width = '100%';
         }
       } else {
         // WS reconnect to same demo — restore progress bar to correct position
-        restoreProgressBar(msg.runtime || 60);
+        if (cfg?.display?.show_progress_bar !== false) {
+          restoreProgressBar(msg.runtime || 60);
+        }
       }
       break;
     }
@@ -265,11 +276,13 @@ function showTitleCard(meta, filename, runtime) {
   _titleCardTimer = setTimeout(() => {
     _titleCardTimer = null;
     titleCard.classList.add('hidden');
-    const remaining = Math.max(1, runtime - titleSecs);
-    progressBar.style.opacity = '1';
-    progressBar.getBoundingClientRect(); // force reflow so transition fires from 0%
-    progressBar.style.transition = `width ${remaining}s linear`;
-    progressBar.style.width = '100%';
+    if (cfg?.display?.show_progress_bar !== false) {
+      const remaining = Math.max(1, runtime - titleSecs);
+      progressBar.style.opacity = '1';
+      progressBar.getBoundingClientRect(); // force reflow so transition fires from 0%
+      progressBar.style.transition = `width ${remaining}s linear`;
+      progressBar.style.width = '100%';
+    }
   }, titleSecs * 1000);
 }
 
