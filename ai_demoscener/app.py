@@ -48,6 +48,14 @@ def broadcast(msg: dict) -> None:
 
 orc = Orchestrator(broadcast_fn=broadcast)
 
+# ── Title card batch generation state ─────────────────────────────────────────
+_tc_lock    = threading.Lock()
+_tc_running = False
+_tc_stop    = False
+_tc_done    = 0
+_tc_total   = 0
+_tc_current = ""
+
 
 @sock.route("/ws")
 def ws_handler(ws):
@@ -236,6 +244,107 @@ def api_logs():
     lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
     n = int(request.args.get("n", 50))
     return jsonify({"lines": lines[-n:]})
+
+
+# ── API: title cards ──────────────────────────────────────────────────────────
+@app.route("/api/title_cards")
+def api_get_title_cards():
+    import archive as arch_mod
+    cfg = cfg_mod.load()
+    index = arch_mod.get_all_meta(cfg)
+    entries = [{"filename": k, **v} for k, v in sorted(index.items())]
+    return jsonify(entries)
+
+
+@app.route("/api/title_cards", methods=["POST"])
+def api_set_title_cards():
+    import archive as arch_mod
+    cfg = cfg_mod.load()
+    data = request.get_json(force=True)
+    for entry in data.get("entries", []):
+        filename = entry.get("filename")
+        if filename:
+            arch_mod.update_meta(filename, {
+                "title": entry.get("title", ""),
+                "description": entry.get("description", ""),
+            }, cfg)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/title_cards/clear_all", methods=["POST"])
+def api_clear_title_cards():
+    import archive as arch_mod
+    cfg = cfg_mod.load()
+    arch_mod.clear_title_meta(cfg)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/title_cards/generate_all", methods=["POST"])
+def api_generate_title_cards():
+    global _tc_running, _tc_stop, _tc_done, _tc_total, _tc_current
+    with _tc_lock:
+        if _tc_running:
+            return jsonify({"ok": False, "reason": "already running"})
+        _tc_running = True
+        _tc_stop = False
+        _tc_done = 0
+        _tc_total = 0
+        _tc_current = ""
+
+    def _run():
+        global _tc_running, _tc_stop, _tc_done, _tc_total, _tc_current
+        try:
+            import archive as arch_mod
+            cfg = cfg_mod.load()
+            index = arch_mod.get_all_meta(cfg)
+            archive_dir = arch_mod._archive_dir(cfg)
+            todo = [
+                (fname, archive_dir / fname)
+                for fname, entry in index.items()
+                if not entry.get("title")
+            ]
+            with _tc_lock:
+                _tc_total = len(todo)
+            for fname, path in todo:
+                with _tc_lock:
+                    if _tc_stop:
+                        break
+                    _tc_current = fname
+                try:
+                    html = path.read_text(encoding="utf-8")
+                    result = orc._generate_title_meta(cfg_mod.load(), html)
+                    if result:
+                        arch_mod.update_meta(fname, result, cfg_mod.load())
+                except Exception:
+                    log.exception("Batch title generation failed for %s", fname)
+                with _tc_lock:
+                    _tc_done += 1
+        finally:
+            with _tc_lock:
+                _tc_running = False
+                _tc_current = ""
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/title_cards/stop_generate", methods=["POST"])
+def api_stop_title_cards():
+    global _tc_stop
+    with _tc_lock:
+        _tc_stop = True
+    return jsonify({"ok": True})
+
+
+@app.route("/api/title_cards/progress")
+def api_title_cards_progress():
+    with _tc_lock:
+        return jsonify({
+            "running": _tc_running,
+            "done":    _tc_done,
+            "total":   _tc_total,
+            "current": _tc_current,
+        })
 
 
 # ── API: status ────────────────────────────────────────────────────────────────

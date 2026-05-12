@@ -4,12 +4,15 @@ let currentCfg = {};
 let promptRows = [];
 let promptStats = {};
 let previewFiles = [];
+let titleCardRows = [];
+let _tcPollTimer = null;
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', async () => {
   await loadConfig();
   await loadPrompts();
   await loadArchive();
+  await loadTitleCards();
   refreshLog();
   setInterval(refreshLog, 5000);
   connectStatusWS();
@@ -330,4 +333,80 @@ function flash(id) {
   el.textContent = '✓ Saved';
   el.style.opacity = '1';
   setTimeout(() => { el.style.opacity = '0'; }, 2000);
+}
+
+// ── Title Cards ───────────────────────────────────────────────────────────────
+async function loadTitleCards() {
+  const r = await fetch('/api/title_cards');
+  titleCardRows = await r.json();
+  renderTitleCardsTable();
+}
+
+function renderTitleCardsTable() {
+  const tbody = document.getElementById('titleCardsTbody');
+  tbody.innerHTML = '';
+  for (let i = 0; i < titleCardRows.length; i++) {
+    const row = titleCardRows[i];
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="tc-filename">${esc(row.filename || '')}</td>
+      <td><input type="text" value="${esc(row.title || '')}" data-i="${i}" data-f="title"></td>
+      <td><input type="text" value="${esc(row.description || '')}" data-i="${i}" data-f="description"></td>
+    `;
+    tbody.appendChild(tr);
+  }
+  tbody.querySelectorAll('input').forEach(inp => {
+    inp.addEventListener('change', () => {
+      titleCardRows[+inp.dataset.i][inp.dataset.f] = inp.value;
+    });
+  });
+  const count = titleCardRows.filter(r => r.title).length;
+  document.getElementById('titleCardRowCount').textContent =
+    `${count} / ${titleCardRows.length} titled`;
+}
+
+async function saveTitleCards() {
+  const r = await fetch('/api/title_cards', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ entries: titleCardRows }),
+  });
+  if (r.ok) flash('titleCardsSaved');
+}
+
+async function generateAllTitles() {
+  const r = await fetch('/api/title_cards/generate_all', { method: 'POST' });
+  const data = await r.json();
+  if (!data.ok && data.reason === 'already running') return;
+  document.getElementById('tcProgress').style.display = '';
+  document.getElementById('tcProgressBar').style.width = '0%';
+  document.getElementById('tcProgressText').textContent = 'Starting…';
+  if (_tcPollTimer) clearInterval(_tcPollTimer);
+  _tcPollTimer = setInterval(pollTcProgress, 1000);
+}
+
+async function pollTcProgress() {
+  const r = await fetch('/api/title_cards/progress');
+  const data = await r.json();
+  const pct = data.total > 0 ? Math.round(data.done / data.total * 100) : 0;
+  document.getElementById('tcProgressBar').style.width = `${pct}%`;
+  document.getElementById('tcProgressText').textContent =
+    data.current ? `${data.done}/${data.total} — ${data.current}` : `${data.done}/${data.total}`;
+  if (!data.running) {
+    clearInterval(_tcPollTimer);
+    _tcPollTimer = null;
+    document.getElementById('tcProgress').style.display = 'none';
+    await loadTitleCards();
+  }
+}
+
+async function stopGenerateTitles() {
+  await fetch('/api/title_cards/stop_generate', { method: 'POST' });
+  if (_tcPollTimer) { clearInterval(_tcPollTimer); _tcPollTimer = null; }
+  document.getElementById('tcProgress').style.display = 'none';
+}
+
+async function clearAllTitles() {
+  if (!confirm('Clear all title cards? This cannot be undone.')) return;
+  await fetch('/api/title_cards/clear_all', { method: 'POST' });
+  await loadTitleCards();
 }

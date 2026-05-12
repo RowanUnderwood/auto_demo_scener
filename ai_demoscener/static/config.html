@@ -148,6 +148,37 @@
     </div>
   </div>
 
+  <!-- Title Cards -->
+  <div class="section">
+    <div class="section-header collapsed" onclick="toggle(this)"><h2>TITLE CARDS</h2><span class="arrow">▾</span></div>
+    <div class="section-body full collapsed">
+      <div style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.5rem;flex-wrap:wrap">
+        <button class="btn btn-sm btn-primary" onclick="generateAllTitles()">⚡ Generate All</button>
+        <button class="btn btn-sm btn-danger"  onclick="clearAllTitles()">✕ Clear All</button>
+        <span style="color:var(--c-muted);font-size:0.8rem;margin-left:auto" id="titleCardRowCount"></span>
+      </div>
+      <div id="tcProgress" style="display:none;margin-bottom:0.5rem">
+        <div style="display:flex;gap:0.5rem;align-items:center">
+          <span id="tcProgressText" style="flex:1;font-size:0.8rem;color:var(--c-muted)">Generating…</span>
+          <button class="btn btn-sm btn-danger" onclick="stopGenerateTitles()">■ Stop</button>
+        </div>
+        <div style="margin-top:0.25rem;height:4px;background:var(--c-border);border-radius:2px;overflow:hidden">
+          <div id="tcProgressBar" style="height:100%;width:0%;background:var(--c-accent);transition:width 0.3s"></div>
+        </div>
+      </div>
+      <div style="overflow-x:auto">
+        <table id="titleCardsTable">
+          <thead><tr><th style="width:200px">Filename</th><th style="width:200px">Title</th><th>Description</th></tr></thead>
+          <tbody id="titleCardsTbody"></tbody>
+        </table>
+      </div>
+      <div class="save-row" style="margin-top:0.5rem">
+        <button class="btn btn-primary" onclick="saveTitleCards()">Save</button>
+        <span class="save-msg" id="titleCardsSaved"></span>
+      </div>
+    </div>
+  </div>
+
   <!-- Prompts CSV -->
   <div class="section">
     <div class="section-header collapsed" onclick="toggle(this)"><h2>PROMPTS CSV</h2><span class="arrow">▾</span></div>

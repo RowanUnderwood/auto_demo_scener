@@ -428,6 +428,11 @@ class Orchestrator:
                 temperature=0.7,
                 timeout=30,
             )
+            # Extract JSON object even if the model wrapped it in markdown fences
+            start = text.find('{')
+            end   = text.rfind('}')
+            if start != -1 and end != -1:
+                text = text[start:end + 1]
             data = _json.loads(text)
             return {
                 "title": str(data.get("title", "")),

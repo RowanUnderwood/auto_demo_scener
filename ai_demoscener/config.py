@@ -65,7 +65,7 @@ DEFAULTS: dict = {
             "Given HTML/WebGL source code, output ONLY a valid JSON object with two fields: "
             "\"title\" (3–6 evocative words, title-cased) and "
             "\"description\" (exactly one poetic sentence, max 12 words). "
-            "No other text, no markdown."
+            "No other text, no markdown. Do NOT use markdown code fences."
         ),
     },
 }

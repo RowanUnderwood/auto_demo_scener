@@ -534,22 +534,8 @@ body.mac_classic {
   pointer-events: none;
 }
 
-/* ── Spinner overlay ───────────────────────────────────────────────────────── */
-#editorPane { position: relative; }
-
-#spinnerOverlay {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.6em;
-  font-size: 1em;
-  color: var(--accent);
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-#spinnerOverlay.active { opacity: 1; }
-#spinnerChar { font-size: 1.2em; }
+/* ── Spinner (inline, next to cursor) ──────────────────────────────────────── */
+#spinnerChar,
+#spinnerVerb { display: none; color: var(--accent); }
+#spinnerChar { font-size: 1em; }
+#spinnerVerb { margin-left: 0.4em; font-style: italic; }

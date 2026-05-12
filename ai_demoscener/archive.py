@@ -91,12 +91,25 @@ def get_meta(filename: str, cfg: dict) -> dict:
     return _load_index(_archive_dir(cfg)).get(filename, {})
 
 
+def get_all_meta(cfg: dict) -> dict:
+    return _load_index(_archive_dir(cfg))
+
+
 def update_meta(filename: str, updates: dict, cfg: dict) -> None:
     archive_dir = _archive_dir(cfg)
     index = _load_index(archive_dir)
     if filename in index:
         index[filename].update(updates)
         _save_index(archive_dir, index)
+
+
+def clear_title_meta(cfg: dict) -> None:
+    archive_dir = _archive_dir(cfg)
+    index = _load_index(archive_dir)
+    for entry in index.values():
+        entry.pop("title", None)
+        entry.pop("description", None)
+    _save_index(archive_dir, index)
 
 
 def list_files(cfg: dict) -> list[Path]:

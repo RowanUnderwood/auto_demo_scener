@@ -202,6 +202,35 @@ input[type=checkbox] { accent-color: var(--c-accent); width: 1em; height: 1em; c
 #promptsTable td input:focus { background: var(--c-input); border-radius: 2px; padding: 0.1rem 0.3rem; }
 #promptsTable tr:hover { background: rgba(255,255,255,0.02); }
 
+/* ── Title cards table ────────────────────────────────────────────────────── */
+#titleCardsTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+#titleCardsTable th {
+  text-align: left;
+  padding: 0.4rem 0.5rem;
+  background: var(--c-bg3);
+  color: var(--c-muted);
+  border-bottom: 1px solid var(--c-border);
+}
+#titleCardsTable td {
+  padding: 0.3rem 0.4rem;
+  border-bottom: 1px solid var(--c-border);
+  vertical-align: top;
+}
+#titleCardsTable td input {
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: var(--c-fg);
+  font-size: 0.82rem;
+}
+#titleCardsTable td input:focus { background: var(--c-input); border-radius: 2px; padding: 0.1rem 0.3rem; }
+#titleCardsTable tr:hover { background: rgba(255,255,255,0.02); }
+#titleCardsTable .tc-filename { color: var(--c-muted); font-size: 0.78rem; }
+
 /* ── Log tail ─────────────────────────────────────────────────────────────── */
 #logTail {
   background: #050510;

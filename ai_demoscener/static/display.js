@@ -20,9 +20,9 @@ const titleCardTitle= document.getElementById('titleCardTitle');
 const titleCardDesc = document.getElementById('titleCardDesc');
 const titleCardFile = document.getElementById('titleCardFile');
 const progressBar   = document.getElementById('progressBar');
-const spinnerOverlay= document.getElementById('spinnerOverlay');
 const spinnerChar   = document.getElementById('spinnerChar');
 const spinnerVerb   = document.getElementById('spinnerVerb');
+const cursorEl      = document.getElementById('cursor');
 
 // Sync line numbers scroll position with editor content
 editorContent.addEventListener('scroll', () => {
@@ -46,9 +46,13 @@ const SPINNER_VERBS = [
 let _spinFrame = 0, _spinInterval = null, _spinVerbInterval = null;
 
 function startSpinner() {
+  if (_spinInterval) return;  // already running
   _spinFrame = 0;
+  spinnerChar.textContent = SPINNER_FRAMES[0];
   spinnerVerb.textContent = SPINNER_VERBS[Math.floor(Math.random() * SPINNER_VERBS.length)] + '…';
-  spinnerOverlay.classList.add('active');
+  spinnerChar.style.display = 'inline';
+  spinnerVerb.style.display = 'inline';
+  cursorEl.style.display = 'none';
   _spinInterval = setInterval(() => {
     _spinFrame = (_spinFrame + 1) % SPINNER_FRAMES.length;
     spinnerChar.textContent = SPINNER_FRAMES[_spinFrame];
@@ -59,7 +63,10 @@ function startSpinner() {
 }
 
 function stopSpinner() {
-  spinnerOverlay.classList.remove('active');
+  if (!_spinInterval) return;  // already stopped
+  spinnerChar.style.display = 'none';
+  spinnerVerb.style.display = 'none';
+  cursorEl.style.display = '';
   if (_spinInterval)     { clearInterval(_spinInterval);     _spinInterval = null; }
   if (_spinVerbInterval) { clearInterval(_spinVerbInterval); _spinVerbInterval = null; }
 }
