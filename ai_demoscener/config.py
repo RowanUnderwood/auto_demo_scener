@@ -15,6 +15,7 @@ DEFAULTS: dict = {
         "temperature": 0.9,
         "request_timeout_seconds": 180,
         "context_ceiling_tokens": 16384,
+        "surprise_me": False,
     },
     "display": {
         "fullscreen": True,

@@ -65,6 +65,8 @@
       <div class="field"><label>Timeout (seconds)</label><input type="number" id="lmTimeout" min="30" max="600"></div>
       <div class="field"><label>Context ceiling (tokens)</label><input type="number" id="lmCeiling" min="4096" max="131072"></div>
       <div class="field"><label class="check-row"><input type="checkbox" id="lmFallback"> Auto-replay if LM Studio unreachable</label></div>
+      <div class="field"><label class="check-row"><input type="checkbox" id="lmSurpriseMe" onchange="toggleSurpriseLastField(this)"> Surprise me (random model each cycle)</label></div>
+      <div class="field" id="surpriseLastField" style="display:none"><label style="font-size:0.75rem;color:var(--c-muted)">Last picked: <span id="surpriseLastModel">—</span></label></div>
     </div>
     <div style="padding:0 1rem 0.75rem"><div class="save-row"><button class="btn btn-primary" onclick="saveSection('lmStudio')">Save</button><span class="save-msg" id="lmSaved"></span></div></div>
   </div>
@@ -196,6 +198,38 @@
         </table>
       </div>
       <div class="save-row" style="margin-top:0.5rem"><button class="btn btn-primary" onclick="savePrompts()">Save CSV</button><span class="save-msg" id="csvSaved"></span></div>
+    </div>
+  </div>
+
+  <!-- Failure Rate -->
+  <div class="section">
+    <div class="section-header collapsed" onclick="toggle(this)"><h2>FAILURE RATE</h2><span class="arrow">▾</span></div>
+    <div class="section-body full collapsed">
+      <div style="display:flex;gap:0.5rem;margin-bottom:0.75rem">
+        <button class="btn btn-sm btn-muted" onclick="loadFailureRate()">↺ Refresh</button>
+        <button class="btn btn-sm btn-muted" onclick="exportFailureCsv()">⬇ Export CSV</button>
+      </div>
+      <div style="font-size:0.75rem;color:var(--c-muted);margin-bottom:0.25rem;text-transform:uppercase;letter-spacing:0.05em">Stock Effects</div>
+      <div style="overflow-x:auto;margin-bottom:1rem">
+        <table id="failRateEffectsTable">
+          <thead><tr><th>Effect</th><th style="width:70px">Runs</th><th style="width:60px">Fails</th><th style="width:70px">Fail %</th></tr></thead>
+          <tbody id="failRateEffectsTbody"></tbody>
+        </table>
+      </div>
+      <div style="font-size:0.75rem;color:var(--c-muted);margin-bottom:0.25rem;text-transform:uppercase;letter-spacing:0.05em">Sub-modes</div>
+      <div style="overflow-x:auto;margin-bottom:1rem">
+        <table id="failRateModesTable">
+          <thead><tr><th>Mode</th><th style="width:70px">Runs</th><th style="width:60px">Fails</th><th style="width:70px">Fail %</th></tr></thead>
+          <tbody id="failRateModesTbody"></tbody>
+        </table>
+      </div>
+      <div style="font-size:0.75rem;color:var(--c-muted);margin-bottom:0.25rem;text-transform:uppercase;letter-spacing:0.05em">By Model</div>
+      <div style="overflow-x:auto">
+        <table id="failRateModelsTable">
+          <thead><tr><th>Model</th><th style="width:70px">Runs</th><th style="width:60px">Fails</th><th style="width:70px">Fail %</th></tr></thead>
+          <tbody id="failRateModelsTbody"></tbody>
+        </table>
+      </div>
     </div>
   </div>
 

@@ -26,14 +26,44 @@ def save(stats: dict) -> None:
         log.exception("Failed to save prompt_stats.json")
 
 
-def record_failure(effect: str, kind: str) -> None:
+def _entry(stats: dict, effect: str) -> dict:
+    return stats.setdefault(effect, {
+        "crashes": 0, "blanks": 0, "total": 0,
+        "runs": 0, "last_fail": None, "by_model": {},
+    })
+
+
+def record_failure(effect: str, kind: str, model: str = "") -> None:
     stats = load()
-    e = stats.setdefault(effect, {"crashes": 0, "blanks": 0, "total": 0, "last_fail": None})
+    e = _entry(stats, effect)
+    e.setdefault("runs", 0)
+    e.setdefault("by_model", {})
     if kind == "CRASHED":
         e["crashes"] += 1
     elif kind == "BLANK":
         e["blanks"] += 1
     e["total"] += 1
+    e["runs"]  += 1
     e["last_fail"] = datetime.now().isoformat()
+    if model:
+        m = e["by_model"].setdefault(model, {"crashes": 0, "blanks": 0, "total": 0, "runs": 0})
+        if kind == "CRASHED":
+            m["crashes"] += 1
+        elif kind == "BLANK":
+            m["blanks"] += 1
+        m["total"] += 1
+        m["runs"]  += 1
     save(stats)
     log.info("Recorded failure for %r: kind=%s total=%d", effect, kind, e["total"])
+
+
+def record_run(effect: str, model: str = "") -> None:
+    stats = load()
+    e = _entry(stats, effect)
+    e.setdefault("runs", 0)
+    e.setdefault("by_model", {})
+    e["runs"] += 1
+    if model:
+        m = e["by_model"].setdefault(model, {"crashes": 0, "blanks": 0, "total": 0, "runs": 0})
+        m["runs"] += 1
+    save(stats)

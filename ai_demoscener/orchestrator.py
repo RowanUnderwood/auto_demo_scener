@@ -149,9 +149,22 @@ class Orchestrator:
             time.sleep(5)
             return
 
+        # Resolve model (surprise me picks at random)
+        lm_cfg = cfg["lm_studio"]
+        model = lm_cfg["model"]
+        if lm_cfg.get("surprise_me"):
+            try:
+                available = lm_client.list_models(lm_cfg["base_url"])
+                if available:
+                    model = random.choice(available)
+                    self._broadcast({"type": "model_selected", "model": model})
+                    log.info("Surprise Me selected model: %s", model)
+            except lm_client.LMClientError:
+                pass  # fall back to configured model
+
         # GENERATE
         self._tx("GENERATE", mode=mode)
-        html = self._do_generate(cfg, mode, prompt_data)
+        html = self._do_generate(cfg, mode, prompt_data, model=model)
         if html is None:
             self._tx("DISCARD")
             return
@@ -179,10 +192,13 @@ class Orchestrator:
 
             if attempt >= max_repairs:
                 log.info("Max repairs reached; discarding")
-                if mode == "stock" and last_error["kind"] and isinstance(prompt_data, dict):
-                    stats_mod.record_failure(
-                        prompt_data.get("effect", "unknown"), last_error["kind"]
-                    )
+                if last_error["kind"]:
+                    if mode == "stock" and isinstance(prompt_data, dict):
+                        stats_mod.record_failure(
+                            prompt_data.get("effect", "unknown"), last_error["kind"], model=model
+                        )
+                    elif mode in ("creative", "update"):
+                        stats_mod.record_failure(mode, last_error["kind"], model=model)
                 self._tx("DISCARD", kind=last_error["kind"], error=last_error["msg"])
                 temp_path.unlink(missing_ok=True)
                 return
@@ -194,7 +210,7 @@ class Orchestrator:
                 )
 
             self._tx("REPAIR", attempt=attempt + 1, max=max_repairs)
-            html = self._do_repair(cfg, html, error_msg)
+            html = self._do_repair(cfg, html, error_msg, model=model)
             if html is None:
                 self._tx("DISCARD")
                 temp_path.unlink(missing_ok=True)
@@ -220,11 +236,18 @@ class Orchestrator:
 
         # ARCHIVE
         self._tx("ARCHIVE")
-        archive_path = archive_mod.save(html, effect_slug, mode, cfg, source_path=source_path)
+        archive_path = archive_mod.save(html, effect_slug, mode, cfg,
+                                        source_path=source_path, model=model)
         temp_path.unlink(missing_ok=True)
         meta_thread.join(timeout=0)
         if _meta_result[0]:
             archive_mod.update_meta(archive_path.name, _meta_result[0], cfg)
+
+        # Record successful run in stats
+        if mode == "stock" and isinstance(prompt_data, dict):
+            stats_mod.record_run(prompt_data.get("effect", "unknown"), model=model)
+        elif mode in ("creative", "update"):
+            stats_mod.record_run(mode, model=model)
 
         self._tx("IDLE")
 
@@ -346,7 +369,7 @@ class Orchestrator:
             ]
         return []
 
-    def _stream(self, cfg: dict, messages: list[dict]) -> tuple[str | None, str | None]:
+    def _stream(self, cfg: dict, messages: list[dict], model: str = "") -> tuple[str | None, str | None]:
         """Run the LLM stream; return (html, error_msg)."""
         lm = cfg["lm_studio"]
         tokens: list[str] = []
@@ -356,7 +379,7 @@ class Orchestrator:
             for tok in lm_client.chat_stream(
                 messages=messages,
                 base_url=lm["base_url"],
-                model=lm["model"],
+                model=model or lm["model"],
                 max_tokens=lm["max_tokens"],
                 temperature=lm["temperature"],
                 timeout=lm["request_timeout_seconds"],
@@ -390,21 +413,20 @@ class Orchestrator:
 
         return validator.strip_fences("".join(tokens)), None
 
-    def _do_generate(self, cfg: dict, mode: str, prompt_data: dict) -> str | None:
+    def _do_generate(self, cfg: dict, mode: str, prompt_data: dict, model: str = "") -> str | None:
         messages = self._build_messages(cfg, mode, prompt_data)
-        html, err = self._stream(cfg, messages)
+        html, err = self._stream(cfg, messages, model=model)
         if err and html:
-            # Truncated output — flag for repair but still return html
             log.warning("Generation had error: %s", err)
         return html
 
-    def _do_repair(self, cfg: dict, html: str, error: str) -> str | None:
+    def _do_repair(self, cfg: dict, html: str, error: str, model: str = "") -> str | None:
         repair_prompt = cfg["system_prompts"]["repair"].format(error=error)
         messages = [
             {"role": "system", "content": repair_prompt},
             {"role": "user", "content": html},
         ]
-        repaired, _ = self._stream(cfg, messages)
+        repaired, _ = self._stream(cfg, messages, model=model)
         return repaired
 
     # ── Title / description generation ────────────────────────────────────────

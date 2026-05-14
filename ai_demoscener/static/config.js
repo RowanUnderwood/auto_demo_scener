@@ -13,6 +13,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   await loadPrompts();
   await loadArchive();
   await loadTitleCards();
+  await loadFailureRate();
   refreshLog();
   setInterval(refreshLog, 5000);
   connectStatusWS();
@@ -38,7 +39,10 @@ function populateForm(c) {
   setVal('lmTimeout',   c.lm_studio?.request_timeout_seconds ?? 180);
   setVal('lmCeiling',   c.lm_studio?.context_ceiling_tokens ?? 16384);
   set('lmTemp', c.lm_studio?.temperature ?? 0.9, 'lmTempV');
-  setChecked('lmFallback', c.lm_fallback_to_replay ?? true);
+  setChecked('lmFallback',    c.lm_fallback_to_replay       ?? true);
+  setChecked('lmSurpriseMe',  c.lm_studio?.surprise_me      ?? false);
+  document.getElementById('surpriseLastField').style.display =
+    (c.lm_studio?.surprise_me) ? '' : 'none';
   // Model dropdown gets populated by refreshModels() if called
   populateModelDropdown([c.lm_studio?.model ?? ''], c.lm_studio?.model ?? '');
 
@@ -90,6 +94,7 @@ async function saveSection(section) {
       cfg.lm_studio.temperature              = +getVal('lmTemp');
       cfg.lm_studio.request_timeout_seconds  = +getVal('lmTimeout');
       cfg.lm_studio.context_ceiling_tokens   = +getVal('lmCeiling');
+      cfg.lm_studio.surprise_me              = getChecked('lmSurpriseMe');
       cfg.lm_fallback_to_replay = getChecked('lmFallback');
       break;
     case 'display':
@@ -303,9 +308,16 @@ function connectStatusWS() {
     try {
       const msg = JSON.parse(ev.data);
       if (msg.type === 'state') updateStateDisplay(msg.state);
+      if (msg.type === 'model_selected') {
+        document.getElementById('surpriseLastModel').textContent = msg.model;
+      }
     } catch (e) {}
   };
   ws.onclose = () => setTimeout(connectStatusWS, 3000);
+}
+
+function toggleSurpriseLastField(cb) {
+  document.getElementById('surpriseLastField').style.display = cb.checked ? '' : 'none';
 }
 
 function updateStateDisplay(state) {
@@ -413,4 +425,57 @@ async function clearAllTitles() {
   if (!confirm('Clear all title cards? This cannot be undone.')) return;
   await fetch('/api/title_cards/clear_all', { method: 'POST' });
   await loadTitleCards();
+}
+
+// ── Failure Rate ──────────────────────────────────────────────────────────────
+let _failRateData = { effects: [], modes: [], models: [] };
+
+async function loadFailureRate() {
+  const r = await fetch('/api/failure_rate');
+  _failRateData = await r.json();
+  renderFailureRateTables();
+}
+
+function renderFailureRateTables() {
+  renderFRTable('failRateEffectsTbody', _failRateData.effects,
+    row => [row.effect, row.runs, row.fails, row.fail_pct]);
+  renderFRTable('failRateModesTbody', _failRateData.modes,
+    row => [row.mode.toUpperCase(), row.runs, row.fails, row.fail_pct]);
+  renderFRTable('failRateModelsTbody', _failRateData.models,
+    row => [row.model, row.runs, row.fails, row.fail_pct]);
+}
+
+function renderFRTable(tbodyId, rows, mapper) {
+  const tbody = document.getElementById(tbodyId);
+  tbody.innerHTML = '';
+  if (!rows || !rows.length) {
+    tbody.innerHTML = '<tr><td colspan="4" style="color:var(--c-muted);font-size:0.8rem">No data yet</td></tr>';
+    return;
+  }
+  for (const row of rows) {
+    const [name, runs, fails, pct] = mapper(row);
+    const color = pct === null || pct === undefined ? ''
+                : pct >= 30 ? 'var(--c-err)'
+                : pct >= 15 ? 'var(--c-warn)'
+                :              'var(--c-ok)';
+    const pctStr = pct === null || pct === undefined ? '—' : pct.toFixed(1) + '%';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${esc(String(name))}</td><td>${runs}</td><td>${fails}</td>
+      <td style="color:${color};font-weight:bold">${pctStr}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+function exportFailureCsv() {
+  const lines = ['Type,Name,Runs,Fails,Crashes,Blanks,Fail%'];
+  for (const r of _failRateData.effects)
+    lines.push(`stock,${r.effect},${r.runs},${r.fails},${r.crashes},${r.blanks},${r.fail_pct ?? ''}`);
+  for (const r of _failRateData.modes)
+    lines.push(`mode,${r.mode},${r.runs},${r.fails},${r.crashes},${r.blanks},${r.fail_pct ?? ''}`);
+  for (const r of _failRateData.models)
+    lines.push(`model,${r.model},${r.runs},${r.fails},${r.crashes},${r.blanks},${r.fail_pct ?? ''}`);
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+  const a = Object.assign(document.createElement('a'),
+    { href: URL.createObjectURL(blob), download: 'failure_rate.csv' });
+  a.click();
 }

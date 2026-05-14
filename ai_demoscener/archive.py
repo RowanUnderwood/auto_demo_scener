@@ -47,7 +47,7 @@ def _hash4(html: str) -> str:
     return hashlib.md5(html.encode()).hexdigest()[:4]
 
 
-def save(html: str, effect_slug: str, mode: str, cfg: dict, source_path: Path | None = None) -> Path:
+def save(html: str, effect_slug: str, mode: str, cfg: dict, source_path: Path | None = None, model: str = "") -> Path:
     archive_dir = _archive_dir(cfg)
     index = _load_index(archive_dir)
     today = datetime.now().strftime("%Y-%m-%d")
@@ -79,6 +79,7 @@ def save(html: str, effect_slug: str, mode: str, cfg: dict, source_path: Path | 
         "mode": mode,
         "effect": effect_slug,
         "passed_validation": True,
+        **({"model": model} if model else {}),
     }
     _save_index(archive_dir, index)
     log.info("Archived %s (%d chars)", filename, len(html))

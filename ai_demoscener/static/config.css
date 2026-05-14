@@ -231,6 +231,34 @@ input[type=checkbox] { accent-color: var(--c-accent); width: 1em; height: 1em; c
 #titleCardsTable tr:hover { background: rgba(255,255,255,0.02); }
 #titleCardsTable .tc-filename { color: var(--c-muted); font-size: 0.78rem; }
 
+/* ── Failure rate tables ──────────────────────────────────────────────────── */
+#failRateEffectsTable,
+#failRateModesTable,
+#failRateModelsTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+#failRateEffectsTable th,
+#failRateModesTable th,
+#failRateModelsTable th {
+  text-align: left;
+  padding: 0.4rem 0.5rem;
+  background: var(--c-bg3);
+  color: var(--c-muted);
+  border-bottom: 1px solid var(--c-border);
+}
+#failRateEffectsTable td,
+#failRateModesTable td,
+#failRateModelsTable td {
+  padding: 0.3rem 0.4rem;
+  border-bottom: 1px solid var(--c-border);
+  vertical-align: top;
+}
+#failRateEffectsTable tr:hover,
+#failRateModesTable tr:hover,
+#failRateModelsTable tr:hover { background: rgba(255,255,255,0.02); }
+
 /* ── Log tail ─────────────────────────────────────────────────────────────── */
 #logTail {
   background: #050510;

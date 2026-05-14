@@ -235,6 +235,66 @@ def api_prompt_stats():
     return jsonify(stats_mod.load())
 
 
+# ── API: failure rate ──────────────────────────────────────────────────────────
+@app.route("/api/failure_rate")
+def api_failure_rate():
+    import stats as stats_mod
+    raw = stats_mod.load()
+
+    # Stock effects — pull ordered list from CSV, merge with stats
+    csv_path = BASE / "prompts.csv"
+    effects_order: list[str] = []
+    if csv_path.exists():
+        with open(csv_path, "r", encoding="utf-8", newline="") as f:
+            effects_order = [r["Effect"] for r in csv.DictReader(f)]
+
+    effects = []
+    for eff in effects_order:
+        st = raw.get(eff, {})
+        runs  = st.get("runs", 0)
+        fails = st.get("total", 0)
+        effects.append({
+            "effect":  eff,
+            "runs":    runs,
+            "fails":   fails,
+            "crashes": st.get("crashes", 0),
+            "blanks":  st.get("blanks", 0),
+            "fail_pct": round(fails / runs * 100, 1) if runs else None,
+        })
+
+    # Sub-mode rows
+    modes_out = []
+    for m in ("creative", "update"):
+        st = raw.get(m, {})
+        runs  = st.get("runs", 0)
+        fails = st.get("total", 0)
+        modes_out.append({
+            "mode":    m,
+            "runs":    runs,
+            "fails":   fails,
+            "crashes": st.get("crashes", 0),
+            "blanks":  st.get("blanks", 0),
+            "fail_pct": round(fails / runs * 100, 1) if runs else None,
+        })
+
+    # Per-model aggregation across all stats entries
+    model_agg: dict = {}
+    for entry in raw.values():
+        for mdl, mdata in entry.get("by_model", {}).items():
+            agg = model_agg.setdefault(mdl, {"runs": 0, "fails": 0, "crashes": 0, "blanks": 0})
+            agg["runs"]    += mdata.get("runs", 0)
+            agg["fails"]   += mdata.get("total", 0)
+            agg["crashes"] += mdata.get("crashes", 0)
+            agg["blanks"]  += mdata.get("blanks", 0)
+    models_out = [
+        {"model": k, **v,
+         "fail_pct": round(v["fails"] / v["runs"] * 100, 1) if v["runs"] else None}
+        for k, v in sorted(model_agg.items())
+    ]
+
+    return jsonify({"effects": effects, "modes": modes_out, "models": models_out})
+
+
 # ── API: logs ──────────────────────────────────────────────────────────────────
 @app.route("/api/logs")
 def api_logs():
