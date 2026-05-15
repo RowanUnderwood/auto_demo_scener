@@ -152,6 +152,27 @@ body {
   word-break: break-word;
 }
 
+#demoTitle {
+  font-size: clamp(0.85em, 2vw, 1.2em);
+  color: var(--fg);
+  margin-top: 0.2em;
+  font-style: italic;
+}
+
+#demoDesc {
+  font-size: clamp(0.7em, 1.5vw, 0.9em);
+  color: var(--fg-dim);
+  margin-top: 0.15em;
+  font-style: italic;
+  max-width: 60vw;
+}
+
+#modelLabel {
+  font-size: 0.65em;
+  color: var(--border);
+  margin-top: 0.2em;
+}
+
 #fileLabel {
   color: var(--fg-dim);
   font-size: 0.75em;
@@ -180,6 +201,7 @@ body {
   text-shadow: var(--glow);
 }
 
+#statsLine { font-size: 0.8em; color: var(--fg-dim); }
 #keyHints { color: var(--fg-dim); font-size: 0.9em; }
 
 /* ── Progress bar ─────────────────────────────────────────────────────────── */
@@ -223,11 +245,15 @@ body {
     <div id="main">
       <div id="loadLabel">LOADING<span id="loadDots"></span></div>
       <div id="effectName"></div>
+      <div id="demoTitle"></div>
+      <div id="demoDesc"></div>
+      <div id="modelLabel"></div>
       <div id="fileLabel"></div>
     </div>
 
     <div id="statusBar">
       <span id="statusText">INITIALISING</span>
+      <span id="statsLine"></span>
       <span id="keyHints">← prev &nbsp;·&nbsp; → / space next</span>
     </div>
   </div>
@@ -245,13 +271,18 @@ const RUNTIME = Math.max(5, parseInt(params.get('runtime') || '15', 10));
 const demoFrame   = document.getElementById('demoFrame');
 const overlay     = document.getElementById('overlay');
 const effectName  = document.getElementById('effectName');
+const demoTitle   = document.getElementById('demoTitle');
+const demoDesc    = document.getElementById('demoDesc');
+const modelLabel  = document.getElementById('modelLabel');
 const fileLabel   = document.getElementById('fileLabel');
+const statsLine   = document.getElementById('statsLine');
 const countChip   = document.getElementById('countChip');
 const statusText  = document.getElementById('statusText');
 const progressBar = document.getElementById('progressBar');
 const progressFill= document.getElementById('progressFill');
 
 let entries = [];
+let statsData = {};
 let idx = 0;
 let displayTimer = null;
 let transTimer   = null;
@@ -268,9 +299,15 @@ function shuffle(arr) {
 async function init() {
   statusText.textContent = 'LOADING INDEX…';
   try {
-    const r = await fetch(ARCHIVE_BASE + 'archive_index.json');
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const data = await r.json();
+    const [indexResp, statsResp] = await Promise.all([
+      fetch(ARCHIVE_BASE + 'archive_index.json'),
+      fetch('ai_demoscener/prompt_stats.json').catch(() => null),
+    ]);
+    if (!indexResp.ok) throw new Error(`HTTP ${indexResp.status}`);
+    const data = await indexResp.json();
+    if (statsResp && statsResp.ok) {
+      statsData = await statsResp.json().catch(() => ({}));
+    }
     entries = Object.entries(data)
       .filter(([k]) => k.toLowerCase().endsWith('.html'))
       .sort((a, b) => (a[1].created || '').localeCompare(b[1].created || ''));
@@ -298,11 +335,23 @@ function showDemo(i) {
   const effect = (meta.effect || filename).replace(/_/g, ' ');
 
   // Update overlay text
-  effectName.className = '';
+  effectName.className   = '';
   effectName.textContent = effect.toUpperCase();
+  demoTitle.textContent  = meta.title || '';
+  demoDesc.textContent   = meta.description || '';
+  modelLabel.textContent = meta.model ? 'by ' + meta.model : '';
   fileLabel.textContent  = filename;
   countChip.textContent  = `${idx + 1} / ${entries.length}`;
   statusText.textContent = 'LOADING…';
+
+  // Stats line from prompt_stats.json
+  const st    = statsData[meta.effect || ''] || {};
+  const runs  = st.runs || 0;
+  const fails = st.total || 0;
+  const dels  = st.deletions || 0;
+  statsLine.textContent = runs > 0
+    ? `${runs} runs · ${fails} fail · ${dels} del`
+    : '';
 
   // Show overlay, hide frame and progress
   overlay.classList.remove('hidden');

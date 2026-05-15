@@ -28,6 +28,8 @@ DEFAULTS: dict = {
         "title_card_seconds": 4,
         "show_title_card": True,
         "show_progress_bar": True,
+        "show_title_card_stats": True,
+        "jit_titling": False,
     },
     "validation": {
         "max_repair_attempts": 2,

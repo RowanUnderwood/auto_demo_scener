@@ -194,9 +194,17 @@ def api_archive():
 @app.route("/api/archive/<filename>", methods=["DELETE"])
 def api_delete_archive(filename):
     import archive as arch_mod
+    import stats as stats_mod
     cfg = cfg_mod.load()
+    entry = arch_mod.get_meta(filename, cfg)
     ok = arch_mod.delete_file(filename, cfg)
     if ok:
+        mode   = entry.get("mode", "")
+        effect = entry.get("effect", "")
+        model  = entry.get("model", "")
+        key = effect if mode == "stock" and effect else mode or "unknown"
+        if key:
+            stats_mod.record_deletion(key, model=model)
         orc.skip()
     return jsonify({"ok": ok})
 
@@ -254,12 +262,13 @@ def api_failure_rate():
         runs  = st.get("runs", 0)
         fails = st.get("total", 0)
         effects.append({
-            "effect":  eff,
-            "runs":    runs,
-            "fails":   fails,
-            "crashes": st.get("crashes", 0),
-            "blanks":  st.get("blanks", 0),
-            "fail_pct": round(fails / runs * 100, 1) if runs else None,
+            "effect":    eff,
+            "runs":      runs,
+            "fails":     fails,
+            "crashes":   st.get("crashes", 0),
+            "blanks":    st.get("blanks", 0),
+            "deletions": st.get("deletions", 0),
+            "fail_pct":  round(fails / runs * 100, 1) if runs else None,
         })
 
     # Sub-mode rows
@@ -269,23 +278,25 @@ def api_failure_rate():
         runs  = st.get("runs", 0)
         fails = st.get("total", 0)
         modes_out.append({
-            "mode":    m,
-            "runs":    runs,
-            "fails":   fails,
-            "crashes": st.get("crashes", 0),
-            "blanks":  st.get("blanks", 0),
-            "fail_pct": round(fails / runs * 100, 1) if runs else None,
+            "mode":      m,
+            "runs":      runs,
+            "fails":     fails,
+            "crashes":   st.get("crashes", 0),
+            "blanks":    st.get("blanks", 0),
+            "deletions": st.get("deletions", 0),
+            "fail_pct":  round(fails / runs * 100, 1) if runs else None,
         })
 
     # Per-model aggregation across all stats entries
     model_agg: dict = {}
     for entry in raw.values():
         for mdl, mdata in entry.get("by_model", {}).items():
-            agg = model_agg.setdefault(mdl, {"runs": 0, "fails": 0, "crashes": 0, "blanks": 0})
-            agg["runs"]    += mdata.get("runs", 0)
-            agg["fails"]   += mdata.get("total", 0)
-            agg["crashes"] += mdata.get("crashes", 0)
-            agg["blanks"]  += mdata.get("blanks", 0)
+            agg = model_agg.setdefault(mdl, {"runs": 0, "fails": 0, "crashes": 0, "blanks": 0, "deletions": 0})
+            agg["runs"]      += mdata.get("runs", 0)
+            agg["fails"]     += mdata.get("total", 0)
+            agg["crashes"]   += mdata.get("crashes", 0)
+            agg["blanks"]    += mdata.get("blanks", 0)
+            agg["deletions"] += mdata.get("deletions", 0)
     models_out = [
         {"model": k, **v,
          "fail_pct": round(v["fails"] / v["runs"] * 100, 1) if v["runs"] else None}
@@ -293,6 +304,15 @@ def api_failure_rate():
     ]
 
     return jsonify({"effects": effects, "modes": modes_out, "models": models_out})
+
+
+# ── API: failure rate — clear ─────────────────────────────────────────────────
+@app.route("/api/failure_rate/clear", methods=["POST"])
+def api_clear_failure_rate():
+    import stats as stats_mod
+    stats_mod.save({})
+    log.info("Failure rate data cleared via GUI")
+    return jsonify({"ok": True})
 
 
 # ── API: logs ──────────────────────────────────────────────────────────────────
@@ -363,6 +383,18 @@ def api_generate_title_cards():
                 for fname, entry in index.items()
                 if not entry.get("title")
             ]
+            # Determine which models are currently available
+            available: set = set()
+            try:
+                available = set(lm_client.list_models(cfg["lm_studio"]["base_url"]))
+            except Exception:
+                pass
+            # Sort so demos from the same model are processed together,
+            # with unavailable/unknown models last
+            def _sort_key(item):
+                m = index[item[0]].get("model", "") or ""
+                return ("\xff" if not m or m not in available else "", m)
+            todo.sort(key=_sort_key)
             with _tc_lock:
                 _tc_total = len(todo)
             for fname, path in todo:
@@ -372,7 +404,9 @@ def api_generate_title_cards():
                     _tc_current = fname
                 try:
                     html = path.read_text(encoding="utf-8")
-                    result = orc._generate_title_meta(cfg_mod.load(), html)
+                    demo_model = index[fname].get("model", "") or ""
+                    use_model  = demo_model if demo_model in available else ""
+                    result = orc._generate_title_meta(cfg_mod.load(), html, model=use_model)
                     if result:
                         arch_mod.update_meta(fname, result, cfg_mod.load())
                 except Exception:

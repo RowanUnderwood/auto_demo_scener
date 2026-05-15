@@ -50,12 +50,14 @@ function populateForm(c) {
   setVal('demoRuntime',        c.display?.demo_runtime_seconds ?? 60);
   setVal('minTyping',          c.display?.min_typing_seconds   ?? 8);
   setVal('displayCharsPerSec', c.display?.display_chars_per_sec ?? 400);
-  setChecked('showTitleCard',   c.display?.show_title_card   ?? true);
-  setChecked('showProgressBar', c.display?.show_progress_bar ?? true);
-  setVal('titleCardSecs',       c.display?.title_card_seconds ?? 4);
-  setVal('palette',            c.display?.palette ?? 'amber_crt');
-  setChecked('showStatusBar',  c.display?.show_status_bar  ?? true);
-  setChecked('showRetry',      c.display?.show_retry_messages ?? true);
+  setChecked('showTitleCard',      c.display?.show_title_card       ?? true);
+  setChecked('showProgressBar',    c.display?.show_progress_bar     ?? true);
+  setChecked('showTitleCardStats', c.display?.show_title_card_stats ?? true);
+  setVal('titleCardSecs',          c.display?.title_card_seconds    ?? 4);
+  setVal('palette',                c.display?.palette ?? 'amber_crt');
+  setChecked('showStatusBar',      c.display?.show_status_bar       ?? true);
+  setChecked('showRetry',          c.display?.show_retry_messages   ?? true);
+  setChecked('jitTitling',         c.display?.jit_titling           ?? false);
 
   // Validation
   setVal('maxRepair',    c.validation?.max_repair_attempts    ?? 2);
@@ -103,10 +105,12 @@ async function saveSection(section) {
       cfg.display.display_chars_per_sec = +getVal('displayCharsPerSec');
       cfg.display.show_title_card        = getChecked('showTitleCard');
       cfg.display.show_progress_bar      = getChecked('showProgressBar');
+      cfg.display.show_title_card_stats  = getChecked('showTitleCardStats');
       cfg.display.title_card_seconds     = +getVal('titleCardSecs');
       cfg.display.palette               = getVal('palette');
       cfg.display.show_status_bar       = getChecked('showStatusBar');
       cfg.display.show_retry_messages   = getChecked('showRetry');
+      cfg.display.jit_titling           = getChecked('jitTitling');
       break;
     case 'validation':
       cfg.validation.max_repair_attempts    = +getVal('maxRepair');
@@ -438,42 +442,48 @@ async function loadFailureRate() {
 
 function renderFailureRateTables() {
   renderFRTable('failRateEffectsTbody', _failRateData.effects,
-    row => [row.effect, row.runs, row.fails, row.fail_pct]);
+    row => [row.effect, row.runs, row.fails, row.deletions, row.fail_pct]);
   renderFRTable('failRateModesTbody', _failRateData.modes,
-    row => [row.mode.toUpperCase(), row.runs, row.fails, row.fail_pct]);
+    row => [row.mode.toUpperCase(), row.runs, row.fails, row.deletions, row.fail_pct]);
   renderFRTable('failRateModelsTbody', _failRateData.models,
-    row => [row.model, row.runs, row.fails, row.fail_pct]);
+    row => [row.model, row.runs, row.fails, row.deletions, row.fail_pct]);
 }
 
 function renderFRTable(tbodyId, rows, mapper) {
   const tbody = document.getElementById(tbodyId);
   tbody.innerHTML = '';
   if (!rows || !rows.length) {
-    tbody.innerHTML = '<tr><td colspan="4" style="color:var(--c-muted);font-size:0.8rem">No data yet</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" style="color:var(--c-muted);font-size:0.8rem">No data yet</td></tr>';
     return;
   }
   for (const row of rows) {
-    const [name, runs, fails, pct] = mapper(row);
+    const [name, runs, fails, dels, pct] = mapper(row);
     const color = pct === null || pct === undefined ? ''
                 : pct >= 30 ? 'var(--c-err)'
                 : pct >= 15 ? 'var(--c-warn)'
                 :              'var(--c-ok)';
     const pctStr = pct === null || pct === undefined ? '—' : pct.toFixed(1) + '%';
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${esc(String(name))}</td><td>${runs}</td><td>${fails}</td>
+    tr.innerHTML = `<td>${esc(String(name))}</td><td>${runs}</td><td>${fails}</td><td>${dels ?? 0}</td>
       <td style="color:${color};font-weight:bold">${pctStr}</td>`;
     tbody.appendChild(tr);
   }
 }
 
+async function clearFailureData() {
+  if (!confirm('Clear all failure rate data? This cannot be undone.')) return;
+  await fetch('/api/failure_rate/clear', { method: 'POST' });
+  await loadFailureRate();
+}
+
 function exportFailureCsv() {
-  const lines = ['Type,Name,Runs,Fails,Crashes,Blanks,Fail%'];
+  const lines = ['Type,Name,Runs,Fails,Crashes,Blanks,Deletions,Fail%'];
   for (const r of _failRateData.effects)
-    lines.push(`stock,${r.effect},${r.runs},${r.fails},${r.crashes},${r.blanks},${r.fail_pct ?? ''}`);
+    lines.push(`stock,${r.effect},${r.runs},${r.fails},${r.crashes},${r.blanks},${r.deletions ?? 0},${r.fail_pct ?? ''}`);
   for (const r of _failRateData.modes)
-    lines.push(`mode,${r.mode},${r.runs},${r.fails},${r.crashes},${r.blanks},${r.fail_pct ?? ''}`);
+    lines.push(`mode,${r.mode},${r.runs},${r.fails},${r.crashes},${r.blanks},${r.deletions ?? 0},${r.fail_pct ?? ''}`);
   for (const r of _failRateData.models)
-    lines.push(`model,${r.model},${r.runs},${r.fails},${r.crashes},${r.blanks},${r.fail_pct ?? ''}`);
+    lines.push(`model,${r.model},${r.runs},${r.fails},${r.crashes},${r.blanks},${r.deletions ?? 0},${r.fail_pct ?? ''}`);
   const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
   const a = Object.assign(document.createElement('a'),
     { href: URL.createObjectURL(blob), download: 'failure_rate.csv' });

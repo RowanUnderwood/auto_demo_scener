@@ -92,6 +92,7 @@
           <option value="mac_classic">Mac Classic</option>
         </select>
       </div>
+      <div class="field"><label class="check-row"><input type="checkbox" id="showTitleCardStats"> Show stats overlay on demos</label></div>
       <div class="field"><label class="check-row"><input type="checkbox" id="showStatusBar"> Show status bar</label></div>
       <div class="field"><label class="check-row"><input type="checkbox" id="showRetry"> Show retry messages</label></div>
     </div>
@@ -156,6 +157,9 @@
   <div class="section">
     <div class="section-header collapsed" onclick="toggle(this)"><h2>TITLE CARDS</h2><span class="arrow">▾</span></div>
     <div class="section-body full collapsed">
+      <div class="field" style="margin-bottom:0.75rem">
+        <label class="check-row"><input type="checkbox" id="jitTitling"> Just-in-time titling (generate title before each display; may add a few seconds)</label>
+      </div>
       <div style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.5rem;flex-wrap:wrap">
         <button class="btn btn-sm btn-primary" onclick="generateAllTitles()">⚡ Generate All</button>
         <button class="btn btn-sm btn-danger"  onclick="clearAllTitles()">✕ Clear All</button>
@@ -208,25 +212,26 @@
       <div style="display:flex;gap:0.5rem;margin-bottom:0.75rem">
         <button class="btn btn-sm btn-muted" onclick="loadFailureRate()">↺ Refresh</button>
         <button class="btn btn-sm btn-muted" onclick="exportFailureCsv()">⬇ Export CSV</button>
+        <button class="btn btn-sm btn-danger" onclick="clearFailureData()">✕ Clear All Data</button>
       </div>
       <div style="font-size:0.75rem;color:var(--c-muted);margin-bottom:0.25rem;text-transform:uppercase;letter-spacing:0.05em">Stock Effects</div>
       <div style="overflow-x:auto;margin-bottom:1rem">
         <table id="failRateEffectsTable">
-          <thead><tr><th>Effect</th><th style="width:70px">Runs</th><th style="width:60px">Fails</th><th style="width:70px">Fail %</th></tr></thead>
+          <thead><tr><th>Effect</th><th style="width:60px">Runs</th><th style="width:50px">Fails</th><th style="width:60px">Deleted</th><th style="width:65px">Fail %</th></tr></thead>
           <tbody id="failRateEffectsTbody"></tbody>
         </table>
       </div>
       <div style="font-size:0.75rem;color:var(--c-muted);margin-bottom:0.25rem;text-transform:uppercase;letter-spacing:0.05em">Sub-modes</div>
       <div style="overflow-x:auto;margin-bottom:1rem">
         <table id="failRateModesTable">
-          <thead><tr><th>Mode</th><th style="width:70px">Runs</th><th style="width:60px">Fails</th><th style="width:70px">Fail %</th></tr></thead>
+          <thead><tr><th>Mode</th><th style="width:60px">Runs</th><th style="width:50px">Fails</th><th style="width:60px">Deleted</th><th style="width:65px">Fail %</th></tr></thead>
           <tbody id="failRateModesTbody"></tbody>
         </table>
       </div>
       <div style="font-size:0.75rem;color:var(--c-muted);margin-bottom:0.25rem;text-transform:uppercase;letter-spacing:0.05em">By Model</div>
       <div style="overflow-x:auto">
         <table id="failRateModelsTable">
-          <thead><tr><th>Model</th><th style="width:70px">Runs</th><th style="width:60px">Fails</th><th style="width:70px">Fail %</th></tr></thead>
+          <thead><tr><th>Model</th><th style="width:60px">Runs</th><th style="width:50px">Fails</th><th style="width:60px">Deleted</th><th style="width:65px">Fail %</th></tr></thead>
           <tbody id="failRateModelsTbody"></tbody>
         </table>
       </div>

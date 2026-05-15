@@ -29,7 +29,7 @@ def save(stats: dict) -> None:
 def _entry(stats: dict, effect: str) -> dict:
     return stats.setdefault(effect, {
         "crashes": 0, "blanks": 0, "total": 0,
-        "runs": 0, "last_fail": None, "by_model": {},
+        "runs": 0, "deletions": 0, "last_fail": None, "by_model": {},
     })
 
 
@@ -67,3 +67,17 @@ def record_run(effect: str, model: str = "") -> None:
         m = e["by_model"].setdefault(model, {"crashes": 0, "blanks": 0, "total": 0, "runs": 0})
         m["runs"] += 1
     save(stats)
+
+
+def record_deletion(effect: str, model: str = "") -> None:
+    stats = load()
+    e = _entry(stats, effect)
+    e.setdefault("deletions", 0)
+    e.setdefault("by_model", {})
+    e["deletions"] += 1
+    if model:
+        m = e["by_model"].setdefault(model, {"crashes": 0, "blanks": 0, "total": 0, "runs": 0, "deletions": 0})
+        m.setdefault("deletions", 0)
+        m["deletions"] += 1
+    save(stats)
+    log.info("Recorded deletion for %r", effect)

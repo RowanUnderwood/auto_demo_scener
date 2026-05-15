@@ -105,27 +105,51 @@ class Orchestrator:
         if path is None:
             return  # all candidates were deleted; next cycle refills
         entry = archive_mod.get_meta(path.name, cfg)
+        entry_mode   = entry.get("mode", "")
+        entry_effect = entry.get("effect", "")
+        entry_model  = entry.get("model", "")
+        stats_key = entry_effect if entry_mode == "stock" and entry_effect else entry_mode or "unknown"
         meta = {
-            "effect": entry.get("effect", ""),
-            "title": entry.get("title", ""),
+            "effect":      entry_effect,
+            "title":       entry.get("title", ""),
             "description": entry.get("description", ""),
+            "model":       entry_model,
         }
-        self._tx("DISPLAY", url=f"/archive/{path.name}",
-                 runtime=cfg["display"]["demo_runtime_seconds"], meta=meta)
-        # Enrich title in background if missing and LM is available
-        if not meta["title"] and not self._lm_unavailable:
+        runtime = cfg["display"]["demo_runtime_seconds"]
+
+        # JIT titling: generate title synchronously before displaying
+        if cfg["display"].get("jit_titling") and not meta["title"] and not self._lm_unavailable:
+            try:
+                available = set(lm_client.list_models(cfg["lm_studio"]["base_url"]))
+            except Exception:
+                available = set()
+            use_model = entry_model if entry_model in available else ""
+            result = self._generate_title_meta(
+                cfg, path.read_text(encoding="utf-8"), model=use_model
+            )
+            if result:
+                meta.update(result)
+                archive_mod.update_meta(path.name, result, cfg)
+
+        stats_summary = self._meta_stats(stats_key, entry_model)
+        meta["stats"] = stats_summary
+        self._tx("DISPLAY", url=f"/archive/{path.name}", runtime=runtime, meta=meta)
+
+        # Background enrichment only if JIT is off and title still missing
+        if not cfg["display"].get("jit_titling") and not meta["title"] and not self._lm_unavailable:
             _path = path
+            _entry_model = entry_model
             def _enrich():
                 try:
                     html = _path.read_text(encoding="utf-8")
-                    result = self._generate_title_meta(cfg_mod.load(), html)
+                    result = self._generate_title_meta(cfg_mod.load(), html, model=_entry_model)
                     if result:
                         archive_mod.update_meta(_path.name, result, cfg_mod.load())
                         log.info("Enriched title for %s", _path.name)
                 except Exception:
                     log.exception("Title enrichment failed for %s", _path.name)
             threading.Thread(target=_enrich, daemon=True).start()
-        self._run_timer(cfg["display"]["demo_runtime_seconds"])
+        self._run_timer(runtime)
 
     def _probe_lm(self, cfg: dict) -> None:
         try:
@@ -221,27 +245,57 @@ class Orchestrator:
         runtime = cfg["display"]["demo_runtime_seconds"]
         source_path = prompt_data.get("source_path") if isinstance(prompt_data, dict) else None
         effect_slug = prompt_data.get("effect", mode) if isinstance(prompt_data, dict) else mode
-        self._tx("DISPLAY", url=f"/temp/{temp_path.name}", runtime=runtime,
-                 meta={"effect": effect_slug, "title": "", "description": ""})
+        stats_key = (prompt_data.get("effect", "unknown")
+                     if mode == "stock" and isinstance(prompt_data, dict) else mode)
+        stats_summary = self._meta_stats(stats_key, model)
 
-        # Kick off title generation in background while demo plays
-        _html_for_meta = html
-        _meta_result: list = [None]
-        def _fetch_meta():
-            _meta_result[0] = self._generate_title_meta(cfg, _html_for_meta)
-        meta_thread = threading.Thread(target=_fetch_meta, daemon=True)
-        meta_thread.start()
+        if cfg["display"].get("jit_titling"):
+            jit_result = self._generate_title_meta(cfg, html, model=model)
+            display_meta = {
+                "effect":      effect_slug,
+                "model":       model,
+                "title":       jit_result.get("title", "") if jit_result else "",
+                "description": jit_result.get("description", "") if jit_result else "",
+                "stats":       stats_summary,
+            }
+            self._tx("DISPLAY", url=f"/temp/{temp_path.name}", runtime=runtime, meta=display_meta)
+            self._run_timer(runtime)
 
-        self._run_timer(runtime)
+            self._tx("ARCHIVE")
+            archive_path = archive_mod.save(html, effect_slug, mode, cfg,
+                                            source_path=source_path, model=model)
+            temp_path.unlink(missing_ok=True)
+            if jit_result:
+                archive_mod.update_meta(archive_path.name, jit_result, cfg)
+        else:
+            display_meta = {
+                "effect":      effect_slug,
+                "model":       model,
+                "title":       "",
+                "description": "",
+                "stats":       stats_summary,
+            }
+            self._tx("DISPLAY", url=f"/temp/{temp_path.name}", runtime=runtime, meta=display_meta)
 
-        # ARCHIVE
-        self._tx("ARCHIVE")
-        archive_path = archive_mod.save(html, effect_slug, mode, cfg,
-                                        source_path=source_path, model=model)
-        temp_path.unlink(missing_ok=True)
-        meta_thread.join(timeout=0)
-        if _meta_result[0]:
-            archive_mod.update_meta(archive_path.name, _meta_result[0], cfg)
+            # Background title gen while demo plays
+            _html_for_meta = html
+            _model_for_meta = model
+            _meta_result: list = [None]
+            def _fetch_meta():
+                _meta_result[0] = self._generate_title_meta(cfg, _html_for_meta,
+                                                             model=_model_for_meta)
+            meta_thread = threading.Thread(target=_fetch_meta, daemon=True)
+            meta_thread.start()
+
+            self._run_timer(runtime)
+
+            self._tx("ARCHIVE")
+            archive_path = archive_mod.save(html, effect_slug, mode, cfg,
+                                            source_path=source_path, model=model)
+            temp_path.unlink(missing_ok=True)
+            meta_thread.join(timeout=10)
+            if _meta_result[0]:
+                archive_mod.update_meta(archive_path.name, _meta_result[0], cfg)
 
         # Record successful run in stats
         if mode == "stock" and isinstance(prompt_data, dict):
@@ -431,12 +485,27 @@ class Orchestrator:
 
     # ── Title / description generation ────────────────────────────────────────
 
-    def _generate_title_meta(self, cfg: dict, html: str) -> dict | None:
+    def _meta_stats(self, effect_key: str, model: str) -> dict:
+        raw = stats_mod.load()
+        def _row(entry):
+            runs  = entry.get("runs", 0)
+            fails = entry.get("total", 0)
+            return {
+                "runs": runs, "fails": fails,
+                "deletions": entry.get("deletions", 0),
+                "fail_pct": round(fails / runs * 100, 1) if runs else None,
+            }
+        eff_entry = raw.get(effect_key, {})
+        mdl_entry = eff_entry.get("by_model", {}).get(model, {}) if model else {}
+        return {"effect": _row(eff_entry), "model": _row(mdl_entry)}
+
+    def _generate_title_meta(self, cfg: dict, html: str, model: str = "") -> dict | None:
         import json as _json
         prompt = cfg["system_prompts"].get("title", "")
         if not prompt:
             return None
         lm = cfg["lm_studio"]
+        use_model = model or lm["model"]
         messages = [
             {"role": "system", "content": prompt},
             {"role": "user", "content": html[:6000]},
@@ -445,7 +514,7 @@ class Orchestrator:
             text = lm_client.chat(
                 messages=messages,
                 base_url=lm["base_url"],
-                model=lm["model"],
+                model=use_model,
                 max_tokens=128,
                 temperature=0.7,
                 timeout=30,

@@ -15,11 +15,13 @@ const cpuBar      = document.getElementById('cpuBar');
 const cpuPct      = document.getElementById('cpuPct');
 const memBar      = document.getElementById('memBar');
 const memPct      = document.getElementById('memPct');
-const titleCard     = document.getElementById('titleCard');
-const titleCardTitle= document.getElementById('titleCardTitle');
-const titleCardDesc = document.getElementById('titleCardDesc');
-const titleCardFile = document.getElementById('titleCardFile');
-const progressBar   = document.getElementById('progressBar');
+const titleCard      = document.getElementById('titleCard');
+const titleCardTitle = document.getElementById('titleCardTitle');
+const titleCardDesc  = document.getElementById('titleCardDesc');
+const titleCardFile  = document.getElementById('titleCardFile');
+const titleCardModel = document.getElementById('titleCardModel');
+const titleCardStats = document.getElementById('titleCardStats');
+const progressBar    = document.getElementById('progressBar');
 const spinnerChar   = document.getElementById('spinnerChar');
 const spinnerVerb   = document.getElementById('spinnerVerb');
 const cursorEl      = document.getElementById('cursor');
@@ -203,11 +205,13 @@ function handleState(msg) {
           progressBar.style.transition = `width ${runtime}s linear`;
           progressBar.style.width = '100%';
         }
+        showStatsOverlay(msg.meta?.stats, msg.meta?.effect, msg.meta?.model);
       } else {
         // WS reconnect to same demo — restore progress bar to correct position
         if (cfg?.display?.show_progress_bar !== false) {
           restoreProgressBar(msg.runtime || 60);
         }
+        showStatsOverlay(msg.meta?.stats, msg.meta?.effect, msg.meta?.model);
       }
       break;
     }
@@ -257,12 +261,33 @@ let _titleCardTimer   = null;
 let _currentDisplayUrl = '';
 let _displayStartTime  = 0;
 
+function showStatsOverlay(stats, effectKey, modelId) {
+  if (!stats || !cfg?.display?.show_title_card_stats) {
+    titleCardStats.classList.remove('visible');
+    return;
+  }
+  const fmt = r => `${r.runs ?? 0} runs · ${r.fails ?? 0} fail · ${r.deletions ?? 0} del` +
+                   (r.fail_pct !== null && r.fail_pct !== undefined ? ` (${r.fail_pct}%)` : '');
+  const lines = [];
+  if (stats.effect && (stats.effect.runs > 0 || stats.effect.deletions > 0))
+    lines.push(escHtml(effectKey || '') + ': ' + fmt(stats.effect));
+  if (modelId && stats.model && (stats.model.runs > 0 || stats.model.deletions > 0))
+    lines.push(escHtml(modelId) + ': ' + fmt(stats.model));
+  if (lines.length === 0) {
+    titleCardStats.classList.remove('visible');
+    return;
+  }
+  titleCardStats.innerHTML = lines.join('<br>');
+  titleCardStats.classList.add('visible');
+}
+
 function showTitleCard(meta, filename, runtime) {
   const titleSecs = cfg?.display?.title_card_seconds ?? 4;
   const title = meta?.title || meta?.effect || filename.replace(/\.[^.]+$/, '').replace(/_/g, ' ');
   titleCardTitle.textContent = title.toUpperCase();
   titleCardDesc.textContent  = meta?.description || '';
   titleCardFile.textContent  = filename;
+  titleCardModel.textContent = meta?.model ? `by ${meta.model}` : 'author unknown';
   titleCard.classList.remove('hidden');
 
   // Reset progress bar (cancel any running animation first)
@@ -309,6 +334,7 @@ function resetTitleCard() {
   _displayStartTime  = 0;
   if (_titleCardTimer) { clearTimeout(_titleCardTimer); _titleCardTimer = null; }
   titleCard.classList.add('hidden');
+  titleCardStats.classList.remove('visible');
   progressBar.style.transition = 'none';
   progressBar.style.width = '0%';
   progressBar.style.opacity = '0';
