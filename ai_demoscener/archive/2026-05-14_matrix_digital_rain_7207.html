@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>GPU Katakana CRT Shader</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+  <script>
+    // Set up scene
+    const scene = new THREE.Scene();
+    const camera = new THREE.Camera();
+    camera.position.z = 1;
+    
+    // Create a full-screen quad
+    const geometry = new THREE.PlaneGeometry(2, 2);
+    
+    // Create a texture for the glyph atlas (you can replace this with your own)
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+
+    // Fill background
+    ctx.fillStyle = 'black';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Create a green CRT-style font texture (katakana + ASCII)
+    ctx.font = '32px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#00ff00';
+
+    const glyphs = [];
+    for(let i = 16; i < 128; i++) {
+      if(i >= 97 && i <= 122) continue; // Skip lowercase
+      const c = String.fromCharCode(i);
+      if(c.match(/[a-zA-Z0-9]/)) {
+        glyphs.push({char: c, x: (i % 16) * 32 + 16, y: Math.floor(i / 16) * 32 + 16});
+      }
+    }
+
+    // Draw katakana and ASCII characters
+    const katakana = ['ア', 'イ', 'ウ', 'エ', 'オ', 'カ', 'キ', 'ク', 'ケ', 'コ', 
+                      'サ', 'シ', 'ス', 'セ', 'ソ', 'タ', 'チ', 'ツ', 'テ', 'ト',
+                      'ナ', 'ニ', 'ヌ', 'ネ', 'ノ', 'ハ', 'ヒ', 'フ', 'ヘ', 'ホ',
+                      'マ', 'ミ', 'ム', 'メ', 'モ', 'ヤ', 'ユ', 'ヨ', 'ラ', 'リ',
+                      'ル', 'レ', 'ロ', 'ワ', 'ン'];
+    
+    katakana.forEach((c, i) => {
+      const x = (i % 10) * 32 + 16;
+      const y = Math.floor(i / 10) * 32 + 48;
+      ctx.fillText(c, x, y);
+    });
+
+    // Create texture from canvas
+    const texture = new THREE.CanvasTexture(canvas);
+
+    // Define custom shader material
+    const fragmentShader = `
+      uniform sampler2D u_texture;
+      uniform float u_time;
+      uniform vec2 u_resolution;
+
+      // Speed and offset for each column (0 to 1)
+      #define NUM_COLUMNS 64
+      uniform float u_speed[NUM_COLUMNS];
+      uniform float u_offset[NUM_COLUMNS];
+
+      // Color values
+      const vec3 white = vec3(1.0, 1.0, 1.0);
+      const vec3 darkGreen = vec3(0.0, 0.5, 0.0);
+
+      void main() {
+        vec2 uv = gl_FragCoord.xy / u_resolution.xy;
+        
+        // Calculate column index (64 columns)
+        int col = int(uv.x * 64.0);
+        
+        if(col >= NUM_COLUMNS) return;
+
+        float speed = u_speed[col];
+        float offset = u_offset[col];
+
+        // Get head position
+        float headPos = fract(u_time * speed + offset);
+
+        // Calculate distance from the top to head
+        float distToHead = uv.y - headPos;
+        
+        // Intensity falls off above the head (top half only)
+        float intensity = 0.0;
+        if(distToHead < 0.0) {
+          intensity = smoothstep(0.0, 0.2, abs(distToHead)); // Smooth falloff
+        }
+
+        // Sample glyph index that changes over time and per row
+        vec3 color = vec3(0.0);
+        
+        if(intensity > 0.0) {
+          // Random-like variation for each row
+          float rowVariation = fract(uv.y * 128.0 + u_time * 2.0);
+          
+          // Sample a glyph index based on the column and row
+          int glyphIndex = int(mod(float(col) + rowVariation * 32.0, 54.0)); // Katakana chars only
+      
+          vec2 glyphUV;
+          if(glyphIndex < 16) {
+            // Use ASCII characters (first 16)
+            float colIdx = mod(float(glyphIndex), 8.0);
+            float rowIdx = floor(float(glyphIndex) / 8.0);
+            glyphUV = vec2(32.0 * colIdx + 16.0, 32.0 * rowIdx + 16.0) / 512.0;
+          } else {
+            // Use katakana characters
+            float colIdx = mod(float(glyphIndex - 16), 8.0);
+            float rowIdx = floor(float(glyphIndex - 16) / 8.0);
+            glyphUV = vec2(32.0 * colIdx + 16.0, 32.0 * rowIdx + 48.0 + 16.0) / 512.0;
+          }
+
+          // Sample the texture for a specific character
+          color = texture2D(u_texture, glyphUV).rgb;
+
+          // Apply intensity to fade out the tail (below head)
+          if(distToHead > 0.0) {
+            float tailIntensity = smoothstep(0.0, 0.3, distToHead);
+            color *= mix(darkGreen, vec3(0.0), tailIntensity);
+          } else {
+            // Above head: bright white to dark green
+            color = mix(color * intensity, white * intensity, intensity);
+          }
+        }
+
+        gl_FragColor = vec4(color, 1.0);
+      }
+    `;
+
+    const vertexShader = `
+      varying vec2 vUv;
+      
+      void main() {
+        vUv = uv;
+        gl_Position = vec4(position, 1.0);
+      }
+    `;
+
+    // Create the shader material with uniforms
+    const material = new THREE.ShaderMaterial({
+      uniforms: {
+        u_texture: { value: texture },
+        u_time: { value: 0.0 },
+        u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+        u_speed: { value: Array(64).fill(0.1).map((_, i) => Math.random() * 0.5 + 0.1) },
+        u_offset: { value: Array(64).fill(0.0).map(() => Math.random()) }
+      },
+      vertexShader,
+      fragmentShader
+    });
+
+    const mesh = new THREE.Mesh(geometry, material);
+    scene.add(mesh);
+
+    // Render loop
+    function animate() {
+      requestAnimationFrame(animate);
+      
+      // Update uniform values
+      material.uniforms.u_time.value += 0.01;
+      
+      renderer.render(scene, camera);
+    }
+
+    // Create renderer and attach to DOM
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // Handle resize
+    window.addEventListener('resize', () => {
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      material.uniforms.u_resolution.value.set(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+  </script>
+</body>
+</html>

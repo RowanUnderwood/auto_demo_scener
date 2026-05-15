@@ -1,0 +1,231 @@
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Clifford Attractor Density</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { width: 100vw; height: 100vh; display: block; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const SIZE = 1024;
+const PARTICLE_RES = 512; // 512*512 = 262,144 particles
+const NUM_PARTICLES = PARTICLE_RES * PARTICLE_RES;
+
+// --- Shaders ---
+
+const updateShader = {
+    uniforms: {
+        tPrev: { value: null },
+        a: { value: -1.4 }, b: { value: 1.6 }, c: { value: 1.0 }, d: { value: 0.7 }
+    },
+    vertexShader: `
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `,
+    fragmentShader: `
+        uniform sampler2D tPrev;
+        uniform float a, b, c, d;
+        varying vec2 vUv;
+
+        void main() {
+            vec2 pos = texture2D(tPrev, vUv).xy;
+            float x = pos.x;
+            float y = pos.y;
+            
+            // Clifford Attractor:
+            // x_next = sin(a*y) + c*cos(a*x)
+            // y_next = sin(b*x) + d*cos(b*y)
+            float nx = sin(a * y) + c * cos(a * x);
+            float ny = sin(b * x) + d * cos(b * y);
+            
+            gl_FragColor = vec4(nx, ny, 0.0, 1.0);
+        }
+    `
+};
+
+const pointsShader = {
+    uniforms: { tPos: { value: null } },
+    vertexShader: `
+        uniform sampler2D tPos;
+        varying vec2 vPos;
+        void main() {
+            vec2 uv = uv; // Use vertex UV to fetch position
+            vec2 pos = texture2D(tPos, uv).xy;
+            vPos = pos;
+            gl_Position = vec4(pos * 0.5, 0.0, 1.0); // Scale [-3,3] to screen-ish
+            gl_PointSize = 1.0;
+        }
+    `,
+    fragmentShader: `
+        void main() {
+            gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0); // Store hits in Red channel
+        }
+    `
+};
+
+const displayShader = {
+    uniforms: { tDensity: { value: null } },
+    vertexShader: `
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position = vec4(position, 1.0);
+        }
+    `,
+    fragmentShader: `
+        uniform sampler2D tDensity;
+        varying vec2 vUv;
+
+        vec3 viridis(float t) {
+            // Approximated Viridis color ramp
+            const vec3 c0 = vec3(0.267, 0.004, 0.329);
+            const vec3 c1 = vec3(0.127, 0.566, 0.550);
+            const vec3 c2 = vec3(0.993, 0.906, 0.143);
+            if (t < 0.5) return mix(c0, c1, t * 2.0);
+            return mix(c1, c2, (t - 0.5) * 2.0);
+        }
+
+        void main() {
+            float d = texture2D(tDensity, vUv).r;
+            // Log scale: log2(1 + d)
+            // We normalize by a factor to keep it in [0, 1]
+            // After ~60 frames (1s), max value is roughly 2^24.
+            float logD = log2(1.0 + d) * 0.035; 
+            gl_FragColor = vec4(viridis(clamp(logD, 0.0, 1.0)), 1.0);
+        }
+    `
+};
+
+// --- Setup ---
+
+const scene = new THREE.Scene();
+const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const renderer = new THREE.WebGLRenderer({ antialias: false });
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+// Render Targets
+let posTargetA = new THREE.WebGLRenderTarget(PARTICLE_RES, PARTICLE_RES, { type: THREE.FloatType });
+let posTargetB = new THREE.WebGLRenderTarget(PARTICLE_RES, PARTICLE_RES, { type: THREE.FloatType });
+const densityTarget = new THREE.WebGLRenderTarget(SIZE, SIZE, { 
+    type: THREE.FloatType,
+    format: THREE.RGBAFormat 
+});
+
+// Initialize particle positions with random values in range [-2, 2]
+const initData = new Float32Array(NUM_PARTICLES * 4);
+for (let i = 0; i < NUM_PARTICLES; i++) {
+    initData[i * 4 + 0] = (Math.random() - 0.5) * 4.0;
+    initData[i * 4 + 1] = (Math.random() - 0.5) * 4.0;
+}
+const initTex = new THREE.DataTexture(initData, PARTICLE_RES, PARTICLE_RES, THREE.RGBAFormat, THREE.FloatType);
+initTex.needsUpdate = true;
+
+// Quad for update/display passes
+const quadGeom = new THREE.PlaneGeometry(2, 2);
+const updateMat = new THREE.ShaderMaterial(updateShader);
+const pointsMat = new THREE.ShaderMaterial(pointsShader);
+const displayMat = new THREE.ShaderMaterial(displayShader);
+
+// Particles Geometry
+const partGeom = new THREE.BufferGeometry();
+const uvs = new Float32Array(NUM_PARTICLES * 2);
+for (let i = 0; i < NUM_PARTICLES; i++) {
+    uvs[i * 2 + 0] = (i % PARTICLE_RES) / PARTICLE_RES;
+    uvs[i * 2 + 1] = Math.floor(i / PARTICLE_RES) / PARTICLE_RES;
+}
+partGeom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(NUM_PARTICLES * 3), 3));
+partGeom.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+
+const updateMesh = new THREE.Mesh(quadGeom, updateMat);
+const pointsMesh = new THREE.Points(partGeom, pointsMat);
+const displayMesh = new THREE.Mesh(quadGeom, displayMat);
+
+// Full-screen quads for different passes
+const updateScene = new THREE.Scene();
+updateScene.add(updateMesh);
+const pointsScene = new THREE.Scene();
+pointsScene.add(pointsMesh);
+const displayScene = new THREE.Scene();
+displayScene.add(displayMesh);
+
+// Initializing position texture
+renderer.setRenderTarget(posTargetA);
+renderer.render(new THREE.Mesh(quadGeom, new THREE.MeshBasicMaterial({ map: initTex })), camera);
+
+// Animation State
+let params = { a: -1.4, b: 1.6, c: 1.0, d: 0.7 };
+let targetParams = { a: -1.4, b: 1.6, c: 1.0, d: 0.7 };
+let startTime = Date.now();
+
+function getRand() { return (Math.random() * 4.0) - 2.0; }
+
+function updateParams() {
+    const elapsed = (Date.now() - startTime) / 1000;
+    if (elapsed > 20) {
+        startTime = Date.now();
+        targetParams = { a: getRand(), b: getRand(), c: getRand(), d: getRand() };
+    }
+    // Smooth Lerp
+    const t = 0.01; 
+    params.a += (targetParams.a - params.a) * t;
+    params.b += (targetParams.b - params.b) * t;
+    params.c += (targetParams.c - params.c) * t;
+    params.d += (targetParams.d - params.d) * t;
+
+    updateMat.uniforms.a.value = params.a;
+    updateMat.uniforms.b.value = params.b;
+    updateMat.uniforms.c.value = params.c;
+    updateMat.uniforms.d.value = params.d;
+}
+
+function loop() {
+    requestAnimationFrame(loop);
+    updateParams();
+
+    // 1. Update particle positions (Ping-pong)
+    updateMat.uniforms.tPrev.value = posTargetA.texture;
+    renderer.setRenderTarget(posTargetB);
+    renderer.render(updateScene, camera);
+
+    // 2. Accumulate density (Additive blending)
+    pointsMat.uniforms.tPos.value = posTargetB.texture;
+    renderer.autoClear = false; // CRITICAL: Don't clear densityTarget
+    renderer.setRenderTarget(densityTarget);
+    renderer.render(pointsScene, camera);
+
+    // 3. Draw to screen
+    renderer.setRenderTarget(null);
+    renderer.autoClear = true; // Clear the main canvas every frame
+    displayMat.uniforms.tDensity.value = densityTarget.texture;
+    renderer.render(displayScene, camera);
+
+    // Swap position targets for next frame
+    const tmp = posTargetA;
+    posTargetA = posTargetB;
+    posTargetB = tmp;
+}
+
+// Handle Resize
+window.addEventListener('resize', () => {
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// Configure Blending for Accumulation
+renderer.getContext().enable(renderer.getContext().BLEND);
+renderer.getContext().blendFunc(renderer.getContext().ONE, renderer.getContext().ONE);
+
+loop();
+</script>
+</body>
+</html>

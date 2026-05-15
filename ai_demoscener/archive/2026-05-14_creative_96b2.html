@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neural Lattice: A Demoscene Experience</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+        #info {
+            position: absolute;
+            top: 10px;
+            width: 100%;
+            text-align: center;
+            color: white;
+            font-family: 'Courier New', monospace;
+            pointer-events: none;
+            text-shadow: 0 0 5px #000;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">NEURAL LATTICE | A DEMOSCENE EXPERIENCE<br>Interact with the data flow using mouse movement</div>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.157.0/build/three.min.js"></script>
+    <script>
+        // Scene setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setClearColor(0x000000, 1);
+        document.body.appendChild(renderer.domElement);
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0x404040);
+        scene.add(ambientLight);
+        
+        const pointLight = new THREE.PointLight(0xffffff, 1, 100);
+        pointLight.position.set(5, 5, 5);
+        scene.add(pointLight);
+
+        // Neural lattice parameters
+        const gridSize = 60;
+        const spacing = 0.8;
+        const maxRadius = 3.5;
+        
+        let particles = [];
+        let connections = [];
+        let time = 0;
+
+        // Create neural grid structure
+        for (let x = -gridSize/2; x < gridSize/2; x++) {
+            for (let y = -gridSize/2; y < gridSize/2; y++) {
+                const pos = new THREE.Vector3(
+                    x * spacing,
+                    y * spacing,
+                    Math.sin(x * 0.1) * Math.cos(y * 0.1) * 0.5
+                );
+                
+                const particle = {
+                    position: pos.clone(),
+                    originalPosition: pos.clone(),
+                    velocity: new THREE.Vector3(
+                        (Math.random() - 0.5) * 0.02,
+                        (Math.random() - 0.5) * 0.02,
+                        (Math.random() - 0.5) * 0.02
+                    ),
+                    radius: Math.random() * 0.1 + 0.05,
+                    color: new THREE.Color(
+                        Math.random(),
+                        Math.random(),
+                        Math.random()
+                    )
+                };
+                
+                particles.push(particle);
+            }
+        }
+
+        // Create connection lines between nearby particles
+        for (let i = 0; i < particles.length; i++) {
+            const p1 = particles[i];
+            for (let j = i + 1; j < particles.length; j++) {
+                const p2 = particles[j];
+                const distance = p1.position.distanceTo(p2.position);
+                
+                if (distance < maxRadius) {
+                    connections.push({
+                        p1: i,
+                        p2: j,
+                        distance: distance
+                    });
+                }
+            }
+        }
+
+        // Create geometry for particles and lines
+        const particleGeometry = new THREE.SphereGeometry(0.05, 8, 8);
+        const lineMaterial = new THREE.LineBasicMaterial({ 
+            color: 0x44ccff,
+            transparent: true,
+            opacity: 0.3,
+            blending: THREE.AdditiveBlending
+        });
+        
+        // Create particle material with glow effect
+        const particleMaterial = new THREE.MeshPhongMaterial({
+            color: 0xffffff,
+            emissive: 0x88ffff,
+            specular: 0x4444ff,
+            shininess: 60,
+            transparent: true,
+            opacity: 0.9
+        });
+
+        const particleMeshes = [];
+        particles.forEach(p => {
+            const mesh = new THREE.Mesh(particleGeometry, particleMaterial);
+            mesh.position.copy(p.position);
+            scene.add(mesh);
+            particleMeshes.push(mesh);
+        });
+
+        // Create line segments for connections
+        const lineGeometries = [];
+        const lineMeshes = [];
+
+        connections.forEach(conn => {
+            const p1 = particles[conn.p1];
+            const p2 = particles[conn.p2];
+            
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array([
+                p1.position.x, p1.position.y, p1.position.z,
+                p2.position.x, p2.position.y, p2.position.z
+            ]);
+            
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            lineGeometries.push(geometry);
+            
+            const mesh = new THREE.Line(geometry, lineMaterial);
+            scene.add(mesh);
+            lineMeshes.push(mesh);
+        });
+
+        // Mouse interaction
+        let mouseX = 0;
+        let mouseY = 0;
+
+        window.addEventListener('mousemove', (event) => {
+            mouseX = (event.clientX - window.innerWidth / 2) / window.innerWidth;
+            mouseY = (event.clientY - window.innerHeight / 2) / window.innerHeight;
+        });
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Animation loop
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            time += clock.getDelta() * 2;
+
+            // Update particle positions with wave and mouse influence
+            particles.forEach((p, i) => {
+                // Wave effect through space
+                p.position.x += Math.sin(p.originalPosition.y + time) * 0.01;
+                p.position.z += Math.cos(p.originalPosition.x + time * 0.7) * 0.008;
+
+                // Mouse influence (faster response for visual impact)
+                const dx = mouseX * 5 - p.position.x;
+                const dy = mouseY * 3 - p.position.y;
+                
+                p.velocity.x += dx * 0.002;
+                p.velocity.y += dy * 0.002;
+
+                // Apply velocity with damping
+                p.position.add(p.velocity);
+                p.velocity.multiplyScalar(0.95);
+
+                // Constrain to grid bounds
+                if (Math.abs(p.position.x) > gridSize/2 - 1) {
+                    p.velocity.x *= -0.8;
+                }
+                if (Math.abs(p.position.y) > gridSize/2 - 1) {
+                    p.velocity.y *= -0.8;
+                }
+
+                // Update mesh position
+                particleMeshes[i].position.copy(p.position);
+                
+                // Color modulation based on time and position
+                const colorFactor = Math.sin(time + p.originalPosition.x * 0.5) * 0.5 + 0.5;
+                const hue = (time * 0.3 + p.originalPosition.y * 0.1) % 1;
+                
+                particleMeshes[i].material.color.setHSL(hue, 0.8, colorFactor * 0.7);
+                particleMeshes[i].material.emissive.setHSL(hue, 0.9, Math.max(0.3, colorFactor));
+            });
+
+            // Update line positions and opacity
+            connections.forEach((conn, i) => {
+                const p1 = particles[conn.p1];
+                const p2 = particles[conn.p2];
+                
+                const distance = p1.position.distanceTo(p2.position);
+                const maxDist = 3.0;
+                const intensity = Math.max(0, (maxDist - distance) / maxDist);
+                
+                lineMeshes[i].material.opacity = intensity * 0.6 + 0.1;
+                
+                // Update line geometry
+                const positions = new Float32Array([
+                    p1.position.x, p1.position.y, p1.position.z,
+                    p2.position.x, p2.position.y, p2.position.z
+                ]);
+                
+                lineGeometries[i].setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            });
+
+            // Camera movement with subtle animation
+            camera.position.x = Math.sin(time * 0.1) * 5;
+            camera.position.y = Math.cos(time * 0.2) * 3;
+            camera.position.z = 15 + Math.sin(time * 0.08) * 4;
+            
+            // Look at center of the lattice
+            const targetPos = new THREE.Vector3(0, 0, 0);
+            camera.lookAt(targetPos);
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+    </script>
+</body>
+</html>

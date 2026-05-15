@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SYNAPSE_CORE // Neuroglitch Visualizer</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #111; font-family: 'Courier New', monospace; }
+        canvas { display: block; }
+        #ui { position: absolute; top: 20px; right: 20px; color: #ff6b9d; pointer-events: none; text-shadow: 0 0 8px rgba(255,107,157,0.7); font-size: 14px; letter-spacing: 1px; }
+    </style>
+</head>
+<body>
+    <div id="ui">NEURAL_CORE ONLINE<br>ACTIVATION_MODE: SYNAPSE_CORE</div>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        /**
+         * SYNAPSE_CORE // A neuroglitch visualizer blending fractal neural networks, 
+         * bioluminescent pulse fields and glitch artifacts into a pulsing 3D visualization.
+         */
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // --- SHADERS ---
+
+        const fragmentShader = `
+            uniform float time;
+            uniform vec2 resolution;
+            uniform sampler2D tDiffuse;
+
+            // Enhanced Perlin noise with directional bias
+            mat2 rot(float a) { return mat2(cos(a), -sin(a), sin(a), cos(a)); }
+            
+            float hash(vec3 p) {
+                p = fract(p * 0.318309 + 0.1);
+                p *= 17.0;
+                return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+            }
+
+            float snoise(vec3 x) {
+                vec3 i = floor(x);
+                vec3 f = fract(x);
+                f = f*f*(3.0-2.0*f);
+                return mix(mix(mix(hash(i+vec3(0,0,0)), hash(i+vec3(1,0,0)),f.x),
+                               mix(hash(i+vec3(0,1,0)), hash(i+vec3(1,1,0)),f.x),f.y),
+                           mix(mix(hash(i+vec3(0,0,1)), hash(i+vec3(1,0,1)),f.x),
+                               mix(hash(i+vec3(0,1,1)), hash(i+vec3(1,1,1)),f.x),f.y),f.z);
+            }
+
+            float noise(vec3 p) {
+                return snoise(p * 0.7 + time * 0.05);
+            }
+
+            // Fractal neural network SDF
+            float map(vec3 p) {
+                float d = 0.0;
+                vec3 np = p;
+                
+                for (int i=0; i<4; i++) {
+                    float n = noise(np * 2.0 + time * 0.1);
+                    
+                    // Create branching neural network structure
+                    if (i == 0) {
+                        d += length(p - vec3(0, 0, sin(time*5.0)*10.0)) * 0.03;
+                        np = p - normalize(vec3(0, 0, sin(time*5.0)*10.0));
+                    } else if (i == 1) {
+                        d += length(p - vec3(cos(time*2.0)*10.0, sin(time*2.0)*10.0, 0)) * 0.03;
+                        np = p - normalize(vec3(cos(time*2.0)*10.0, sin(time*2.0)*10.0, 0));
+                    } else if (i == 2) {
+                        d += length(p - vec3(sin(time*3.5)*10.0, cos(time*3.5)*10.0, 0)) * 0.03;
+                        np = p - normalize(vec3(sin(time*3.5)*10.0, cos(time*3.5)*10.0, 0));
+                    }
+                    
+                    // Add pulse interference
+                    d += (noise(np) + 0.5) * 0.02 * sin(time * 4.0);
+                }
+                
+                return d;
+            }
+
+            vec3 getNormal(vec3 p) {
+                vec2 e = vec2(0.01, 0);
+                return normalize(vec3(
+                    map(p + e.xyy) - map(p - e.xyy),
+                    map(p + e.yxy) - map(p - e.yxy),
+                    map(p + e.yyx) - map(p - e.yyx)
+                ));
+            }
+
+            void main() {
+                vec2 uv = (gl_FragCoord.xy - 0.5 * resolution.xy) / min(resolution.y, resolution.x);
+                
+                // Camera positioned at "neuron core"
+                vec3 ro = vec3(0.0, 0.0, sin(time*1.5)*8.0 + cos(time*2.0)*4.0);
+                vec3 target = vec3(0.0, 0.0, -10.0);
+
+                vec3 ww = normalize(target - ro);
+                vec3 uu = normalize(cross(ww, vec3(0,1,0)));
+                vec3 vv = normalize(cross(uu, ww));
+                
+                vec3 rd = normalize(uv.x*uu + uv.y*vv + 2.5*ww);
+
+                float t = 0.0;
+                float d;
+                for(int i=0; i<100; i++) {
+                    d = map(ro + rd * t);
+                    if(d < 0.001 || t > 70.0) break;
+                    t += d * 0.5;
+                }
+
+                vec3 col = vec3(0.0);
+
+                if(t < 70.0) {
+                    vec3 p = ro + rd * t;
+                    vec3 norm = getNormal(p);
+                    
+                    // Bioluminescent color based on neural state
+                    float pulseIntensity = abs(sin(time*4.5)) * 1.2 + 0.8;
+                    col = mix(vec3(0.0, 0.8, 0.7), vec3(0.9, 0.1, 0.8), 
+                        0.5 + 0.5 * sin(p.y + time*0.5)) * pulseIntensity;
+
+                    // Add glow from neural activity
+                    float glow = exp(-t * 0.1);
+                    col *= glow;
+                    
+                    // Specular highlights to simulate synaptic firing
+                    vec3 lightDir = normalize(vec3(2, -1, 4));
+                    float spec = max(dot(norm, lightDir), 0.0) * 8.0;
+                    col += pow(max(dot(reflect(rd, norm), normalize(vec3(1,1,-1))), 0.0), 8.0);
+
+                } else {
+                    // Glitch background with neural interference patterns
+                    float glitch = sin(time*25.0 + uv.x * 20.0) * 0.003;
+                    
+                    vec3 bg = vec3(0.0);
+                    
+                    // Noise field for "neural static"
+                    bg += pow(snoise(rd * 40.0 + time*0.1), 8.0) * 0.2;
+                    
+                    col = (bg + vec3(glitch)) * 0.75;
+                }
+
+                // Introduce chromatic aberration and scanline glitching
+                float cA = sin(time*8.0)*0.005; 
+                float scanLine = floor(gl_FragCoord.y / 4.0) * 0.03 * (sin(time*10.0));
+                
+                col.r += cA;
+                col.g -= cA;
+                col.b += cA + scanLine;
+
+                gl_FragColor = vec4(col, 1.0);
+            }
+        `;
+
+        const vertexShader = `
+            void main() {
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `;
+
+        // --- SETUP RENDERER & MESH ---
+
+        const quadGeom = new THREE.PlaneGeometry(2, 2);
+        const shaderMat = new THREE.ShaderMaterial({
+            uniforms: {
+                time: { value: 0 },
+                resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+            },
+            vertexShader,
+            fragmentShader
+        });
+
+        const quad = new THREE.Mesh(quadGeom, shaderMat);
+        scene.add(quad);
+
+        camera.position.z = 1;
+
+        // --- ANIMATION LOOP ---
+
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const t = clock.getElapsedTime();
+            shaderMat.uniforms.time.value = t;
+            
+            // Dynamic "neural core" camera movement
+            if (Math.random() > 0.985) {
+                camera.position.x += Math.random() * 0.02 - 0.01;
+                camera.position.y += Math.random() * 0.02 - 0.01;
+                camera.position.z = Math.sin(t * 0.7) * 6 + 8;
+            } else {
+                camera.position.set(0, 0, 1);
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            renderer.setSize(w, h);
+            shaderMat.uniforms.resolution.value.set(w, h);
+            camera.aspect = w / h;
+            camera.updateProjectionMatrix();
+        });
+
+        animate();
+    </script>
+</body>
+</html>

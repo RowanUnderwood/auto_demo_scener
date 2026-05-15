@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Three.js Breakout</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+</script>
+<script type="module">
+    import * as THREE from 'three';
+
+    const ROWS = 8;
+    const COLS = 14;
+    const BRICK_W = 0.6;
+    const BRICK_H = 0.3;
+    const BRICK_GAP = 0.1;
+    const PADDLE_W = 2.5;
+    const PADDLE_H = 0.4;
+    const BALL_RADIUS = 0.15;
+    const SPEED = 0.12;
+
+    const scene = new THREE.Scene();
+    const aspect = window.innerWidth / window.innerHeight;
+    const viewWidth = 10;
+    const viewHeight = (viewWidth / aspect);
+
+    const camera = new THREE.OrthographicCamera(
+        -viewWidth / 2, viewWidth / 2, 
+        viewHeight / 2, -viewHeight / 2, 
+        0.1, 1000
+    );
+    camera.position.z = 10;
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    let bricks = [];
+    let ball, paddle;
+    let ballVel = { x: SPEED, y: SPEED };
+
+    function initGame() {
+        // Clear existing
+        bricks.forEach(b => scene.remove(b));
+        if (ball) scene.remove(ball);
+        if (paddle) scene.remove(paddle);
+        bricks = [];
+
+        // Bricks
+        const brickGeo = new THREE.BoxGeometry(BRICK_W, BRICK_H, 0.5);
+        const totalWidth = COLS * (BRICK_W + BRICK_GAP);
+        const totalHeight = ROWS * (BRICK_H + BRICK_GAP);
+        const startX = -totalWidth / 2 + BRICK_W / 2;
+        const startY = viewHeight / 2 - 2;
+
+        for (let r = 0; r < ROWS; r++) {
+            const color = new THREE.Color().setHSL(r / ROWS, 1.0, 0.5);
+            const mat = new THREE.MeshBasicMaterial({ color });
+            for (let c = 0; c < COLS; c++) {
+                const brick = new THREE.Mesh(brickGeo, mat);
+                brick.position.set(
+                    startX + c * (BRICK_W + BRICK_GAP),
+                    startY - r * (BRICK_H + BRICK_GAP),
+                    0
+                );
+                // AABB for collision
+                brick.userData.bounds = {
+                    minX: brick.position.x - BRICK_W / 2,
+                    maxX: brick.position.x + BRICK_W / 2,
+                    minY: brick.position.y - BRICK_H / 2,
+                    maxY: brick.position.y + BRICK_H / 2
+                };
+                scene.add(brick);
+                bricks.push(brick);
+            }
+        }
+
+        // Paddle
+        const paddleGeo = new THREE.PlaneGeometry(PADDLE_W, PADDLE_H);
+        const paddleMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+        paddle = new THREE.Mesh(paddleGeo, paddleMat);
+        paddle.position.y = -viewHeight / 2 + 1;
+        scene.add(paddle);
+
+        // Ball
+        const ballGeo = new THREE.SphereGeometry(BALL_RADIUS, 16, 16);
+        const ballMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+        ball = new THREE.Mesh(ballGeo, ballMat);
+        resetBall();
+        scene.add(ball);
+    }
+
+    function resetBall() {
+        ball.position.set(0, 0, 0);
+        const angle = Math.random() * Math.PI * 2;
+        ballVel.x = Math.cos(angle) * SPEED;
+        ballVel.y = Math.sin(angle) * SPEED;
+    }
+
+    function checkCollisions() {
+        // Wall X
+        if (Math.abs(ball.position.x) > viewWidth / 2 - BALL_RADIUS) {
+            ballVel.x *= -1;
+        }
+        // Wall Top
+        if (ball.position.y > viewHeight / 2 - BALL_RADIUS) {
+            ballVel.y *= -1;
+        }
+        // Floor/Lose
+        if (ball.position.y < -viewHeight / 2) {
+            initGame();
+            return;
+        }
+
+        // Paddle collision
+        if (ball.position.y <= paddle.position.y + PADDLE_H / 2 &&
+            ball.position.y >= paddle.position.y - PADDLE_H / 2 &&
+            ball.position.x >= paddle.position.x - PADDLE_W / 2 &&
+            ball.position.x <= paddle.position.x + PADDLE_W / 2) {
+            if (ballVel.y < 0) ballVel.y *= -1;
+        }
+
+        // Bricks collision
+        for (let i = bricks.length - 1; i >= 0; i--) {
+            const b = bricks[i];
+            const bb = b.userData.bounds;
+            if (ball.position.x + BALL_RADIUS > bb.minX &&
+                ball.position.x - BALL_RADIUS < bb.maxX &&
+                ball.position.y + BALL_RADIUS > bb.minY &&
+                ball.position.y - BALL_RADIUS < bb.maxY) {
+                
+                ballVel.y *= -1;
+                scene.remove(b);
+                bricks.splice(i, 1);
+                break; // single collision per frame to avoid tunneling
+            }
+        }
+
+        if (bricks.length === 0) initGame();
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+
+        // Paddle movement
+        paddle.position.x += (ball.position.x - paddle.position.x) * 0.12;
+
+        // Ball movement
+        ball.position.x += ballVel.x;
+        ball.position.y += ballVel.y;
+
+        checkCollisions();
+
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        const aspect = window.innerWidth / window.innerHeight;
+        camera.left = -viewWidth / 2;
+        camera.right = viewWidth / 2;
+        camera.top = viewHeight / 2;
+        camera.bottom = -viewHeight / 2;
+        // Note: In a real app, we'd scale the view width to maintain aspect ratio
+        // For this demo, we keep fixed logic but update camera viewport
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        camera.updateProjectionMatrix();
+    });
+
+    initGame();
+    animate();
+</script>
+</body>
+</html>

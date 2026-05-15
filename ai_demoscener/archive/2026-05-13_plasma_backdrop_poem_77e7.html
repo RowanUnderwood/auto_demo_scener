@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plasma & Logic</title>
+    <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas#overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="overlay"></canvas>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        // --- SHADER CODE ---
+        const vertexShader = `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `;
+
+        const fragmentShader = `
+            uniform float time;
+            uniform vec2 resolution;
+            varying vec2 vUv;
+
+            void main() {
+                vec2 p = vUv * 2.0 - 1.0;
+                p.x *= resolution.x / resolution.y;
+
+                float t = time * 0.5;
+                
+                // Plasma patterns
+                float v = sin(p.x * 3.0 + t) + sin((p.y * 2.0 + t) / 2.0);
+                v += sin((p.x + p.y + t) / 2.0);
+                v += sin(sqrt(p.x*p.x + p.y*p.y) * 4.0 + t);
+                v = v / 4.0;
+
+                // Colors: Magenta, Cyan, Deep Purple
+                vec3 color1 = vec3(1.0, 0.0, 1.0); // Magenta
+                vec3 color2 = vec3(0.0, 1.0, 1.0); // Cyan
+                vec3 color3 = vec3(0.15, 0.0, 0.3); // Deep Purple
+
+                // Mix colors based on plasma wave
+                vec3 finalColor = mix(color3, color1, v * 0.5 + 0.5);
+                finalColor = mix(finalColor, color2, sin(v * 5.0 + t) * 0.5 + 0.5);
+
+                gl_FragColor = vec4(finalColor, 1.0);
+            }
+        `;
+
+        // --- POEM DATA ---
+        const stanzas = [
+            "A calculus of photons caught,\nIn grids where logic meets the thought.\nThe sine of light, a curve so bright,\nCarving truth from endless night.",
+            "Beneath the shell, the copper veins,\nWhere micro-logic breaks its chains.\nSmall silicon hearts in rhythmic beat,\nMaking the ghost and machine meet.",
+            "A billion gates, a binary sea,\nIn fractal math, we find the key.\nThe pulse of clock, the steady hum,\nOf all the wonders yet to come.",
+            "Through glowing screens and coded lines,\nThe strange geometry entwines.\nA spark of grace in metal skin,\nWhere the math ends, and we begin."
+        ];
+
+        // --- THREE.JS SETUP ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const uniforms = {
+            time: { value: 0 },
+            resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+        };
+        const material = new THREE.ShaderMaterial({
+            uniforms,
+            vertexShader,
+            fragmentShader
+        });
+        const plane = new THREE.Mesh(geometry, material);
+        scene.add(plane);
+
+        // --- OVERLAY CANVAS SETUP ---
+        const overlayCanvas = document.getElementById('overlay');
+        const ctx = overlayCanvas.getContext('2d');
+
+        function resize() {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            renderer.setSize(w, h);
+            overlayCanvas.width = w;
+            overlayCanvas.height = h;
+            uniforms.resolution.value.set(w, h);
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // --- ANIMATION LOOP ---
+        function animate(t) {
+            const timeSecs = t / 1000;
+            uniforms.time.value = timeSecs;
+
+            // Clear overlay
+            ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+            // Poem timing (4 stanzas * 6 seconds = 24s cycle)
+            const cycleDuration = 24;
+            const stanzaDuration = 6;
+            const currentTimeInCycle = timeSecs % cycleDuration;
+            const currentStanzaIndex = Math.floor(currentTimeInCycle / stanzaDuration);
+            const progressInStanza = currentTimeInCycle % stanzaDuration;
+
+            // Fade logic: fade in for first 1.5s, stay for 3s, fade out last 1.5s
+            let alpha = 0;
+            if (progressInStanza < 1.5) {
+                alpha = progressInStanza / 1.5;
+            } else if (progressInStanza > 4.5) {
+                alpha = 1.0 - ((progressInStanza - 4.5) / 1.5);
+            } else {
+                alpha = 1.0;
+            }
+
+            // Draw text
+            ctx.font = "32px 'VT323', monospace";
+            ctx.fillStyle = `rgba(255, 253, 240, ${alpha})`; // Soft cream
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+
+            // Text glow effect
+            ctx.shadowColor = "rgba(255, 255, 255, 0.5)";
+            ctx.shadowBlur = 15 * alpha;
+
+            const lines = stanzas[currentStanzaIndex].split('\n');
+            const lineHeight = 40;
+            const startY = (overlayCanvas.height / 2) - ((lines.length - 1) * lineHeight / 2);
+
+            lines.forEach((line, i) => {
+                ctx.fillText(line, overlayCanvas.width / 2, startY + (i * lineHeight));
+            });
+
+            renderer.render(scene, camera);
+            requestAnimationFrame(animate);
+        }
+
+        // Wait for font to load before starting
+        document.fonts.ready.then(() => {
+            requestAnimationFrame(animate);
+        });
+
+    </script>
+</body>
+</html>

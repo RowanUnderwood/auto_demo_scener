@@ -1,0 +1,375 @@
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+/** 
+ * CONFIGURATION 
+ */
+const EMITTER_COUNT = 5;
+const PARTICLES_PER_SEC = 50;
+const MAX_PARTICLES_PER_EMITTER = 3000;
+const COLORS = [0x00ffff, 0xff00ff, 0xffd700, 0x00ff00, 0xffffff];
+const ORBIT_RADII = [10, 15, 20, 25, 30];
+const ORBIT_SPEEDS = [0.4, -0.3, 0.2, -0.5, 0.1];
+
+/** 
+ * INITIALIZATION 
+ */
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+camera.position.z = 60;
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.autoClear = false; // Crucial for trails
+document.body.appendChild(renderer.domElement);
+
+// Fade Quad Scene (for trails)
+const fadeScene = new THREE.Scene();
+const fadeCam = new THREE.OrthographicCamera(-1, 1, 1, -1, -1, 1);
+const fadeQuad = new THREE.Mesh(
+    new THREE.PlaneGeometry(2, 2),
+    new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.06 })
+);
+fadeScene.add(fadeQuad);
+
+// Particle Sprite Texture (Soft Circle)
+const spriteCanvas = document.createElement('canvas');
+spriteCanvas.width = 64;
+spriteCanvas.height = 64;
+const sCtx = spriteCanvas.getContext('2d');
+const grad = sCtx.createRadialGradient(32, 32, 0, 32, 32, 32);
+grad.addColorStop(0, 'rgba(255,255,255,1)');
+grad.addColorStop(0.3, 'rgba(255,255,255,0.5)');
+grad.addColorStop(1, 'rgba(255,255,255,0)');
+sCtx.fillStyle = grad;
+sCtx.fillRect(0, 0, 64, 64);
+const particleTexture = new THREE.CanvasTexture(spriteCanvas);
+
+/** 
+ * CURL NOISE MATH (Analytic)
+ * We define a vector field A and use its curl: Curl(A).
+ * Let A = [sin(y), cos(z), sin(x)]
+ * Curl(A) = [d/dy(sin x) - d/dz(cos z), d/dz(sin y) - d/dx(sin x), d/dx(cos z) - d/dy(sin y)]
+ *         = [0 - (-sin z), 0 - cos x, 0 - cos y]
+ *         = [sin z, -cos x, -cos y]
+ */
+function getCurlVelocity(pos) {
+    return new THREE.Vector3(
+        Math.sin(pos.z * 0.2),
+        -Math.cos(pos.x * 0.2),
+        -Math.cos(pos.y * 0.2)
+    ).multiplyScalar(1.5);
+}
+
+/** 
+ * EMITTER CLASS
+ */
+class Emitter {
+    constructor(index) {
+        this.color = new THREE.Color(COLORS[index]);
+        this.radius = ORBIT_RADII[index];
+        this.orbitSpeed = ORBIT_SPEEDS[index];
+        this.angle = Math.random() * Math.PI * 2;
+        
+        // Particles Data
+        this.positions = new Float32Array(MAX_PARTICLES_PER_EMITTER * 3);
+        this.velocities = []; // Using objects for individual velocity vectors is easier to manage lifecycle
+        this.lifetimes = new Float32Array(MAX_PARTICLES_PER_EMITTER);
+        this.activeCount = 0;
+
+        // Geometry & Material
+        this.geometry = new THREE.BufferGeometry();
+        this.geometry.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
+        this.material = new THREE.PointsMaterial({
+            size: 1.2,
+            map: particleTexture,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            color: this.color
+        });
+        this.points = new THREE.Points(this.geometry, this.material);
+        scene.add(this.points);
+
+        // Spawning logic
+        this.spawnAccumulator = 0;
+    }
+
+    update(dt, time) {
+        // Orbiting position
+        this.angle += this.orbitSpeed * dt * 0.5;
+        const emitterPos = new THREE.Vector3(
+            Math.cos(this.angle) * this.radius,
+            Math.sin(this.angle * 0.7) * (this.radius * 0.5),
+            Math.sin(this.angle) * this.radius
+        );
+
+        // Spawn particles
+        this.spawnAccumulator += dt;
+        const spawnInterval = 1 / PARTICLES_PER_SEC;
+        while (this.spawnAccumulator >= spawnInterval) {
+            this.spawn(emitterPos);
+            this.spawnAccumulator -= spawnInterval;
+        }
+
+        // Update existing particles
+        for (let i = 0; i < this.activeCount; i++) {
+            const p = this.velocities[i];
+            p.life -= dt;
+
+            if (p.life <= 0) {
+                // Swap with last active to remove efficiently
+                this.removeParticle(i);
+                i--;
+                continue;
+            }
+
+            const posIdx = i * 3;
+            const x = this.positions[posIdx];
+            const y = this.positions[posIdx + 1];
+            const z = this.positions[posIdx + 2];
+            const currentPos = new THREE.Vector3(x, y, z);
+
+            // Physics: Curl + Radial Drift
+            const curl = getCurlVelocity(currentPos);
+            const driftDir = currentPos.clone().normalize().multiplyScalar(0.8);
+            
+            p.vel.addScaledVector(curl, dt * 0.5);
+            p.vel.addScaledVector(driftDir, dt * 1.2);
+            p.vel.multiplyScalar(0.98); // Friction
+
+            currentPos.addScaledVector(p.vel, dt);
+
+            this.positions[posIdx] = currentPos.x;
+            this.positions[posIdx + 1] = currentPos.y;
+            this.positions[posIdx + 2] = currentPos.z;
+        }
+
+        this.geometry.attributes.position.needsUpdate = true;
+    }
+
+    spawn(origin) {
+        if (this.activeCount >= MAX_PARTICLES_PER_EMITTER) return;
+
+        const idx = this.activeCount;
+        const posIdx = idx * 3;
+        
+        // Start at emitter position with small random offset
+        this.positions[posIdx] = origin.x + (Math.random() - 0.5);
+        this.positions[posIdx+1] = origin.y + (Math.random() - 0.5);
+        this.positions[posIdx+2] = origin.z + (Math.random() - 0.5);
+
+        // Initial velocity: outward + random burst
+        const vel = new THREE.Vector3(
+            (Math.random() - 0.5) * 2,
+            (Math.random() - 0.5) * 2,
+            (Math.random() - 0.5) * 2
+        );
+        
+        this.velocities[idx] = {
+            vel: vel,
+            life: 3.0 + Math.random() * 2.0
+        };
+
+        this.activeCount++;
+    }
+
+    removeParticle(index) {
+        const lastIdx = this.activeCount - 1;
+        if (index !== lastIdx) {
+            // Copy last particle data to current index
+            const posIdx = index * 3;
+            const lastPosIdx = lastIdx * 3;
+
+            this.positions[posIdx] = this.positions[lastPosIdx];
+            this.positions[posIdx+1] = this.positions[lastPosIdx+1];
+            this.positions[posIdx+2] = this.positions[lastPosIdx+2];
+
+            this.velocities[index] = this.velocities[lastIdx];
+        }
+        this.velocities.pop(); // This is actually wrong logic for fixed array, 
+                               // but since we use an object array 'velocities', pop() works if managed correctly.
+                               // Let's fix: velocities should be a pre-allocated pool or handled carefully.
+        
+        // Correction: Since we are using objects in an array that grows/shrinks:
+        // We actually just need to manage the activeCount and ensure the object is removed.
+        // In JS, it's easier to just replace the object at index with the last one.
+        this.activeCount--;
+    }
+}
+
+/** 
+ * REFINED REMOVE FOR OBJECT ARRAY
+ */
+Emitter.prototype.removeParticle = function(index) {
+    const lastIdx = this.activeCount - 1;
+    if (index !== lastIdx) {
+        const posIdx = index * 3;
+        const lastPosIdx = lastIdx * 3;
+
+        this.positions[posIdx] = this.positions[lastPosIdx];
+        this.positions[posIdx+1] = this.positions[lastPosIdx+1];
+        this.positions[posIdx+2] = this.positions[lastPosIdx+2];
+
+        this.velocities[index] = this.velocities[lastIdx];
+    }
+    // Note: we don't literally pop the array to maintain index stability for other particles,
+    // just decrement activeCount and rely on it being a pool. 
+    // But wait, velocities is an object-based array used as a pool.
+    // To prevent memory leaks/drift, let's treat 'velocities' as a fixed size pool too.
+};
+
+// Let's rewrite the Emitter class slightly to be more robust for JS performance.
+class RobustEmitter {
+    constructor(index) {
+        this.color = new THREE.Color(COLORS[index]);
+        this.radius = ORBIT_RADII[index];
+        this.orbitSpeed = ORBIT_SPEEDS[index];
+        this.angle = Math.random() * Math.PI * 2;
+        
+        this.positions = new Float32Array(MAX_PARTICLES_PER_EMITTER * 3);
+        // Pre-allocate velocity objects to avoid GC pressure
+        this.velX = new Float32Array(MAX_PARTICLES_PER_EMITTER);
+        this.velY = new Float32Array(MAX_PARTICLES_PER_EMITTER);
+        this.velZ = new Float32Array(MAX_PARTICLES_PER_EMITTER);
+        this.lifetimes = new Float32Array(MAX_PARTICLES_PER_EMITTER);
+        this.activeCount = 0;
+
+        this.geometry = new THREE.BufferGeometry();
+        this.geometry.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
+        this.material = new THREE.PointsMaterial({
+            size: 1.5,
+            map: particleTexture,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            color: this.color
+        });
+        this.points = new THREE.Points(this.geometry, this.material);
+        scene.add(this.points);
+
+        this.spawnAccumulator = 0;
+    }
+
+    update(dt) {
+        this.angle += this.orbitSpeed * dt * 0.5;
+        const origin = new THREE.Vector3(
+            Math.cos(this.angle) * this.radius,
+            Math.sin(this.angle * 0.7) * (this.radius * 0.5),
+            Math.sin(this.angle) * this.radius
+        );
+
+        this.spawnAccumulator += dt;
+        const spawnInterval = 1 / PARTICLES_PER_SEC;
+        while (this.spawnAccumulator >= spawnInterval) {
+            if (this.activeCount < MAX_PARTICLES_PER_EMITTER) {
+                const i = this.activeCount;
+                const idx3 = i * 3;
+                this.positions[idx3] = origin.x + (Math.random() - 0.5);
+                this.positions[idx3+1] = origin.y + (Math.random() - 0.5);
+                this.positions[idx3+2] = origin.z + (Math.random() - 0.5);
+                this.velX[i] = (Math.random() - 0.5) * 4;
+                this.velY[i] = (Math.random() - 0.5) * 4;
+                this.velZ[i] = (Math.random() - 0.5) * 4;
+                this.lifetimes[i] = 2.0 + Math.random() * 3.0;
+                this.activeCount++;
+            }
+            this.spawnAccumulator -= spawnInterval;
+        }
+
+        for (let i = 0; i < this.activeCount; i++) {
+            this.lifetimes[i] -= dt;
+
+            if (this.lifetimes[i] <= 0) {
+                const lastIdx = this.activeCount - 1;
+                const idx3 = i * 3;
+                const lIdx3 = lastIdx * 3;
+                
+                this.positions[idx3] = this.positions[lIdx3];
+                this.positions[idx3+1] = this.positions[lIdx3+1];
+                this.positions[idx3+2] = this.positions[lIdx3+2];
+                this.velX[i] = this.velX[lastIdx];
+                this.velY[i] = this.velY[lastIdx];
+                this.velZ[i] = this.velZ[lastIdx];
+                this.lifetimes[i] = this.lifetimes[lastIdx];
+                
+                this.activeCount--;
+                i--;
+                continue;
+            }
+
+            const idx3 = i * 3;
+            const px = this.positions[idx3];
+            const py = this.positions[idx3+1];
+            const pz = this.positions[idx3+2];
+
+            // Curl Force
+            const cx = Math.sin(pz * 0.2);
+            const cy = -Math.cos(px * 0.2);
+            const cz = -Math.cos(py * 0.2);
+
+            // Radial Drift
+            const mag = Math.sqrt(px*px + py*py + pz*pz) || 1;
+            const dx = px / mag * 0.8;
+            const dy = py / mag * 0.8;
+            const dz = pz / mag * 0.8;
+
+            // Apply physics
+            this.velX[i] = (this.velX[i] + (cx + dx) * dt) * 0.97;
+            this.velY[i] = (this.velY[i] + (cy + dy) * dt) * 0.97;
+            this.velZ[i] = (this.velZ[i] + (cz + dz) * dt) * 0.97;
+
+            this.positions[idx3] += this.velX[i] * dt;
+            this.positions[idx3+1] += this.velY[i] * dt;
+            this.positions[idx3+2] += this.velZ[i] * dt;
+        }
+
+        this.geometry.attributes.position.needsUpdate = true;
+    }
+}
+
+/** 
+ * MAIN LOOP 
+ */
+const emitters = [];
+for (let i = 0; i < EMITTER_COUNT; i++) {
+    emitters.push(new RobustEmitter(i));
+}
+
+const clock = new THREE.Clock();
+
+function animate() {
+    requestAnimationFrame(animate);
+    const dt = Math.min(clock.getDelta(), 0.1); // Cap delta to prevent jumps
+    const time = clock.elapsedTime;
+
+    // Update emitters
+    for (const e of emitters) {
+        e.update(dt);
+    }
+
+    // Render scene
+    renderer.clearDepth(); // Ensure new particles aren't blocked by old transparent ones
+    renderer.render(scene, camera);
+
+    // Render fade quad to create trails
+    renderer.render(fadeScene, fadeCam);
+}
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+animate();
+
+</script>

@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Neon Neural Cascade</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #050505; font-family: 'Courier New', Courier, monospace; }
+        canvas { display: block; }
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #00ffaa;
+            text-shadow: 0 0 5px #00ffaa;
+            pointer-events: none;
+            user-select: none;
+        }
+        .scanline {
+            width: 100%;
+            height: 100px;
+            z-index: 10;
+            background: linear-gradient(0deg, rgba(0,0,0,0) 0%, rgba(0, 255, 170, 0.1) 50%, rgba(0,0,0,0) 100%);
+            opacity: 0.1;
+            position: absolute;
+            bottom: 100%;
+            animation: scanline 10s linear infinite;
+            pointer-events: none;
+        }
+        @keyframes scanline {
+            0% { bottom: 100%; }
+            100% { bottom: -100px; }
+        }
+    </style>
+</head>
+<body>
+<div id="ui">
+    <h2>NEURAL CASCADE</h2>
+    <p>SYSTEM: ONLINE</p>
+    <p>PROJECTION: ACTIVE</p>
+</div>
+<div class="scanline"></div>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+</script>
+<script type="module">
+    import * as THREE from 'three';
+
+    // --- Configuration ---
+    const CONFIG = {
+        bgColor: 0x050505,
+        fogColor: 0x050505,
+        coreColor: 0xff0055, // Hot Pink
+        trailColor: 0x00ffaa, // Neon Green
+        wireframeColor: 0x222233,
+        speed: 0.005,
+        trailLength: 40
+    };
+
+    // --- Setup ---
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(CONFIG.bgColor);
+    scene.fog = new THREE.FogExp2(CONFIG.fogColor, 0.03);
+
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.z = 12;
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // --- The Core Field (Wireframe Torus Knot) ---
+    // Instead of a sphere, we use a complex Torus Knot for a more "tech" feel
+    const knotGeo = new THREE.TorusKnotGeometry(3, 0.8, 128, 32);
+    const knotMat = new THREE.MeshBasicMaterial({ 
+        color: CONFIG.wireframeColor, 
+        wireframe: true, 
+        transparent: true, 
+        opacity: 0.15 
+    });
+    const knot = new THREE.Mesh(knotGeo, knotMat);
+    scene.add(knot);
+
+    // --- Particle Field ---
+    const particleCount = 600;
+    const pGeo = new THREE.BufferGeometry();
+    const pPos = new Float32Array(particleCount * 3);
+    const pSize = new Float32Array(particleCount);
+    
+    for(let i=0; i<particleCount; i++) {
+        const r = 8 + Math.random() * 10;
+        const theta = 2 * Math.PI * Math.random();
+        const phi = Math.acos(2 * Math.random() - 1);
+        
+        pPos[i*3] = r * Math.sin(phi) * Math.cos(theta);
+        pPos[i*3+1] = r * Math.sin(phi) * Math.sin(theta);
+        pPos[i*3+2] = r * Math.cos(phi);
+        
+        pSize[i] = Math.random();
+    }
+    pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+    pGeo.setAttribute('size', new THREE.BufferAttribute(pSize, 1));
+
+    const pMat = new THREE.PointsMaterial({
+        color: CONFIG.trailColor,
+        size: 0.1,
+        transparent: true,
+        opacity: 0.8,
+        blending: THREE.AdditiveBlending
+    });
+    const particleSystem = new THREE.Points(pGeo, pMat);
+    scene.add(particleSystem);
+
+    // --- The Core (Target) ---
+    const coreGeo = new THREE.IcosahedronGeometry(0.4, 1);
+    const coreMat = new THREE.MeshBasicMaterial({ 
+        color: CONFIG.coreColor, 
+        wireframe: true 
+    });
+    const coreMesh = new THREE.Mesh(coreGeo, coreMat);
+    
+    // Inner glow
+    const glowGeo = new THREE.IcosahedronGeometry(0.5, 0);
+    const glowMat = new THREE.MeshBasicMaterial({
+        color: CONFIG.coreColor,
+        transparent: true,
+        opacity: 0.3,
+        blending: THREE.AdditiveBlending
+    });
+    const glowMesh = new THREE.Mesh(glowGeo, glowMat);
+    coreMesh.add(glowMesh);
+    
+    scene.add(coreMesh);
+
+    // --- Light ---
+    const coreLight = new THREE.PointLight(CONFIG.coreColor, 2, 20);
+    scene.add(coreLight);
+
+    // --- The Projection (Trail) ---
+    // We use a trail of meshes that interpolate towards the target
+    const trailMeshes = [];
+    const trailGroup = new THREE.Group();
+    scene.add(trailGroup);
+
+    for (let i = 0; i < CONFIG.trailLength; i++) {
+        // Each segment is a slightly different color to create a gradient
+        const tMat = new THREE.MeshBasicMaterial({
+            color: new THREE.Color().setHSL(0.5 + (i / CONFIG.trailLength) * 0.1, 1.0, 0.5),
+            blending: THREE.AdditiveBlending
+        });
+        // Use a small cube that rotates
+        const tGeo = new THREE.BoxGeometry(0.2, 0.2, 0.2);
+        const tMesh = new THREE.Mesh(tGeo, tMat);
+        tMesh.visible = false;
+        
+        trailMeshes.push({
+            mesh: tMesh,
+            age: 0,
+            maxAge: 1.0
+        });
+        trailGroup.add(tMesh);
+    }
+
+    // --- Animation State ---
+    const time = { val: 0 };
+    const targetPos = new THREE.Vector3();
+    const screenTarget = new THREE.Vector3();
+    const centerScreen = new THREE.Vector3(0, 0, 0); // Center of view
+
+    function animate() {
+        requestAnimationFrame(animate);
+        time.val += CONFIG.speed;
+
+        // 1. Rotate Background Elements
+        knot.rotation.z += 0.001;
+        knot.rotation.x += 0.002;
+        particleSystem.rotation.y -= 0.001;
+        
+        // Pulse the knot scale
+        const pulse = 1 + Math.sin(time.val * 2) * 0.05;
+        knot.scale.set(pulse, pulse, pulse);
+
+        // 2. Calculate Target Path (Complex Orbit)
+        // Moving on a sphere surface but with a jittery motion
+        const radius = 3.5;
+        const x = Math.sin(time.val * 1.5) * Math.cos(time.val * 0.7) * radius;
+        const y = Math.cos(time.val * 1.2) * Math.sin(time.val * 0.5) * radius;
+        const z = Math.sin(time.val * 0.9) * radius;
+        
+        targetPos.set(x, y, z);
+        
+        // Move Core Mesh to target
+        coreMesh.position.lerp(targetPos, 0.1);
+        coreLight.position.copy(coreMesh.position);
+
+        // 3. Calculate Screen Projection
+        // Project the 3D target to NDC (Normalized Device Coordinates)
+        targetPos.clone().project(camera);
+        
+        // We want the trail to appear to go from the camera "into" the screen
+        // towards the projected point.
+        // In NDC, the center of screen is (0,0,0).
+        // So we interpolate from Center (0,0,0) to Target Projection (targetPos.x, targetPos.y, 0.5)
+        
+        // Convert the screen coordinates back to world space
+        // This creates the illusion of a ray being shot to the object
+        const screenCenter = new THREE.Vector3(0, 0, 0.5).unproject(camera);
+        const screenTargetPt = new THREE.Vector3(targetPos.x, targetPos.y, 0.5).unproject(camera);
+
+        // 4. Update Trail Logic
+        for (let i = 0; i < CONFIG.trailLength; i++) {
+            const t = trailMeshes[i];
+            
+            // If we hit max length, reset to the very back of the queue
+            // Actually, simpler approach: The first mesh is closest to screen, last is closest to object
+            
+            // Move meshes along the line from Screen Center to Target Point
+            // We use a linear interpolation based on index 'i'
+            const progress = i / CONFIG.trailLength;
+            const currentPos = new THREE.Vector3().lerpVectors(screenCenter, screenTargetPt, progress);
+            
+            t.mesh.position.copy(currentPos);
+            
+            // Rotation to add dynamism
+            t.mesh.rotation.x += 0.1;
+            t.mesh.rotation.y += 0.1;
+            
+            // Scale fades out as it gets closer to the object (or vice versa depending on desired effect)
+            // Here we make them fade as they go deeper
+            const alpha = 1 - (progress * 0.8);
+            t.mesh.scale.setScalar(alpha + 0.2);
+            t.mesh.material.opacity = alpha;
+            
+            // Color shift based on depth
+            // Green at far end, Pink at near end (additive mix)
+            // Already handled in material init, but we can tweak
+            t.mesh.material.color.setHSL(0.55 + (i/CONFIG.trailLength)*0.1, 1.0, 0.6);
+        }
+
+        // 5. Glitch Effect (Randomly change core size)
+        if (Math.random() > 0.95) {
+            coreMesh.scale.setScalar(1.5 + Math.random());
+        } else {
+            coreMesh.scale.lerp(new THREE.Vector3(1,1,1), 0.2);
+        }
+
+        renderer.render(scene, camera);
+    }
+
+    // --- Resize Handler ---
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // --- Input Interaction (Mouse Move) ---
+    // Let the camera drift slightly based on mouse
+    window.addEventListener('mousemove', (e) => {
+        const mouseX = (e.clientX / window.innerWidth) * 2 - 1;
+        const mouseY = -(e.clientY / window.innerHeight) * 2 + 1;
+        
+        // Subtle parallax
+        camera.position.x += (mouseX * 0.5 - camera.position.x) * 0.05;
+        camera.position.y += (mouseY * 0.5 - camera.position.y) * 0.05;
+        camera.lookAt(scene.position);
+    });
+
+    animate();
+</script>
+</body>
+</html>

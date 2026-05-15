@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Raymarched Spheres with Smooth Min</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
+    <script>
+        // Initialize Three.js scene
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+
+        // Set camera position
+        camera.position.z = 5;
+
+        // Create a fullscreen quad with custom shader material
+        const vertexShader = `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = vec4(position, 1.0);
+            }
+        `;
+
+        const fragmentShader = `
+            uniform float time;
+            uniform float aspect;
+            varying vec2 vUv;
+            
+            // SDF for a sphere
+            float sdSphere(vec3 p, float r) {
+                return length(p) - r;
+            }
+            
+            // Smooth minimum operation
+            float smin(float a, float b, float k) {
+                float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+                return mix(b, a, h) - k * h * (1.0 - h);
+            }
+            
+            // Scene definition with 6 moving spheres
+            float map(vec3 p) {
+                float timeOffset = time * 0.5;
+                float radius = 0.7;
+                
+                // Create 6 spheres with centers on vertical sine paths and phase offsets
+                vec3 center1 = vec3(0.0, sin(timeOffset + 0.0) * 0.8, 0.0);
+                vec3 center2 = vec3(0.4, sin(timeOffset + 1.0) * 0.8, 0.0);
+                vec3 center3 = vec3(-0.4, sin(timeOffset + 2.0) * 0.8, 0.0);
+                vec3 center4 = vec3(0.7, sin(timeOffset + 3.0) * 0.8, 0.0);
+                vec3 center5 = vec3(-0.7, sin(timeOffset + 4.0) * 0.8, 0.0);
+                vec3 center6 = vec3(0.2, sin(timeOffset + 5.0) * 0.8, 0.0);
+                
+                float d1 = sdSphere(p - center1, radius);
+                float d2 = sdSphere(p - center2, radius);
+                float d3 = sdSphere(p - center3, radius);
+                float d4 = sdSphere(p - center4, radius);
+                float d5 = sdSphere(p - center5, radius);
+                float d6 = sdSphere(p - center6, radius);
+                
+                // Smooth minimum of all spheres
+                float d = smin(d1, d2, 0.8);
+                d = smin(d, d3, 0.8);
+                d = smin(d, d4, 0.8);
+                d = smin(d, d5, 0.8);
+                d = smin(d, d6, 0.8);
+                
+                return d;
+            }
+            
+            // Normal calculation
+            vec3 getNormal(vec3 p) {
+                const float eps = 0.001;
+                const vec2 h = vec2(eps, -eps);
+                return normalize(
+                    h.xyy * map(p + h.xyy) +
+                    h.yyx * map(p + h.yyx) +
+                    h.yxy * map(p + h.yxy) +
+                    h.xxx * map(p - h.xxx)
+                );
+            }
+            
+            // Lighting calculation
+            vec3 getLighting(vec3 p, vec3 normal) {
+                // Warm point light from below
+                vec3 lightPos = vec3(0.0, -2.5, 1.0);
+                vec3 lightDir = normalize(lightPos - p);
+                
+                float diffuse = max(dot(normal, lightDir), 0.0);
+                
+                // Ambient and specular components for warm effect
+                vec3 ambient = vec3(0.3, 0.1, 0.05);
+                vec3 specular = vec3(0.7, 0.4, 0.2) * pow(max(dot(normal, reflect(-lightDir, normal)), 0.0), 64.0);
+                
+                // Combine lighting
+                return ambient + diffuse * vec3(1.0, 0.5, 0.2) + specular;
+            }
+            
+            void main() {
+                // Convert screen coordinates to world space ray direction
+                vec2 uv = vUv * 2.0 - 1.0;
+                uv.x *= aspect; // aspect ratio adjustment
+                
+                vec3 rayOrigin = vec3(0.0, 0.0, 5.0);
+                vec3 rayDirection = normalize(vec3(uv, -1.0));
+                
+                // Raymarching
+                float t = 0.0;
+                const int maxSteps = 128;
+                const float minDist = 0.001;
+                const float maxDist = 100.0;
+                
+                for (int i = 0; i < maxSteps; i++) {
+                    vec3 p = rayOrigin + t * rayDirection;
+                    float d = map(p);
+                    
+                    if (d < minDist) {
+                        // Hit detected
+                        vec3 normal = getNormal(p);
+                        vec3 color = getLighting(p, normal);
+                        
+                        // Background gradient: dark red to amber
+                        vec3 bgTop = vec3(0.5, 0.0, 0.0); // Dark red
+                        vec3 bgBottom = vec3(1.0, 0.7, 0.0); // Amber
+                        
+                        // Interpolate background based on vertical position
+                        float y = p.y * 0.5 + 0.5;
+                        vec3 bgColor = mix(bgTop, bgBottom, y);
+                        
+                        // Final color with lighting and background
+                        gl_FragColor = vec4(color * (1.0 - y) + bgColor * y, 1.0);
+                        return;
+                    }
+                    
+                    t += d;
+                    if (t > maxDist) {
+                        break;
+                    }
+                }
+                
+                // Background gradient for no hit case
+                float y = rayOrigin.y * 0.5 + 0.5;
+                vec3 bgTop = vec3(0.5, 0.0, 0.0); // Dark red
+                vec3 bgBottom = vec3(1.0, 0.7, 0.0); // Amber
+                
+                gl_FragColor = vec4(mix(bgTop, bgBottom, y), 1.0);
+            }
+        `;
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                time: { value: 0.0 },
+                aspect: { value: window.innerWidth / window.innerHeight }
+            },
+            vertexShader,
+            fragmentShader
+        });
+
+        // Create a fullscreen quad
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            material.uniforms.aspect.value = window.innerWidth / window.innerHeight;
+        });
+
+        // Animation loop
+        const clock = new THREE.Clock();
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            const time = clock.getElapsedTime();
+            material.uniforms.time.value = time;
+            
+            renderer.render(scene, camera);
+        }
+        
+        animate();
+    </script>
+</body>
+</html>

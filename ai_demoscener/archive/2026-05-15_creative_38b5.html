@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Neural Network Datastream</title>
+    <style>
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            background: #000;
+        }
+        canvas { 
+            display: block; 
+        }
+    </style>
+</head>
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Scene setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 30;
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+        
+        // Create neural network nodes
+        const nodes = [];
+        const connections = [];
+        const nodeCount = 200;
+        const connectionCount = 500;
+        
+        // Create nodes
+        for (let i = 0; i < nodeCount; i++) {
+            const geometry = new THREE.SphereGeometry(0.2, 16, 16);
+            const material = new THREE.MeshBasicMaterial({ 
+                color: new THREE.Color().setHSL(Math.random(), 0.8, 0.5),
+                transparent: true,
+                opacity: 0.7
+            });
+            const node = new THREE.Mesh(geometry, material);
+            
+            node.position.x = (Math.random() - 0.5) * 40;
+            node.position.y = (Math.random() - 0.5) * 40;
+            node.position.z = (Math.random() - 0.5) * 40;
+            
+            scene.add(node);
+            nodes.push({
+                mesh: node,
+                velocity: new THREE.Vector3(
+                    (Math.random() - 0.5) * 0.02,
+                    (Math.random() - 0.5) * 0.02,
+                    (Math.random() - 0.5) * 0.02
+                ),
+                pulse: Math.random() * Math.PI * 2
+            });
+        }
+        
+        // Create connections
+        for (let i = 0; i < connectionCount; i++) {
+            const from = Math.floor(Math.random() * nodeCount);
+            const to = Math.floor(Math.random() * nodeCount);
+            
+            if (from !== to) {
+                const fromNode = nodes[from];
+                const toNode = nodes[to];
+                
+                const points = [
+                    new THREE.Vector3(fromNode.mesh.position.x, fromNode.mesh.position.y, fromNode.mesh.position.z),
+                    new THREE.Vector3(toNode.mesh.position.x, toNode.mesh.position.y, toNode.mesh.position.z)
+                ];
+                
+                const geometry = new THREE.BufferGeometry().setFromPoints(points);
+                const material = new THREE.LineBasicMaterial({ 
+                    color: 0x00ffff,
+                    transparent: true,
+                    opacity: 0.3
+                });
+                
+                const line = new THREE.Line(geometry, material);
+                scene.add(line);
+                
+                connections.push({
+                    line: line,
+                    from: from,
+                    to: to,
+                    pulse: Math.random() * Math.PI * 2
+                });
+            }
+        }
+        
+        // Create data stream particles
+        const particleCount = 1000;
+        const particles = new THREE.BufferGeometry();
+        const positions = new Float32Array(particleCount * 3);
+        const colors = new Float32Array(particleCount * 3);
+        const sizes = new Float32Array(particleCount);
+        
+        for (let i = 0; i < particleCount; i++) {
+            const i3 = i * 3;
+            
+            positions[i3] = (Math.random() - 0.5) * 40;
+            positions[i3 + 1] = (Math.random() - 0.5) * 40;
+            positions[i3 + 2] = (Math.random() - 0.5) * 40;
+            
+            colors[i3] = Math.random();
+            colors[i3 + 1] = Math.random();
+            colors[i3 + 2] = Math.random();
+            
+            sizes[i] = Math.random() * 0.5 + 0.1;
+        }
+        
+        particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        particles.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        particles.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+        
+        const particleMaterial = new THREE.PointsMaterial({
+            size: 0.2,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.8
+        });
+        
+        const particleSystem = new THREE.Points(particles, particleMaterial);
+        scene.add(particleSystem);
+        
+        // Add ambient light
+        const ambientLight = new THREE.AmbientLight(0x333333);
+        scene.add(ambientLight);
+        
+        // Add directional light
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+        directionalLight.position.set(5, 5, 5);
+        scene.add(directionalLight);
+        
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Update nodes
+            nodes.forEach((node, i) => {
+                // Move nodes
+                node.mesh.position.add(node.velocity);
+                
+                // Bounce off edges
+                if (Math.abs(node.mesh.position.x) > 20) node.velocity.x *= -1;
+                if (Math.abs(node.mesh.position.y) > 20) node.velocity.y *= -1;
+                if (Math.abs(node.mesh.position.z) > 20) node.velocity.z *= -1;
+                
+                // Pulsing effect
+                node.pulse += 0.05;
+                const pulseValue = Math.sin(node.pulse) * 0.2 + 0.8;
+                node.mesh.scale.set(pulseValue, pulseValue, pulseValue);
+                
+                // Color cycling
+                const hue = (i * 0.01 + Date.now() * 0.0001) % 1;
+                node.mesh.material.color.setHSL(hue, 0.8, 0.5);
+            });
+            
+            // Update connections
+            connections.forEach(conn => {
+                const fromNode = nodes[conn.from];
+                const toNode = nodes[conn.to];
+                
+                if (fromNode && toNode) {
+                    const positions = conn.line.geometry.attributes.position.array;
+                    positions[0] = fromNode.mesh.position.x;
+                    positions[1] = fromNode.mesh.position.y;
+                    positions[2] = fromNode.mesh.position.z;
+                    positions[3] = toNode.mesh.position.x;
+                    positions[4] = toNode.mesh.position.y;
+                    positions[5] = toNode.mesh.position.z;
+                    
+                    conn.line.geometry.attributes.position.needsUpdate = true;
+                    
+                    // Pulse connection
+                    conn.pulse += 0.1;
+                    const pulseValue = Math.sin(conn.pulse) * 0.3 + 0.7;
+                    conn.line.material.opacity = pulseValue * 0.3;
+                }
+            });
+            
+            // Update particles
+            const positions = particles.attributes.position.array;
+            for (let i = 0; i < particleCount; i++) {
+                const i3 = i * 3;
+                
+                // Move particles
+                positions[i3] += (Math.random() - 0.5) * 0.1;
+                positions[i3 + 1] += (Math.random() - 0.5) * 0.1;
+                positions[i3 + 2] += (Math.random() - 0.5) * 0.1;
+                
+                // Wrap around
+                if (Math.abs(positions[i3]) > 25) positions[i3] *= -0.9;
+                if (Math.abs(positions[i3 + 1]) > 25) positions[i3 + 1] *= -0.9;
+                if (Math.abs(positions[i3 + 2]) > 25) positions[i3 + 2] *= -0.9;
+            }
+            particles.attributes.position.needsUpdate = true;
+            
+            // Rotate camera slowly
+            camera.position.x = Math.sin(Date.now() * 0.0001) * 30;
+            camera.position.y = Math.cos(Date.now() * 0.0001) * 10;
+            camera.lookAt(scene.position);
+            
+            renderer.render(scene, camera);
+        }
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        
+        animate();
+    </script>
+</body>
+</html>

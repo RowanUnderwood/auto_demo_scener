@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Recursive Tides</title>
+<style>
+  body { margin: 0; overflow: hidden; background: #000; cursor: none; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+
+// --- Chromatic Aberration + Vignette ---
+const ChromaVignetteShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uIntensity: { value: 0.002 },
+    uTime: { value: 0 }
+  },
+  vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float uIntensity;
+    uniform float uTime;
+    varying vec2 vUv;
+    void main(){
+      vec2 offset = (vUv - 0.5) * uIntensity * (1.0 + 0.5 * sin(uTime * 0.5));
+      float r = texture2D(tDiffuse, vUv + offset).r;
+      float g = texture2D(tDiffuse, vUv).g;
+      float b = texture2D(tDiffuse, vUv - offset).b;
+      vec3 col = vec3(r, g, b);
+      float vig = 1.0 - smoothstep(0.4, 1.6, length(vUv - 0.5) * 2.0);
+      col *= vig;
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `
+};
+
+// --- Rasterline / Scanline ---
+const RasterShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uTime: { value: 0 }
+  },
+  vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float uTime;
+    varying vec2 vUv;
+    void main(){
+      vec3 col = texture2D(tDiffuse, vUv).rgb;
+      float scan = sin(vUv.y * 800.0 + uTime * 2.0) * 0.04;
+      col += scan;
+      float flicker = 0.95 + 0.05 * sin(uTime * 17.0);
+      col *= flicker;
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `
+};
+
+// --- Phase 1: Topological Grid ---
+const gridVert = `
+  uniform float uTime;
+  uniform float uPhase;
+  uniform float uAudio;
+  varying vec2 vUv;
+  varying vec3 vNormal;
+  void main(){
+    vUv = uv;
+    vec3 pos = position;
+    float t = uTime * 0.6;
+    float wave = sin(pos.x * 0.8 + t) * cos(pos.y * 0.8 + t) * 2.0;
+    
+    float morph = smoothstep(0.0, 1.0, uPhase);
+    float dist = length(pos.xy);
+    float theta = atan(pos.y, pos.x);
+    float phi = dist / 10.0 * 3.14159;
+    
+    vec3 spherePos = vec3(
+      sin(phi) * cos(theta) * 5.5,
+      cos(phi) * 5.5,
+      sin(phi) * sin(theta) * 5.5
+    );
+    
+    pos.z = mix(wave, 0.0, morph);
+    pos.xz = mix(pos.xz, spherePos.xz, morph);
+    pos.y = mix(pos.y, spherePos.y, morph);
+    
+    pos += normal * sin(uTime * 12.0) * uAudio * 0.15;
+    vNormal = normalMatrix * normal;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+  }
+`;
+const gridFrag = `
+  uniform float uTime;
+  uniform float uFade;
+  varying vec2 vUv;
+  varying vec3 vNormal;
+  void main(){
+    float grid = abs(sin(vUv.x * 60.0)) * abs(sin(vUv.y * 60.0));
+    grid = 1.0 - smoothstep(0.0, 0.1, grid);
+    vec3 col = mix(vec3(0.1, 0.4, 0.9), vec3(0.9, 0.2, 0.6), vUv.x);
+    float fresnel = pow(1.0 - max(dot(normalize(vNormal), vec3(0.0, 0.0, 1.0)), 0.0), 2.0);
+    col += fresnel * 0.3;
+    gl_FragColor = vec4(col * grid, grid * uFade);
+  }
+`;
+
+// --- Phase 2: Raymarched Fractal ---
+const fractalVert = `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`;
+const fractalFrag = `
+  precision highp float;
+  uniform float uTime;
+  uniform vec2 uResolution;
+  uniform float uFade;
+  varying vec2 vUv;
+  #define PI 3.14159265359
+  #define STEPS 80
+  #define MAX_DIST 12.0
+  #define SURF_DIST 0.0005
+
+  mat2 rot(float a){ float c=cos(a),s=sin(a); return mat2(c,-s,s,c); }
+
+  float map(vec3 p){
+    p.xy *= rot(uTime*0.25);
+    p.yz *= rot(uTime*0.15 + 1.0);
+    p.xz *= rot(uTime*0.1 + 2.0);
+    float d = length(p) - 1.8;
+    for(int i=0; i<3; i++){
+      p = abs(p) / dot(p,p) - 0.5;
+      p.xy *= rot(0.4 + uTime*0.08);
+      d = min(d, length(p - vec3(0.3, 0.0, 0.0)) - 0.9);
+    }
+    return d;
+  }
+
+  vec3 calcNormal(vec3 p){
+    vec2 e = vec2(0.002, 0.0);
+    return normalize(vec3(map(p+e.xyy)-map(p-e.xyy), map(p+e.yxy)-map(p-e.yxy), map(p+e.yyx)-map(p-e.yyx)));
+  }
+
+  void main(){
+    vec2 uv = (vUv - 0.5) * uResolution / uResolution.y;
+    vec3 ro = vec3(0.0, 0.0, 3.5);
+    vec3 rd = normalize(vec3(uv, -1.0));
+    float t = 0.0;
+    vec3 p = ro;
+    for(int i=0; i<STEPS; i++){
+      if(t > MAX_DIST) break;
+      float d = map(p);
+      if(d < SURF_DIST) break;
+      t += d;
+      p = ro + rd * t;
+    }
+    vec3 col = vec3(0.0);
+    if(t < MAX_DIST){
+      vec3 n = calcNormal(p);
+      float diff = max(dot(n, normalize(vec3(0.8, 1.0, 0.6))), 0.0);
+      col = mix(vec3(0.05, 0.15, 0.4), vec3(0.9, 0.3, 0.8), diff);
+      col *= diff * 0.9 + 0.1;
+      float glow = exp(-t * 0.4);
+      col += vec3(0.3, 0.6, 1.0) * glow;
+    }
+    col = col / (col + 1.2);
+    gl_FragColor = vec4(col, uFade);
+  }
+`;
+
+// --- Phase 3: Particle Wavefield ---
+const particleCount = 18000;
+const pPos = new Float32Array(particleCount * 3);
+const pRand = new Float32Array(particleCount);
+for(let i=0; i<particleCount; i++){
+  pPos[i*3] = (Math.random() - 0.5) * 24;
+  pPos[i*3+1] = (Math.random() - 0.5) * 24;
+  pPos[i*3+2] = (Math.random() - 0.5) * 24;
+  pRand[i] = Math.random();
+}
+const pGeo = new THREE.BufferGeometry();
+pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+pGeo.setAttribute('aRandom', new THREE.BufferAttribute(pRand, 1));
+
+const pVert = `
+  uniform float uTime;
+  uniform float uPhase;
+  uniform float uPixelRatio;
+  attribute float aRandom;
+  varying float vAlpha;
+  void main(){
+    vec3 pos = position;
+    float t = uTime * 0.9;
+    float wave = sin(pos.x * 0.4 + t) * cos(pos.y * 0.4 + t) * 2.5;
+    pos.z += wave;
+    float expand = smoothstep(0.0, 1.0, uPhase);
+    pos *= 1.0 + expand * 0.4;
+    float angle = aRandom * 6.28;
+    float r = length(pos.xy);
+    angle += uTime * 0.6;
+    pos.x = r * cos(angle);
+    pos.y = r * sin(angle);
+    pos.z += sin(r * 1.5 - t * 2.5) * 1.8;
+    vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
+    gl_Position = projectionMatrix * mvPos;
+    gl_PointSize = (18.0 + 12.0 * sin(t + aRandom * 6.28)) * uPixelRatio / (-mvPos.z);
+    gl_PointSize = max(gl_PointSize, 1.0);
+    vAlpha = smoothstep(0.0, 0.6, uPhase) * (1.0 - smoothstep(0.9, 1.0, uPhase));
+  }
+`;
+const pFrag = `
+  varying float vAlpha;
+  void main(){
+    float d = length(gl_PointCoord - 0.5);
+    if(d > 0.5) discard;
+    float alpha = smoothstep(0.5, 0.15, d) * vAlpha;
+    vec3 col = mix(vec3(0.2, 0.7, 1.0), vec3(1.0, 0.3, 0.9), gl_PointCoord.y);
+    gl_FragColor = vec4(col, alpha);
+  }
+`;
+
+// --- Init Scene ---
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x000005);
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 100);
+camera.position.z = 5;
+
+const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+// Post Processing
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.6, 0.4, 0.85);
+bloom.threshold = 0.25;
+bloom.strength = 1.8;
+bloom.radius = 0.6;
+composer.addPass(bloom);
+const chroma = new ShaderPass(ChromaVignetteShader);
+composer.addPass(chroma);
+const raster = new ShaderPass(RasterShader);
+composer.addPass(raster);
+
+// Objects
+const gridGeo = new THREE.PlaneGeometry(20, 20, 100, 100);
+const gridMat = new THREE.ShaderMaterial({
+  uniforms: { uTime: {value:0}, uPhase: {value:0}, uAudio: {value:0}, uFade: {value:0} },
+  vertexShader: gridVert, fragmentShader: gridFrag, transparent: true, side: THREE.DoubleSide
+});
+const grid = new THREE.Mesh(gridGeo, gridMat);
+scene.add(grid);
+
+const fractalGeo = new THREE.PlaneGeometry(2, 2);
+const fractalMat = new THREE.ShaderMaterial({
+  uniforms: { uTime: {value:0}, uResolution: {value: new THREE.Vector2(window.innerWidth, window.innerHeight)}, uFade: {value:0} },
+  vertexShader: fractalVert, fragmentShader: fractalFrag, transparent: true
+});
+const fractalQuad = new THREE.Mesh(fractalGeo, fractalMat);
+fractalQuad.position.z = -2;
+scene.add(fractalQuad);
+
+const particleMat = new THREE.ShaderMaterial({
+  uniforms: { uTime: {value:0}, uPhase: {value:0}, uPixelRatio: {value: renderer.getPixelRatio()} },
+  vertexShader: pVert, fragmentShader: pFrag, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+});
+const particles = new THREE.Points(pGeo, particleMat);
+scene.add(particles);
+
+// Sequence
+const clock = new THREE.Clock();
+const duration = 24.0;
+const t0 = 0, t1 = 7, t2 = 14, t3 = 24;
+
+function smoothstep(edge0, edge1, x) {
+  let t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  let elapsed = clock.getElapsedTime();
+  let t = elapsed % duration;
+  
+  // Audio simulation
+  let audio = Math.sin(t * 4.0) * 0.5 + Math.sin(t * 7.1) * 0.3 + Math.sin(t * 13.7) * 0.2 + Math.sin(t * 23.3) * 0.1;
+  audio = Math.max(0, audio);
+  audio = Math.pow(audio, 1.5);
+
+  // Fade curves
+  let fade1 = smoothstep(t0-0.5, t0+0.5, t) * smoothstep(t1, t1-1.0, t);
+  let fade2 = smoothstep(t1, t1+0.5, t) * smoothstep(t2, t2-1.0, t);
+  let fade3 = smoothstep(t2, t2+0.5, t) * smoothstep(t3, t3-1.0, t);
+
+  // Update uniforms
+  gridMat.uniforms.uTime.value = t;
+  gridMat.uniforms.uAudio.value = audio;
+  gridMat.uniforms.uFade.value = fade1;
+  gridMat.uniforms.uPhase.value = fade1 > 0.01 ? smoothstep(0, 1, t) : 0;
+
+  fractalMat.uniforms.uTime.value = t;
+  fractalMat.uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+  fractalMat.uniforms.uFade.value = fade2;
+
+  particleMat.uniforms.uTime.value = t;
+  particleMat.uniforms.uPhase.value = fade3 > 0.01 ? smoothstep(0, 1, t) : 0;
+
+  // Post processing reacts to audio
+  chroma.uniforms.uTime.value = t;
+  chroma.uniforms.uIntensity.value = 0.0015 + audio * 0.004;
+  raster.uniforms.uTime.value = t;
+  bloom.strength = 1.5 + audio * 1.2;
+  bloom.radius = 0.5 + audio * 0.3;
+
+  composer.render();
+}
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
+  fractalMat.uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+});
+
+animate();
+</script>
+</body>
+</html>

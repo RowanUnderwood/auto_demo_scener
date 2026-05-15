@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chromatic Data Vortex</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #050505;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        canvas {
+            box-shadow: 0 0 50px rgba(0, 255, 200, 0.1);
+        }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+</script>
+<script type="module">
+    import * as THREE from 'three';
+
+    const vertexShader = `
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `;
+
+    const fragmentShader = `
+        uniform float uTime;
+        uniform vec2 uResolution;
+        uniform vec2 uMouse;
+        varying vec2 vUv;
+
+        // Fast hash function
+        float hash(float n) { return fract(sin(n) * 43758.5453123); }
+
+        // 2D Noise
+        float noise(vec2 x) {
+            vec2 p = floor(x);
+            vec2 f = fract(x);
+            f = f * f * (3.0 - 2.0 * f);
+            float n = p.x + p.y * 57.0;
+            return mix(mix(hash(n + 0.0), hash(n + 1.0), f.x),
+                       mix(hash(n + 57.0), hash(n + 58.0), f.x), f.y);
+        }
+
+        // FBM (Fractal Brownian Motion) for texture detail
+        float fbm(vec2 x) {
+            float v = 0.0;
+            float a = 0.5;
+            vec2 shift = vec2(100.0);
+            mat2 rot = mat2(cos(0.5), sin(0.5), -sin(0.5), cos(0.50));
+            for (int i = 0; i < 5; ++i) {
+                v += a * noise(x);
+                x = rot * x * 2.0 + shift;
+                a *= 0.5;
+            }
+            return v;
+        }
+
+        // Cosine based palette
+        vec3 palette(float t) {
+            vec3 a = vec3(0.5, 0.5, 0.5);
+            vec3 b = vec3(0.5, 0.5, 0.5);
+            vec3 c = vec3(1.0, 1.0, 1.0);
+            vec3 d = vec3(0.263, 0.416, 0.557); // Cyan/Blue base
+            return a + b * cos(6.28318 * (c * t + d));
+        }
+
+        void main() {
+            vec2 uv = (vUv - 0.5) * 2.0;
+            uv.x *= uResolution.x / uResolution.y;
+
+            // Mouse interaction influence
+            vec2 mouse = (uMouse - 0.5) * 2.0;
+            mouse.x *= uResolution.x / uResolution.y;
+
+            vec2 p = uv * 1.5;
+
+            float time = uTime * 0.3;
+
+            // Domain warping
+            float q = fbm(p + vec2(time, time));
+            float r = fbm(p + q + vec2(1.7, 9.2) + 0.15 * time);
+
+            // Color mixing based on the warped space
+            float f = fbm(p + r);
+
+            // Dynamic coloring
+            vec3 col = palette(f + q + r + time);
+
+            // RGB Split (Chromatic Aberration) based on distortion
+            float offset = f * 0.02; 
+            float rOffset = vec3(fbm(p + r + offset)).r;
+            float gOffset = vec3(fbm(p + r - offset)).g;
+            float bOffset = vec3(fbm(p + r + vec2(offset))).b;
+            
+            // Apply aberration to the base color
+            col = vec3(rOffset, gOffset, bOffset) * col;
+
+            // Add grid lines for "Data" feel
+            float grid = abs(sin(uv.y * 100.0)) * abs(sin(uv.x * 100.0));
+            col += vec3(grid * 0.05, grid * 0.08, grid * 0.1);
+
+            // Vignette
+            float dist = length(uv);
+            col *= smoothstep(1.5, 0.2, dist);
+
+            // High contrast boost
+            col = pow(col, vec3(1.2));
+
+            gl_FragColor = vec4(col, 1.0);
+        }
+    `;
+
+    let scene, camera, renderer, material;
+
+    function init() {
+        scene = new THREE.Scene();
+        // Orthographic camera for 2D shader
+        camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        
+        renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Limit pixel ratio for performance
+        document.body.appendChild(renderer.domElement);
+
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+                uMouse: { value: new THREE.Vector2(0, 0) }
+            },
+            vertexShader,
+            fragmentShader
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        // Mouse tracking
+        document.addEventListener('mousemove', (e) => {
+            // Normalize mouse position to -1 to 1 range
+            const x = e.clientX / window.innerWidth;
+            const y = 1.0 - e.clientY / window.innerHeight; // Flip Y for GLSL
+            material.uniforms.uMouse.value.set(x, y);
+        });
+
+        window.addEventListener('resize', onWindowResize, false);
+    }
+
+    function onWindowResize() {
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        material.uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+    }
+
+    function animate(time) {
+        requestAnimationFrame(animate);
+        material.uniforms.uTime.value = time * 0.001;
+        renderer.render(scene, camera);
+    }
+
+    init();
+    animate(0);
+</script>
+</body>
+</html>

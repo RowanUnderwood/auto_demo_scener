@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Glowing Toaster Swarm</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: radial-gradient(circle at center, #0a0a2a, #1a1a4a); }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+</script>
+<script type="module">
+    import * as THREE from 'three';
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setClearColor(0x000000, 0); // Transparent background
+    document.body.appendChild(renderer.domElement);
+
+    // Ambient light for depth and glow
+    const ambientLight = new THREE.AmbientLight(0x333333, 0.2);
+    scene.add(ambientLight);
+
+    // Main directional light with bloom effect simulation
+    const dirLight = new THREE.DirectionalLight(0xffcc66, 1.5);
+    dirLight.position.set(15, 25, 20);
+    scene.add(dirLight);
+
+    // Add subtle volumetric glow via emissive materials
+    const pointLight = new THREE.PointLight(0x88ccff, 2, 30);
+    pointLight.position.set(5, 10, 0);
+    scene.add(pointLight);
+
+    const objects = [];
+    const count = 40;
+    const bounds = { x: 35, y: 30 };
+
+    function createToaster() {
+        const group = new THREE.Group();
+
+        // Body with glow material
+        const bodyGeom = new THREE.BoxGeometry(1.2, 0.8, 1.2);
+        const bodyMat = new THREE.MeshStandardMaterial({
+            color: 0x553322,
+            metalness: 0.9,
+            roughness: 0.1,
+            emissive: 0x444444,
+            emissiveIntensity: 0.6
+        });
+        const body = new THREE.Mesh(bodyGeom, bodyMat);
+        group.add(body);
+
+        // Slot with metallic texture
+        const slotGeom = new THREE.BoxGeometry(0.7, 0.15, 1.2);
+        const slotMat = new THREE.MeshStandardMaterial({
+            color: 0x443322,
+            metalness: 0.8,
+            roughness: 0.2
+        });
+        const slot = new THREE.Mesh(slotGeom, slotMat);
+        slot.position.y = 0.45;
+        group.add(slot);
+
+        // Wings with animated glow
+        const wingGeom = new THREE.PlaneGeometry(0.15, 0.8);
+        const wingMat = new THREE.MeshStandardMaterial({
+            color: 0x997766,
+            metalness: 0.8,
+            roughness: 0.2,
+            emissive: 0xaaaaaa,
+            emissiveIntensity: 0.4
+        });
+
+        const leftPivot = new THREE.Group();
+        leftPivot.position.set(-0.5, 0, 0);
+        const leftWing = new THREE.Mesh(wingGeom, wingMat);
+        leftWing.position.x = -0.6; // Offset for pivot effect
+        leftPivot.add(leftWing);
+        group.add(leftPivot);
+
+        const rightPivot = new THREE.Group();
+        rightPivot.position.set(0.5, 0, 0);
+        const rightWing = new THREE.Mesh(wingGeom, wingMat);
+        rightWing.position.x = 0.6;
+        rightPivot.add(rightWing);
+        group.add(rightPivot);
+
+        return { group, type: 'toaster', leftPivot, rightPivot, phase: Math.random() * Math.PI * 2 };
+    }
+
+    function createToast() {
+        const geom = new THREE.BoxGeometry(0.45, 0.45, 0.1);
+        const mat = new THREE.MeshStandardMaterial({
+            color: 0x7f4b1a,
+            metalness: 0.3,
+            roughness: 0.6,
+            emissive: 0xffcc99,
+            emissiveIntensity: 0.3
+        });
+        const mesh = new THREE.Mesh(geom, mat);
+        return { group: mesh, type: 'toast', phase: Math.random() * Math.PI * 2 };
+    }
+
+    function resetObject(obj) {
+        obj.group.position.x = (Math.random() * 10 + bounds.x/2);
+        obj.group.position.y = (Math.random() * 10 + bounds.y/2);
+        obj.group.position.z = (Math.random() - 0.3) * 8;
+        obj.group.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
+    }
+
+    for (let i = 0; i < count; i++) {
+        const isToast = Math.random() > 0.75;
+        const item = isToast ? createToast() : createToaster();
+        item.group.position.set(
+            (Math.random() - 0.5) * bounds.x,
+            (Math.random() - 0.5) * bounds.y,
+            (Math.random() - 0.3) * 8
+        );
+        scene.add(item.group);
+        objects.push(item);
+    }
+
+    camera.position.set(12, 14, 20);
+
+    function animate(time) {
+        requestAnimationFrame(animate);
+        const t = time * 0.001;
+
+        objects.forEach(obj => {
+            // Chaotic diagonal drift with pulsing motion
+            obj.group.position.x -= Math.sin(t + obj.phase) * 0.15;
+            obj.group.position.y -= Math.cos(t + obj.phase) * 0.12;
+
+            // Dynamic glow intensity based on position
+            const dist = Math.abs(obj.group.position.x) + Math.abs(obj.group.position.y);
+            if (obj.type === 'toaster') {
+                const flap = Math.sin(t * 10 + obj.phase) * 0.9;
+                obj.leftPivot.rotation.z = flap;
+                obj.rightPivot.rotation.z = -flap;
+                
+                // Glow pulsing
+                obj.group.traverse(child => {
+                    if (child.isMesh) {
+                        child.material.emissiveIntensity += Math.sin(t * 12 + obj.phase) * 0.5;
+                    }
+                });
+            }
+
+            // Respawn at boundaries with slight bounce
+            const x = obj.group.position.x;
+            const y = obj.group.position.y;
+            if (x < -bounds.x/2 || x > bounds.x/2 || y < -bounds.y/2 || y > bounds.y/2) {
+                resetObject(obj);
+            }
+        });
+
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate(0);
+</script>
+</body>
+</html>

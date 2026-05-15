@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Eight-Fold Symmetric Shader</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/three@0.152.0/build/three.min.js"></script>
+<script>
+    // Initialize scene
+    const scene = new THREE.Scene();
+    const camera = new THREE.Camera();
+    camera.position.z = 1;
+
+    // Create a fullscreen quad geometry (or use a plane for shader material)
+    const geometry = new THREE.PlaneGeometry(2, 2);
+    const material = new THREE.ShaderMaterial({
+        vertexShader: `
+            varying vec2 vUv;
+            void main() {
+                vUv = position.xy * 0.5 + 0.5;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `,
+        fragmentShader: `
+            uniform float time;
+            varying vec2 vUv;
+
+            void main() {
+                // Convert UV to polar coordinates
+                float r = sqrt(vUv.x * vUv.x + vUv.y * vUv.y);
+                float a = atan(vUv.y, vUv.x);  // angle in radians
+                
+                // Fold the angle into an 8-fold wedge
+                const int N = 8;
+                float foldedAngle = abs(mod(a, 2.0 * 3.1415926535 / float(N)) - 3.1415926535 / float(N));
+                
+                // Convert back to cartesian
+                vec2 foldedUV = vec2(
+                    cos(foldedAngle) * r,
+                    sin(foldedAngle) * r
+                );
+                
+                // Sample a colorful procedural pattern
+                float p = 10.0;
+                float freq = 8.0 + sin(time * 0.5);
+                float sum = 0.0;
+                for (int i = 0; i < 3; i++) {
+                    float t = foldedUV.x * 40.0 + time * 0.1;
+                    sum += sin(p * freq + t) * cos(foldedUV.y * 10.0);
+                    p += 1.2;
+                }
+                
+                // Use the sum to create a vibrant color
+                vec3 color = vec3(
+                    0.5 + 0.5 * sin(sum * 6.0),
+                    0.5 + 0.5 * cos(sum * 8.0),
+                    0.5 + 0.5 * sin(sum * 10.0)
+                );
+                
+                gl_FragColor = vec4(color, 1.0);
+            }
+        `,
+        uniforms: {
+            time: { value: 0.0 }
+        },
+        transparent: true
+    });
+
+    const mesh = new THREE.Mesh(geometry, material);
+    scene.add(mesh);
+
+    // Create renderer and set up animation loop
+    const renderer = new THREE.WebGLRenderer();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    function animate() {
+        requestAnimationFrame(animate);
+        
+        // Update time uniform
+        material.uniforms.time.value += 0.01;
+        
+        // Render
+        renderer.render(scene, camera);
+    }
+
+    // Handle resize
+    window.addEventListener('resize', () => {
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        renderer.setSize(width, height);
+        geometry.dispose(); // Dispose of old geometry if needed (though we can reuse)
+        // Adjust the plane geometry to fit fullscreen
+        geometry.scale(width/2, height/2, 1);
+    });
+
+    animate();
+</script>
+</body>
+</html>

@@ -29,6 +29,7 @@ DEFAULTS: dict = {
         "show_title_card": True,
         "show_progress_bar": True,
         "show_title_card_stats": True,
+        "title_card_stats_font_size": 11,
         "jit_titling": False,
     },
     "validation": {

@@ -94,7 +94,7 @@ def chat(
     messages: list[dict],
     base_url: str,
     model: str,
-    max_tokens: int = 128,
+    max_tokens: int | None = 128,
     temperature: float = 0.7,
     timeout: int = 30,
 ) -> str:
@@ -102,14 +102,16 @@ def chat(
     payload = {
         "model": model,
         "messages": messages,
-        "max_tokens": max_tokens,
         "temperature": temperature,
         "stream": False,
     }
+    if max_tokens is not None:
+        payload["max_tokens"] = max_tokens
     try:
         r = requests.post(f"{base_url}/v1/chat/completions", json=payload, timeout=timeout)
         r.raise_for_status()
-        return r.json()["choices"][0]["message"]["content"]
+        content = r.json()["choices"][0]["message"]["content"]
+        return content if content is not None else ""
     except Exception as e:
         raise LMClientError(f"Chat failed: {e}") from e
 

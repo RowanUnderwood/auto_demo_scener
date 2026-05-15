@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>CHRONOS CRYSTAL: GEOMETRIC SINGULARITY</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #05050a; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        canvas { display: block; }
+        #ui {
+            position: absolute; bottom: 30px; right: 30px; color: #fff;
+            text-align: right; pointer-events: none; font-size: 10px;
+            letter-spacing: 2px; text-transform: uppercase; opacity: 0.6;
+        }
+        #title {
+            position: absolute; top: 30px; left: 30px; color: #fff;
+            font-weight: 100; letter-spacing: 8px; text-transform: uppercase; font-size: 18px;
+        }
+    </style>
+</head>
+<body>
+    <div id="title">Chronos Crystal</div>
+    <div id="ui">
+        Refraction Index: <span id="refIdx">1.45</span><br>
+        Temporal Flux: <span id="fluxVal">0.00</span><br>
+        Symmetry: Octahedral
+    </div>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        /**
+         * CONCEPT: "CHRONOS CRYSTAL"
+         * Shifting the aesthetic from Neon Entropy (Dark/Chaotic) to 
+         * a Prism/Glass aesthetic (Light/Structured).
+         * Uses Raymarching for an iridescent crystalline structure 
+         * combined with a volumetric "light-leak" particle field.
+         */
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.body.appendChild(renderer.domElement);
+
+        const fragmentShader = `
+            uniform float uTime;
+            uniform vec2 uRes;
+
+            mat2 rot(float a) { return mat2(cos(a), -sin(a), sin(a), cos(a)); }
+
+            // Crystal Folding: Mirroring space to create facets
+            float map(vec3 p) {
+                p.xz *= rot(uTime * 0.1);
+                p.xy *= rot(uTime * 0.15);
+                
+                for(int i = 0; i < 4; i++) {
+                    p = abs(p) - 0.4;
+                    p.xy *= rot(0.785); // 45 degrees
+                    p.yz *= rot(uTime * 0.2 + float(i));
+                }
+                
+                // Create a sharp-edged diamond/crystal shape
+                return (length(p) - 0.3) * 0.6;
+            }
+
+            vec3 getNormal(vec3 p) {
+                vec2 e = vec2(0.001, 0.0);
+                return normalize(vec3(
+                    map(p + e.xyy) - map(p - e.xyy),
+                    map(p + e.yxy) - map(p - e.yxy),
+                    map(p + e.yyx) - map(p - e.yyx)
+                ));
+            }
+
+            // Simple iridescent color mapping
+            vec3 palette(float t) {
+                vec3 a = vec3(0.5, 0.5, 0.5);
+                vec3 b = vec3(0.5, 0.5, 0.5);
+                vec3 c = vec3(1.0, 1.0, 1.0);
+                vec3 d = vec3(0.263, 0.416, 0.557);
+                return a + b * cos(6.28318 * (c * t + d));
+            }
+
+            void main() {
+                vec2 uv = (gl_FragCoord.xy - 0.5 * uRes.xy) / min(uRes.y, uRes.x);
+                vec3 ro = vec3(0.0, 0.0, -3.0); 
+                vec3 rd = normalize(vec3(uv, 1.2));
+
+                float t = 0.0;
+                bool hit = false;
+                vec3 p;
+
+                for(int i = 0; i < 64; i++) {
+                    p = ro + rd * t;
+                    float d = map(p);
+                    if(d < 0.001) {
+                        hit = true;
+                        break;
+                    }
+                    t += d;
+                    if(t > 10.0) break;
+                }
+
+                vec3 color = vec3(0.02, 0.02, 0.05); // Deep navy background
+
+                if(hit) {
+                    vec3 n = getNormal(p);
+                    vec3 viewDir = normalize(ro - p);
+                    
+                    // Fresnel effect for glass-like edges
+                    float fresnel = pow(1.0 - max(dot(n, viewDir), 0.0), 4.0);
+                    
+                    // Refraction-ish coloring based on surface normal and time
+                    vec3 crystalColor = palette(length(p) * 0.5 + uTime * 0.2);
+                    
+                    // Lighting: High contrast speculars
+                    vec3 lightDir = normalize(vec3(1, 1, -1));
+                    float diff = max(dot(n, lightDir), 0.0);
+                    float spec = pow(max(dot(reflect(-lightDir, n), viewDir), 0.0), 64.0);
+                    
+                    color = mix(crystalColor * diff, vec3(1.0), spec);
+                    color += fresnel * vec3(0.7, 0.9, 1.0);
+                }
+
+                // Atmospheric glow / bloom simulation
+                float distToCenter = length(uv);
+                color += vec3(0.1, 0.15, 0.2) * (1.0 - smoothstep(0.0, 1.5, distToCenter));
+                
+                // Subtle chromatic aberration at edges
+                float edge = length(uv);
+                if(edge > 0.8) {
+                    color.r += 0.05 * edge;
+                    color.b -= 0.05 * edge;
+                }
+
+                gl_FragColor = vec4(color, 1.0);
+            }
+        `;
+
+        const vertexShader = `
+            void main() {
+                gl_Position = vec4(position, 1.0);
+            }
+        `;
+
+        const quadGeom = new THREE.PlaneGeometry(2, 2);
+        const shaderMat = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uRes: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+            },
+            vertexShader,
+            fragmentShader
+        });
+        const quad = new THREE.Mesh(quadGeom, shaderMat);
+        scene.add(quad);
+
+        // --- VOLUMETRIC LIGHT PARTICLES ---
+        const particleCount = 1500;
+        const pGeometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(particleCount * 3);
+        const colors = new Float32Array(particleCount * 3);
+
+        for (let i = 0; i < particleCount; i++) {
+            // Sphere distribution
+            const phi = Math.acos(-1 + (2 * i) / particleCount);
+            const theta = Math.sqrt(particleCount * Math.PI) * phi;
+            const r = 1.5 + Math.random() * 2;
+
+            positions[i*3] = r * Math.sin(phi) * Math.cos(theta);
+            positions[i*3+1] = r * Math.sin(phi) * Math.sin(theta);
+            positions[i*3+2] = r * Math.cos(phi);
+
+            const col = new THREE.Color().setHSL(0.5 + Math.random() * 0.1, 0.8, 0.7);
+            colors[i*3] = col.r;
+            colors[i*3+1] = col.g;
+            colors[i*3+2] = col.b;
+        }
+
+        pGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        pGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+        const pMaterial = new THREE.PointsMaterial({
+            size: 0.015,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.4,
+            blending: THREE.AdditiveBlending
+        });
+
+        const particleSystem = new THREE.Points(pGeometry, pMaterial);
+        scene.add(particleSystem);
+
+        camera.position.z = 5;
+
+        const clock = new THREE.Clock();
+        const refIdxEl = document.getElementById('refIdx');
+        const fluxValEl = document.getElementById('fluxVal');
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const elapsed = clock.getElapsedTime();
+
+            shaderMat.uniforms.uTime.value = elapsed;
+
+            // Animate particles: subtle expansion and contraction (breathing)
+            const posAttr = pGeometry.attributes.position;
+            const scale = 1.0 + Math.sin(elapsed * 0.5) * 0.1;
+            
+            for (let i = 0; i < particleCount; i++) {
+                // Original position was stored in the array, but we offset it slightly
+                // To keep them orbiting, we apply a rotation matrix conceptually
+                const x = posAttr.array[i*3];
+                const z = posAttr.array[i*3+2];
+                
+                // Orbit movement
+                posAttr.array[i*3] = (x * Math.cos(0.001) - z * Math.sin(0.001)) * scale;
+                posAttr.array[i*3+2] = (x * Math.sin(0.001) + z * Math.cos(0.001)) * scale;
+            }
+            posAttr.needsUpdate = true;
+
+            particleSystem.rotation.y = elapsed * 0.05;
+            particleSystem.rotation.z = elapsed * 0.03;
+
+            // Update UI
+            refIdxEl.innerText = (1.45 + Math.sin(elapsed) * 0.02).toFixed(3);
+            fluxValEl.innerText = (Math.abs(Math.cos(elapsed * 0.7)) * 100).toFixed(2);
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            renderer.setSize(w, h);
+            camera.aspect = w / h;
+            camera.updateProjectionMatrix();
+            shaderMat.uniforms.uRes.value.set(w, h);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

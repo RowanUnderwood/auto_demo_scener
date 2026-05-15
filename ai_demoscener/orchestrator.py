@@ -24,6 +24,7 @@ class Orchestrator:
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
         self._skip = threading.Event()
+        self._discard_current = threading.Event()
         self._lm_unavailable = False
         self._stock_deck: list[dict] = []
         self._replay_deck: list[Path] = []
@@ -45,6 +46,10 @@ class Orchestrator:
         self._stop.set()
 
     def skip(self) -> None:
+        self._skip.set()
+
+    def discard_current(self) -> None:
+        self._discard_current.set()
         self._skip.set()
 
     # ── Internal helpers ───────────────────────────────────────────────────────
@@ -119,13 +124,8 @@ class Orchestrator:
 
         # JIT titling: generate title synchronously before displaying
         if cfg["display"].get("jit_titling") and not meta["title"] and not self._lm_unavailable:
-            try:
-                available = set(lm_client.list_models(cfg["lm_studio"]["base_url"]))
-            except Exception:
-                available = set()
-            use_model = entry_model if entry_model in available else ""
             result = self._generate_title_meta(
-                cfg, path.read_text(encoding="utf-8"), model=use_model
+                cfg, path.read_text(encoding="utf-8"), model=entry_model
             )
             if result:
                 meta.update(result)
@@ -165,6 +165,7 @@ class Orchestrator:
 
     def _generate_cycle(self, cfg: dict) -> None:
         self._skip.clear()
+        self._discard_current.clear()
 
         # PICK MODE
         self._tx("PICK_MODE")
@@ -187,7 +188,7 @@ class Orchestrator:
                 pass  # fall back to configured model
 
         # GENERATE
-        self._tx("GENERATE", mode=mode)
+        self._tx("GENERATE", mode=mode, model=model)
         html = self._do_generate(cfg, mode, prompt_data, model=model)
         if html is None:
             self._tx("DISCARD")
@@ -261,6 +262,13 @@ class Orchestrator:
             self._tx("DISPLAY", url=f"/temp/{temp_path.name}", runtime=runtime, meta=display_meta)
             self._run_timer(runtime)
 
+            if self._discard_current.is_set():
+                self._discard_current.clear()
+                temp_path.unlink(missing_ok=True)
+                log.info("Generate-mode demo discarded by user before archiving")
+                self._tx("IDLE")
+                return
+
             self._tx("ARCHIVE")
             archive_path = archive_mod.save(html, effect_slug, mode, cfg,
                                             source_path=source_path, model=model)
@@ -288,6 +296,13 @@ class Orchestrator:
             meta_thread.start()
 
             self._run_timer(runtime)
+
+            if self._discard_current.is_set():
+                self._discard_current.clear()
+                temp_path.unlink(missing_ok=True)
+                log.info("Generate-mode demo discarded by user before archiving")
+                self._tx("IDLE")
+                return
 
             self._tx("ARCHIVE")
             archive_path = archive_mod.save(html, effect_slug, mode, cfg,
@@ -334,10 +349,13 @@ class Orchestrator:
 
         if chosen == "update":
             lm = cfg["lm_studio"]
-            max_input = lm["context_ceiling_tokens"] - lm["max_tokens"]
+            max_input = max(0, lm["context_ceiling_tokens"] - lm["max_tokens"])
             src = archive_mod.pick_for_update(cfg, max_input)
             if src is None:
-                log.info("No archive files for update; falling back to stock")
+                log.warning(
+                    "Update mode: no suitable archive files (max_input=%d tokens, %d files checked)",
+                    max_input, len(archive_mod.list_files(cfg))
+                )
                 chosen = "stock"
             else:
                 return "update", {"effect": "update", "source_path": src}
@@ -508,29 +526,40 @@ class Orchestrator:
         use_model = model or lm["model"]
         messages = [
             {"role": "system", "content": prompt},
-            {"role": "user", "content": html[:6000]},
+            # /no_think disables reasoning mode on Qwen3 thinking models; harmless on others
+            {"role": "user", "content": "/no_think\n" + html[:6000]},
         ]
+        text = None
         try:
             text = lm_client.chat(
                 messages=messages,
                 base_url=lm["base_url"],
                 model=use_model,
-                max_tokens=128,
+                max_tokens=None,
                 temperature=0.7,
-                timeout=30,
+                timeout=120,
             )
-            # Extract JSON object even if the model wrapped it in markdown fences
+            if not text or not text.strip():
+                log.warning("Title generation: empty response (model=%s)", use_model)
+                return None
             start = text.find('{')
             end   = text.rfind('}')
-            if start != -1 and end != -1:
-                text = text[start:end + 1]
-            data = _json.loads(text)
+            if start == -1 or end == -1:
+                log.warning(
+                    "Title generation: no JSON object in response (model=%s): %r",
+                    use_model, text[:300],
+                )
+                return None
+            data = _json.loads(text[start:end + 1])
             return {
                 "title": str(data.get("title", "")),
                 "description": str(data.get("description", "")),
             }
         except Exception as e:
-            log.warning("Title generation failed: %s", e)
+            log.warning(
+                "Title generation failed (model=%s): %s — response: %r",
+                use_model, e, (text or "")[:300],
+            )
             return None
 
     # ── Temp file & audition ───────────────────────────────────────────────────

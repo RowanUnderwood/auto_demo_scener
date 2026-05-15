@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AETHERIC SINGULARITY</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; cursor: crosshair; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+{
+    "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+    }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const fragmentShader = `
+    uniform float uTime;
+    uniform vec2 uResolution;
+    uniform vec2 uMouse;
+
+    #define MAX_STEPS 100
+    #define SURFACE_DIST .001
+    #define MAX_DIST 20.
+
+    mat2 rot(float a) {
+        float s = sin(a), c = cos(a);
+        return mat2(c, -s, s, c);
+    }
+
+    // Signed Distance Field for a fractal-twisted torus
+    float sdTorus(vec3 p, vec2 t) {
+        vec2 q = vec2(length(p.xz) - t.x, p.y);
+        return length(q) - t.y;
+    }
+
+    float map(vec3 p) {
+        // Twist transformation
+        float angle = p.y * 0.8 + uTime * 0.5;
+        p.xz *= rot(angle);
+        p.xy *= rot(angle * 0.3);
+
+        // Fractal folding/displacement logic
+        for(int i = 0; i < 4; i++) {
+            p = abs(p) - 0.5;
+            p.xy *= rot(0.5 + sin(uTime * 0.1) * 0.2);
+            p.xz *= rot(0.3);
+        }
+
+        float d = sdTorus(p, vec2(1.2, 0.4));
+        
+        // Add some "noise" via sine waves to simulate fluid geometry
+        d += sin(p.x * 5.0 + uTime) * 0.05;
+        d += cos(p.y * 5.0 + uTime) * 0.05;
+        d += sin(p.z * 5.0) * 0.05;
+
+        return d;
+    }
+
+    vec3 getNormal(vec3 p) {
+        vec2 e = vec2(.01, 0);
+        float d = map(p);
+        vec3 n = d - vec3(
+            map(p-e.xyy),
+            map(p-e.yxy),
+            map(p-e.yyx)
+        );
+        return normalize(n);
+    }
+
+    void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+        vec2 uv = (fragCoord - 0.5 * uResolution.xy) / min(uResolution.y, uResolution.x);
+        vec3 col = vec3(0.0);
+
+        // Camera setup
+        vec3 ro = vec3(0, 0, -4);
+        ro.yz *= rot(uMouse.y * 2.0 - 1.5);
+        ro.xz *= rot(uMouse.x * 6.28 + uTime * 0.1);
+        
+        vec3 rd = normalize(vec3(uv, 1.5));
+        rd.yz *= rot(uMouse.y * 2.0 - 1.5);
+        rd.xz *= rot(uMouse.x * 6.28 + uTime * 0.1);
+
+        // Raymarching
+        float dO = 0.0;
+        int i;
+        for(i = 0; i < MAX_STEPS; i++) {
+            vec3 p = ro + rd * dO;
+            float dS = map(p);
+            dO += dS;
+            if(dO > MAX_DIST || abs(dS) < SURFACE_DIST) break;
+        }
+
+        // Coloring logic
+        if(dO < MAX_DIST) {
+            vec3 p = ro + rd * dO;
+            vec3 n = getNormal(p);
+            
+            // Lighting
+            vec3 lightPos = vec3(2, 5, -3);
+            vec3 l = normalize(lightPos - p);
+            float diff = max(dot(n, l), 0.1);
+            float spec = pow(max(dot(reflect(-l, n), -rd), 0.0), 32.0);
+            
+            // Color Palette (Neon Cyan/Purple)
+            vec3 baseCol = 0.5 + 0.5 * cos(uTime + p.xyx + vec3(0, 2, 4));
+            baseCol *= vec3(0.1, 0.8, 1.0); // Tinting to cyan
+
+            col = baseCol * diff + spec;
+            
+            // Fresnel effect
+            float fresnel = pow(1.0 + dot(rd, n), 5.0);
+            col += fresnel * vec3(1.0, 0.5, 0.8) * 0.5;
+
+        } else {
+            // Background: Cosmic fog/Glow
+            float fog = length(uv) * exp(-length(uv));
+            col = vec3(0.02, 0.01, 0.05) * fog;
+        }
+
+        // Post-process simulation: Vignette and Chromatic Aberration (fake)
+        float vignette = 1.0 - length(uv * 0.7);
+        col *= vignette;
+        
+        // Add a slight "pulse" to the whole scene
+        col *= 0.9 + 0.2 * sin(uTime * 0.5);
+
+        fragColor = vec4(col, 1.0);
+    }
+
+    void main() {
+        mainImage(gl_FragColor, gl_FragCoord.xy);
+    }
+`;
+
+const vertexShader = `
+    void main() {
+        gl_Position = vec4(position, 1.0);
+    }
+`;
+
+class Scene {
+    constructor() {
+        this.renderer = new THREE.WebGLRenderer({ antialias: true });
+        this.renderer.setPixelRatio(window.devicePixelRatio);
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(this.renderer.domElement);
+
+        this.scene = new THREE.Scene();
+        this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        
+        this.mouse = new THREE.Vector2(0.5, 0.5);
+        this.targetMouse = new THREE.Vector2(0.5, 0.5);
+
+        this.uniforms = {
+            uTime: { value: 0 },
+            uResolution: { value: new THREE.Vector2() },
+            uMouse: { value: new THREE.Vector2() }
+        };
+
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const material = new THREE.ShaderMaterial({
+            uniforms: this.uniforms,
+            vertexShader: vertexShader,
+            fragmentShader: fragmentShader
+        });
+
+        this.mesh = new THREE.Mesh(geometry, material);
+        this.scene.add(this.mesh);
+
+        this.onResize();
+        this.onMouseMove();
+        window.addEventListener('resize', () => this.onResize());
+        this.animate();
+    }
+
+    onResize() {
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+    }
+
+    onMouseMove() {
+        window.addEventListener('mousemove', (e) => {
+            this.targetMouse.x = e.clientX / window.innerWidth;
+            this.targetMouse.y = 1.0 - (e.clientY / window.innerHeight);
+        });
+    }
+
+    animate(time) {
+        requestAnimationFrame((t) => this.animate(t));
+
+        // Smooth mouse interpolation
+        this.mouse.x += (this.targetMouse.x - this.mouse.x) * 0.05;
+        this.mouse.y += (this.targetMouse.y - this.mouse.y) * 0.05;
+
+        this.uniforms.uTime.value = time * 0.001;
+        this.uniforms.uMouse.value.copy(this.mouse);
+
+        this.renderer.render(this.scene, this.camera);
+    }
+}
+
+new Scene();
+</script>
+</body>
+</html>

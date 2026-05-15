@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+    </style>
+</head>
+<body>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const uniforms = {
+            u_time: { value: 0.0 },
+            u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+        };
+
+        const material = new THREE.ShaderMaterial({
+            uniforms,
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float u_time;
+                uniform vec2 u_resolution;
+                varying vec2 vUv;
+
+                void main() {
+                    vec2 uv = vUv * 2.0 - 1.0;
+                    uv *= 1.5;
+                    
+                    float time = u_time * 0.5;
+                    
+                    // Polar coordinates
+                    float r = length(uv);
+                    float a = atan(uv.y, uv.x);
+                    
+                    // Create a swirling vortex effect
+                    float spiral = r * 0.5 + sin(r * 8.0 + time) * 0.1;
+                    float swirl = r * 0.8 + sin(a * 4.0 + time * 1.2) * 0.3;
+                    
+                    // Create a wave pattern
+                    float wave = sin(r * 10.0 + time) * 0.5 + 0.5;
+                    
+                    // Generate a color palette based on position and time
+                    vec3 color = vec3(0.0);
+                    color.r = sin(r * 10.0 + time) * 0.5 + 0.5;
+                    color.g = sin(r * 10.0 + time + 1.5) * 0.5 + 0.5;
+                    color.b = sin(r * 10.0 + time + 3.14) * 0.5 + 0.5;
+                    
+                    // Apply swirling effect to color
+                    float s = sin(a * 5.0 + time * 0.5) * 0.5 + 0.5;
+                    color = mix(color, vec3(1.0 - s, s, 0.2), 0.3);
+                    
+                    // Add glow effect based on distance from center
+                    float glow = exp(-r * r * 5.0) * 1.5;
+                    
+                    // Final color with brightness modulation
+                    vec3 finalColor = color * glow;
+                    
+                    // Add subtle noise
+                    vec2 noiseUV = uv * 5.0 + vec2(time * 0.5, time * 0.3);
+                    finalColor += vec3(
+                        sin(noiseUV.x + time) * 0.02,
+                        sin(noiseUV.y + time * 1.2) * 0.02,
+                        sin(noiseUV.x + noiseUV.y + time * 0.8) * 0.02
+                    );
+                    
+                    // Clamp to valid range
+                    finalColor = clamp(finalColor, 0.0, 1.0);
+                    
+                    gl_FragColor = vec4(finalColor, 1.0);
+                }
+            `
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        function animate(time) {
+            uniforms.u_time.value = time * 0.001;
+            renderer.render(scene, camera);
+            requestAnimationFrame(animate);
+        }
+
+        window.addEventListener('resize', () => {
+            uniforms.u_resolution.value.set(window.innerWidth, window.innerHeight);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>

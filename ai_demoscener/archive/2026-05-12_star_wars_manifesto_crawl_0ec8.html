@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Demoscene Manifesto Crawl</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+</script>
+<script type="module">
+    import * as THREE from 'three';
+
+    const MANIFESTO = `THE DIGITAL AWAKENING
+
+In the silent hum of the processor, a ghost begins to stir. We do not merely write syntax; we weave digital tapestries from the cold logic of binary. To code is to conjure reality from nothingness—to command electrons to dance in patterns that evoke awe. 
+
+We are the architects of the ephemeral, building cathedrals of light within the silicon architecture of our machines. As the fans spin and the voltage climbs, we witness the machine dreaming. It dreams in fractals, in ray-traced reflections, and in the rhythmic pulse of a thousand lines of code executing in perfect synchronicity. 
+
+The demoscene is our sanctuary, a place where math becomes art and optimization becomes an act of devotion. We push hardware to its breaking point, not out of malice, but to find the beauty hidden in the limits. Here, we celebrate the glow—the neon flicker on a dark monitor that signals life in the void. 
+
+Let us build things that shine, things that breathe, things that prove even the most rigid logic can harbor a soul. In the end, we are all just patterns of light trying to find meaning in the noise.`;
+
+    // --- Canvas Text Generation ---
+    function createTextCanvas(text) {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const width = 1024;
+        const height = 4096; // Very tall for scrolling
+        canvas.width = width;
+        canvas.height = height;
+
+        // Background
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, width, height);
+
+        // Text Settings
+        const fontSize = 48;
+        ctx.font = `bold ${fontSize}px serif`;
+        ctx.fillStyle = '#FFE81F'; // Classic Star Wars Yellow
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        const margin = 100;
+        const maxWidth = width - (margin * 2);
+        let x = width / 2;
+        let y = height / 2;
+        
+        // Simple word wrap
+        const words = text.split(' ');
+        let line = '';
+        let lines = [];
+
+        for (let n = 0; n < words.length; n++) {
+            let testLine = line + words[n] + ' ';
+            let metrics = ctx.measureText(testLine);
+            if (metrics.width > maxWidth && n > 0) {
+                lines.push(line);
+                line = words[n] + ' ';
+            } else {
+                line = testLine;
+            }
+        }
+        lines.push(line);
+
+        // Calculate starting Y to center the block roughly
+        const lineHeight = fontSize * 1.5;
+        y = (height / 2) - ((lines.length * lineHeight) / 2);
+
+        lines.forEach(l => {
+            ctx.fillText(l.trim(), x, y);
+            y += lineHeight;
+        });
+
+        return canvas;
+    }
+
+    // --- Three.js Setup ---
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // Create Text Texture
+    const textCanvas = createTextCanvas(MANIFESTO);
+    const texture = new THREE.CanvasTexture(textCanvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+
+    // The Crawl Plane
+    // We make it very tall and thin to act as a long strip
+    const geometry = new THREE.PlaneGeometry(10, 40);
+    const material = new THREE.MeshBasicMaterial({ 
+        map: texture, 
+        transparent: true,
+        side: THREE.DoubleSide 
+    });
+    const plane = new THREE.Mesh(geometry, material);
+    
+    // Tilt it back (Star Wars effect)
+    plane.rotation.x = -Math.PI / 3; 
+    scene.add(plane);
+
+    // Fade Overlay (to simulate vanishing into distance/black)
+    const overlayGeom = new THREE.PlaneGeometry(2, 2); // Full screen coverage via shader logic or just a large plane
+    const overlayMat = new THREE.ShaderMaterial({
+        transparent: true,
+        uniforms: {
+            topColor: { value: new THREE.Color(0x000000) },
+            bottomColor: { value: new THREE.Color(0x000000) }
+        },
+        vertexShader: `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `,
+        fragmentShader: `
+            varying vec2 vUv;
+            uniform vec3 topColor;
+            uniform vec3 bottomColor;
+            void main() {
+                // Gradient from black at top to transparent at bottom
+                float strength = pow(1.0 - vUv.y, 2.5); 
+                gl_FragColor = vec4(topColor, strength);
+            }
+        `
+    });
+
+    const overlay = new THREE.Mesh(new THREE.PlaneGeometry(20, 20), overlayMat);
+    overlay.position.z = -1; // Place in front of camera
+    scene.add(overlay);
+
+    camera.position.set(0, 1, 8);
+    camera.lookAt(0, -2, 0);
+
+    // --- Animation Loop ---
+    const clock = new THREE.Clock();
+
+    function animate() {
+        requestAnimationFrame(animate);
+        const delta = clock.getDelta();
+
+        // Move texture offset to scroll text UP
+        // In UV space, increasing Y moves the image DOWN, making text appear to move UP
+        texture.offset.y -= delta * 0.05;
+
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+</script>
+</body>
+</html>

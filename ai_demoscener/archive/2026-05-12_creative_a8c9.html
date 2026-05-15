@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CHRONOS_LATTICE // DEMO</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', monospace; }
+        canvas { display: block; }
+        #ui {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: #0ff;
+            text-shadow: 0 0 5px #0ff;
+            pointer-events: none;
+            letter-spacing: 2px;
+            font-size: 12px;
+            opacity: 0.7;
+        }
+    </style>
+</head>
+<body>
+    <div id="ui">SYSTEM_STATUS: RUNNING<br>CORE_FREQ: 4.8GHz<br>SIGNAL: STABLE</div>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const fragmentShader = `
+            uniform float uTime;
+            uniform vec2 uResolution;
+
+            #define MAX_STEPS 80
+            #define SURF_DIST .001
+            #define MAX_DIST 20.
+
+            mat2 rot(float a) {
+                float s = sin(a), c = cos(a);
+                return mat2(c, -s, s, c);
+            }
+
+            // Distance function for the fractal lattice
+            float map(vec3 p) {
+                p.z += uTime * 0.5;
+                p.xy *= rot(uTime * 0.1);
+                
+                vec3 q = p;
+                float scale = 1.0;
+                float dist = 100.0;
+
+                for(int i = 0; i < 4; i++) {
+                    q = abs(q) - 0.5;
+                    q.xy *= rot(uTime * 0.2 + float(i));
+                    q.yz *= rot(uTime * 0.3);
+                    
+                    float s = 1.8;
+                    q *= s;
+                    scale *= s;
+                    q -= vec3(0.5, 0.8, 0.4) * (1.0 / scale);
+                }
+
+                // Menger-inspired subtraction
+                float box = length(max(abs(q)-0.2, 0.0));
+                return box / scale;
+            }
+
+            vec3 getNormal(vec3 p) {
+                vec2 e = vec2(.01, 0);
+                float d = map(p);
+                vec3 n = d - vec3(
+                    map(p-e.xyy),
+                    map(p-e.yxy),
+                    map(p-e.yyx)
+                );
+                return normalize(n);
+            }
+
+            void main() {
+                vec2 uv = (gl_FragCoord.xy - .5 * uResolution.xy) / min(uResolution.y, uResolution.x);
+                vec3 col = vec3(0.);
+                
+                // Raymarching setup
+                vec3 ro = vec3(0, 0, -2);
+                vec3 rd = normalize(vec3(uv, 1.2));
+
+                float dO = 0.;
+                for(int i=0; i<MAX_STEPS; i++) {
+                    vec3 p = ro + rd * dO;
+                    float dS = map(p);
+                    dO += dS;
+                    if(dO > MAX_DIST || abs(dS) < SURF_DIST) break;
+                }
+
+                if(dO < MAX_DIST) {
+                    vec3 p = ro + rd * dO;
+                    vec3 n = getNormal(p);
+                    
+                    // Lighting
+                    float diff = dot(n, normalize(vec3(1,2,3))) * .5 + .5;
+                    float spec = pow(max(dot(reflect(rd, n), normalize(vec3(1,2,3))), 0.), 32.);
+                    
+                    // Color Palette: Cyber-Cyan and Magenta Pulse
+                    vec3 baseCol = mix(vec3(0.0, 0.8, 1.0), vec3(0.9, 0.0, 0.6), sin(uTime * 0.5) * 0.5 + 0.5);
+                    col = baseCol * diff;
+                    col += spec * 0.4;
+                    
+                    // Fog/Depth effect
+                    col *= exp(-0.1 * dO);
+                }
+
+                // Glitch / Post-process artifacts
+                float glitch = step(0.98, sin(uTime * 50.0 + uv.y * 20.0)) * 0.1;
+                col += vec3(glitch, glitch * 0.2, 0.0);
+
+                // Scanlines
+                col *= 0.9 + 0.1 * sin(gl_FragCoord.y * 1.5);
+                
+                // Chromatic Aberration simulation via UV offset logic is heavy in one pass, 
+                // so we simulate it with a color split on edges
+                float edge = smoothstep(0.4, 0.5, length(uv));
+                col.r += glitch * edge;
+
+                gl_FragColor = vec4(col, 1.0);
+            }
+        `;
+
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const uniforms = {
+            uTime: { value: 0 },
+            uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+        };
+
+        const material = new THREE.ShaderMaterial({
+            fragmentShader,
+            uniforms
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        function resize() {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        function animate(time) {
+            uniforms.uTime.value = time * 0.001;
+            renderer.render(scene, camera);
+            requestAnimationFrame(animate);
+        }
+
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>

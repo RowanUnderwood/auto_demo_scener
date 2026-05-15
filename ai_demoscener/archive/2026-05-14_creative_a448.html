@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Quantum Bloom</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000011; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script type="module">
+        import * as THREE from 'https://unpkg.com/three@0.159.0/build/three.module.js';
+
+        let scene, camera, renderer, particles, particleSystem;
+        const NUM_PARTICLES = 3000;
+        let clock = new THREE.Clock();
+
+        init();
+        animate();
+
+        function init() {
+            // Scene Setup
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            // Particle System Setup (Inspired by "Explosion" and "Particle Burst")
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(NUM_PARTICLES * 3);
+            const colors = new Float32Array(NUM_PARTICLES * 3);
+            const sizes = new Float32Array(NUM_PARTICLES);
+
+            const color1 = new THREE.Color();
+            const color2 = new THREE.Color();
+
+            // Initialize particles randomly in a central volume
+            for (let i = 0; i < NUM_PARTICLES * 3; i += 3) {
+                // Initial position: clustered near the center
+                positions[i] = (Math.random() - 0.5) * 2;
+                positions[i + 1] = (Math.random() - 0.5) * 2;
+                positions[i + 2] = (Math.random() - 0.5) * 2;
+
+                // Initial color: vibrant, shifting hue
+                color1.setHSL(Math.random(), 1.0, Math.random());
+                colors[i] = color1.r;
+                colors[i + 1] = color1.g;
+                colors[i + 2] = color1.b;
+
+                // Initial size: small and uniform
+                sizes[i / 3] = Math.random() * 0.5 + 0.1;
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1)); // Custom attribute for sizing
+
+            particleSystem = new THREE.Points(geometry, new THREE.PointsMaterial({
+                size: 0.5, // Base size will be modified by shader/update loop
+                vertexColors: true,
+                blending: THREE.AdditiveBlending,
+                transparent: true,
+                depthWrite: false
+            }));
+
+            scene.add(particleSystem);
+
+            // Camera Position
+            camera.position.z = 5;
+
+            window.addEventListener('resize', onWindowResize, false);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // Custom Particle Update Logic (Simulating quantum fluctuation/growth)
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const delta = clock.getDelta();
+            const time = clock.elapsedTime;
+
+            // --- Quantum Bloom Simulation ---
+            if (time % 3 < delta) { // Triggering a slow, continuous "Bloom" pulse
+                particleSystem.rotation.y += 0.005 * delta * 60; // Gentle rotation for disorientation
+            }
+
+
+            const positions = particleSystem.geometry.attributes.position.array;
+            const sizesArray = particleSystem.geometry.attributes.size.array;
+
+            for (let i = 0; i < NUM_PARTICLES; i++) {
+                // 1. Movement: Subtle drift outwards from the center
+                positions[i * 3] += (Math.random() - 0.5) * 0.01 * delta * 60;
+                positions[i * 3 + 1] += (Math.random() - 0.5) * 0.01 * delta * 60;
+                positions[i * 3 + 2] += (Math.random() - 0.5) * 0.01 * delta * 60;
+
+                // 2. Growth/Decay: Simulating energy release ("Bloom")
+                const growthFactor = Math.sin(time * 1.5 + i * 0.1) * 0.3 + 0.7; // Oscillating growth rate
+                sizesArray[i] += (growthFactor - 1) * delta * 2;
+
+                // 3. Color Shift: Shifting towards white/high energy state
+                const colorIndex = i % NUM_PARTICLES;
+                const initialColor = new THREE.Color();
+                initialColor.setHSL(Math.random(), 1, Math.random()); // Re-calculating base hue for simplicity
+                const r = (i / NUM_PARTICLES) * 0.5 + 0.5;
+                const g = (i % 3 === 0 ? 1 : 0.8);
+                const b = (i % 3 === 1 ? 1 : 0.6);
+
+                // Simple fading logic based on size/time for decay simulation
+                if (sizesArray[i] > 5) {
+                    sizesArray[i] *= (1 - delta * 0.5); // Start shrinking after peak size
+                } else if (sizesArray[i] < 0.1) {
+                    // Reset particle to center if fully decayed
+                    positions[i * 3] = (Math.random() - 0.5) * 0.1;
+                    positions[i * 3 + 1] = (Math.random() - 0.5) * 0.1;
+                    positions[i * 3 + 2] = (Math.random() - 0.5) * 0.1;
+                    sizesArray[i] = Math.random() * 0.1 + 0.1;
+                }
+
+            }
+
+            // Must notify Three.js that attributes have changed
+            particleSystem.geometry.attributes.position.needsUpdate = true;
+            particleSystem.geometry.attributes.size.needsUpdate = true;
+
+
+            renderer.render(scene, camera);
+        }
+
+    </script>
+</body>
+</html>

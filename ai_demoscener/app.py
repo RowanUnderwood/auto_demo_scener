@@ -163,6 +163,12 @@ def api_skip():
     return jsonify({"ok": True})
 
 
+@app.route("/api/discard_current", methods=["POST"])
+def api_discard_current():
+    orc.discard_current()
+    return jsonify({"ok": True})
+
+
 @app.route("/api/shutdown", methods=["POST"])
 def api_shutdown():
     orc.stop()

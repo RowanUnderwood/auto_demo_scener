@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Three.js Pong</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background-color: #000;
+    }
+    canvas {
+      display: block;
+    }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+</head>
+<body>
+  <script>
+    // Initialize scene, camera, and renderer
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x000000);
+
+    const camera = new THREE.OrthographicCamera(
+      -5, 5, 5, -5, 0.1, 1000
+    );
+    camera.position.set(0, 0, 10);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    document.body.appendChild(renderer.domElement);
+
+    // Create score text
+    const scoreCanvas = document.createElement('canvas');
+    scoreCanvas.width = 256;
+    scoreCanvas.height = 64;
+    const scoreCtx = scoreCanvas.getContext('2d');
+    const scoreTexture = new THREE.CanvasTexture(scoreCanvas);
+    const scoreMaterial = new THREE.MeshBasicMaterial({ map: scoreTexture });
+    const scorePlane = new THREE.PlaneGeometry(2, 0.5);
+    const scoreMesh = new THREE.Mesh(scorePlane, scoreMaterial);
+    scoreMesh.position.set(0, 4, 0);
+    scene.add(scoreMesh);
+
+    // Paddle geometry
+    const paddleGeometry = new THREE.PlaneGeometry(0.5, 2);
+    const paddleMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+    const leftPaddle = new THREE.Mesh(paddleGeometry, paddleMaterial);
+    const rightPaddle = new THREE.Mesh(paddleGeometry, paddleMaterial);
+    leftPaddle.position.set(-4.5, 0, 0);
+    rightPaddle.position.set(4.5, 0, 0);
+    scene.add(leftPaddle, rightPaddle);
+
+    // Ball geometry
+    const ballGeometry = new THREE.SphereGeometry(0.2, 16, 16);
+    const ballMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const ball = new THREE.Mesh(ballGeometry, ballMaterial);
+    ball.position.set(0, 0, 0);
+    scene.add(ball);
+
+    // Center line
+    const centerLineGeometry = new THREE.BufferGeometry();
+    const centerLineMaterial = new THREE.LineBasicMaterial({
+      color: 0x00ffff,
+      linewidth: 2,
+      dashSize: 0.5,
+      gapSize: 0.5,
+      transparent: true,
+      opacity: 0.8
+    });
+    const centerLine = new THREE.LineSegments(centerLineGeometry, centerLineMaterial);
+    scene.add(centerLine);
+
+    // Trail for the ball
+    const trailParticles = [];
+    const trailMaterial = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.3 });
+    for (let i = 0; i < 10; i++) {
+      const particle = new THREE.Mesh(ballGeometry, trailMaterial);
+      particle.position.set(0, 0, 0);
+      scene.add(particle);
+      trailParticles.push(particle);
+    }
+
+    // Initialize ball velocity
+    let ballVelocity = new THREE.Vector3(0.1, 0.1, 0);
+    let leftScore = 0;
+    let rightScore = 0;
+
+    // Update center line
+    function updateCenterLine() {
+      const centerLineVertices = [];
+      for (let i = -5; i <= 5; i += 0.5) {
+        centerLineVertices.push(0, i, 0);
+      }
+      centerLineGeometry.setAttribute('position', new THREE.Float32BufferAttribute(centerLineVertices, 3));
+      centerLineGeometry.computeBoundingSphere();
+    }
+
+    updateCenterLine();
+
+    // Game loop
+    function animate() {
+      requestAnimationFrame(animate);
+
+      // Lerp paddles towards ball position
+      const ballY = ball.position.y;
+      const leftPaddleTarget = ballY + (Math.random() - 0.5) * 0.2;
+      const rightPaddleTarget = ballY + (Math.random() - 0.5) * 0.2;
+
+      leftPaddle.position.y += (leftPaddleTarget - leftPaddle.position.y) * 0.07;
+      rightPaddle.position.y += (rightPaddleTarget - rightPaddle.position.y) * 0.07;
+
+      // Update ball position
+      ball.position.x += ballVelocity.x;
+      ball.position.y += ballVelocity.y;
+
+      // Ball collision with top and bottom walls
+      if (ball.position.y >= 4.5 || ball.position.y <= -4.5) {
+        ballVelocity.y = -ballVelocity.y;
+      }
+
+      // Ball collision with paddles
+      if (ball.position.x <= -4.25 && ball.position.x >= -4.75 && 
+          ball.position.y >= leftPaddle.position.y - 1 && ball.position.y <= leftPaddle.position.y + 1) {
+        ballVelocity.x = -ballVelocity.x;
+        ballVelocity.x *= 1.05;
+        ballVelocity.y *= 1.05;
+        leftScore++;
+      }
+
+      if (ball.position.x >= 4.25 && ball.position.x <= 4.75 && 
+          ball.position.y >= rightPaddle.position.y - 1 && ball.position.y <= rightPaddle.position.y + 1) {
+        ballVelocity.x = -ballVelocity.x;
+        ballVelocity.x *= 1.05;
+        ballVelocity.y *= 1.05;
+        rightScore++;
+      }
+
+      // Ball out of bounds
+      if (ball.position.x < -5 || ball.position.x > 5) {
+        ball.position.set(0, 0, 0);
+        ballVelocity.x = Math.random() > 0.5 ? 0.1 : -0.1;
+        ballVelocity.y = Math.random() > 0.5 ? 0.1 : -0.1;
+      }
+
+      // Update trail particles
+      for (let i = trailParticles.length - 1; i > 0; i--) {
+        trailParticles[i].position.copy(trailParticles[i - 1].position);
+      }
+      trailParticles[0].position.copy(ball.position);
+
+      // Update score text
+      scoreCtx.clearRect(0, 0, scoreCanvas.width, scoreCanvas.height);
+      scoreCtx.font = 'bold 32px Arial';
+      scoreCtx.fillStyle = 'white';
+      scoreCtx.textAlign = 'center';
+      scoreCtx.fillText(`${leftScore} - ${rightScore}`, scoreCanvas.width / 2, scoreCanvas.height / 2);
+
+      scoreTexture.needsUpdate = true;
+
+      renderer.render(scene, camera);
+    }
+
+    // Handle window resize
+    window.addEventListener('resize', () => {
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      renderer.setSize(width, height);
+      camera.left = -width / 100;
+      camera.right = width / 100;
+      camera.top = height / 100;
+      camera.bottom = -height / 100;
+      camera.updateProjectionMatrix();
+    });
+
+    animate();
+  </script>
+</body>
+</html>

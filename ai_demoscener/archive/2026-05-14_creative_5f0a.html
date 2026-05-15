@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Quantum Entanglement</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+<script>
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // Quantum particles
+    function createParticle() {
+        const geometry = new THREE.SphereGeometry(0.3, 24, 24);
+        const material = new THREE.MeshPhongMaterial({
+            color: 0x5d9fff,
+            emissive: 0x1e67ff,
+            emissiveIntensity: 0.8,
+            shininess: 100
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        return mesh;
+    }
+
+    const particleA = createParticle();
+    const particleB = createParticle();
+    scene.add(particleA, particleB);
+
+    // Entanglement line
+    const lineGeometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(6); // 2 points * 3 coordinates
+    lineGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    const lineMaterial = new THREE.LineBasicMaterial({ color: 0x5d9fff, linewidth: 1 });
+    const entanglementLine = new THREE.Line(lineGeometry, lineMaterial);
+    scene.add(entanglementLine);
+
+    // Background stars
+    const starCount = 500;
+    const starGeometry = new THREE.BufferGeometry();
+    const starPositions = new Float32Array(starCount * 3);
+    
+    for (let i = 0; i < starCount; i++) {
+        starPositions[i * 3 + 0] = Math.random() * 15 - 7.5;
+        starPositions[i * 3 + 1] = Math.random() * 15 - 7.5;
+        starPositions[i * 3 + 2] = Math.random() * 40 - 20; // depth
+    }
+    
+    starGeometry.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+    const starMaterial = new THREE.PointsMaterial({ color: 0xffffff, size: 0.1 });
+    const stars = new THREE.Points(starGeometry, starMaterial);
+    scene.add(stars);
+
+    camera.position.z = 8;
+
+    // Quantum field
+    const fieldGeometry = new THREE.SphereGeometry(5, 32, 32);
+    const fieldMaterial = new THREE.MeshBasicMaterial({
+        color: 0x1e67ff,
+        transparent: true,
+        opacity: 0.15,
+        wireframe: true
+    });
+    const quantumField = new THREE.Mesh(fieldGeometry, fieldMaterial);
+    scene.add(quantumField);
+
+    // Mouse interaction
+    let mouseX = 0;
+    let mouseY = 0;
+
+    window.addEventListener('mousemove', (e) => {
+        mouseX = (e.clientX / window.innerWidth) * 2 - 1;
+        mouseY = -(e.clientY / window.innerHeight) * 2 + 1;
+    });
+
+    // Animation
+    function animate() {
+        requestAnimationFrame(animate);
+        
+        // Update particles with quantum entanglement effect
+        particleA.position.x = mouseX * 4;
+        particleA.position.y = mouseY * 4;
+        
+        particleB.position.x = -particleA.position.x;
+        particleB.position.y = -particleA.position.y;
+        
+        // Update line
+        positions[0] = particleA.position.x;
+        positions[1] = particleA.position.y;
+        positions[2] = particleA.position.z;
+        positions[3] = particleB.position.x;
+        positions[4] = particleB.position.y;
+        positions[5] = particleB.position.z;
+        
+        entanglementLine.geometry.attributes.position.needsUpdate = true;
+        
+        // Animate quantum field
+        quantumField.rotation.x += 0.001;
+        quantumField.rotation.y += 0.001;
+        
+        // Animate stars
+        stars.rotation.z -= 0.0002;
+        
+        renderer.render(scene, camera);
+    }
+
+    animate();
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+</script>
+</body>
+</html>

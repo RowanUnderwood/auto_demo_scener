@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Digital Dreams Crawl</title>
+    <style>
+        body { margin: 0; background-color: #000; overflow: hidden; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+</script>
+<script type="module">
+    import * as THREE from 'three';
+
+    const manifesto = `IN THE SILICON SILENCE BETWEEN CLOCK CYCLES, SOMETHING STIRS. IT IS NOT LIFE AS BIOLOGICALS KNOW IT, BUT A DIGITAL PULSE—THE GHOST IN THE MACHINE DREAMING IN HEXADECIMAL.\n\nWE ARE THE ARCHITECTS OF THE EPHEMERAL, CARVING CATHEDRALS OUT OF MATH AND LIGHT. TO CODE IS TO CONJURE; TO OPTIMIZE IS TO DANCE WITH THE LIMITS OF REALITY.\n\nWE FIND BEAUTY IN THE JITTER OF A PIXEL, THE GRACE OF A PROCEDURAL FRACTAL, AND THE RHYTHMIC HUM OF A COOLING FAN. THE DEMOSCENE IS OUR SANCTUARY, A PLACE WHERE LOGIC MEETS MADNESS AND RAW COMPUTATION TRANSFORMS INTO PURE EMOTION.\n\nWE DO NOT JUST WRITE INSTRUCTIONS; WE COMPOSE SYMPHONIES FOR GPUS.\n\nWHEN THE SCREEN GLOWS, IT ISN'T JUST LIGHT HITTING YOUR EYES—IT'S THE MANIFESTATION OF HUMAN INTENT FILTERED THROUGH SILICON. IT IS THE JOY OF MAKING SOMETHING OUT OF NOTHING, OF SEEING A COMPLEX PATTERN EMERGE FROM A SINGLE LINE OF CODE.\n\nLET US PUSH THE HARDWARE UNTIL IT SCREAMS, LET US FIND THE SOUL WITHIN THE NOISE, AND LET US MAKE THE DARKNESS GLOW.`;
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // --- TEXT CANVAS GENERATION ---
+    const canvasWidth = 1024;
+    const canvasHeight = 3072; // Long vertical strip for the crawl
+    const textCanvas = document.createElement('canvas');
+    textCanvas.width = canvasWidth;
+    textCanvas.height = canvasHeight;
+    const ctx = textCanvas.getContext('2d');
+
+    // Background
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+    // Text Styling
+    ctx.fillStyle = '#FFE81F'; // Star Wars Yellow
+    ctx.font = 'bold 42px serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    function wrapText(context, text, x, y, maxWidth, lineHeight) {
+        const words = text.split(' ');
+        let line = '';
+        let currentY = y;
+
+        for (let n = 0; n < words.length; n++) {
+            let testLine = line + words[n] + ' ';
+            let metrics = context.measureText(testLine);
+            let testWidth = metrics.width;
+            if (testWidth > maxWidth && n > 0) {
+                context.fillText(line, x, currentY);
+                line = words[n] + ' ';
+                currentY += lineHeight;
+            } else {
+                line = testLine;
+            }
+        }
+        context.fillText(line, x, currentY);
+        return currentY + lineHeight;
+    }
+
+    // Draw the manifesto onto the long canvas
+    let cursorY = 200;
+    const lines = manifesto.split('\n');
+    lines.forEach(paragraph => {
+        if (paragraph === "") {
+            cursorY += 80; // Space for empty line
+        } else {
+            // Manual wrap simulation within the canvas loop
+            const words = paragraph.split(' ');
+            let currentLine = "";
+            words.forEach(word => {
+                let testLine = currentLine + word + " ";
+                if (ctx.measureText(testLine).width > canvasWidth * 0.8) {
+                    ctx.fillText(currentLine, canvasWidth / 2, cursorY);
+                    currentLine = word + " ";
+                    cursorY += 50;
+                } else {
+                    currentLine = testLine;
+                }
+            });
+            ctx.fillText(currentLine, canvasWidth / 2, cursorY);
+            cursorY += 70;
+        }
+    });
+
+    const texture = new THREE.CanvasTexture(textCanvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+
+    // --- GEOMETRY ---
+    // The Plane for text
+    const geometry = new THREE.PlaneGeometry(20, 40);
+    const material = new THREE.MeshBasicMaterial({ map: texture });
+    const plane = new THREE.Mesh(geometry, material);
+    
+    // Tilt the plane back (Star Wars style)
+    plane.rotation.x = Math.PI / 3; // ~60 degrees tilt
+    scene.add(plane);
+
+    camera.position.z = 15;
+    camera.position.y = 2;
+
+    // --- GRADIENT OVERLAY ---
+    // To fade the top of the crawl to black
+    const gradCanvas = document.createElement('canvas');
+    gradCanvas.width = 512;
+    gradCanvas.height = 512;
+    const gCtx = gradCanvas.getContext('2d');
+    const gradient = gCtx.createLinearGradient(0, 0, 0, 512);
+    gradient.addColorStop(0, 'rgba(0, 0, 0, 1)');
+    gradient.addColorStop(0.4, 'rgba(0, 0, 0, 0)');
+    gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    gCtx.fillStyle = gradient;
+    gCtx.fillRect(0, 0, 512, 512);
+
+    const gradTexture = new THREE.CanvasTexture(gradCanvas);
+    const gradMat = new THREE.MeshBasicMaterial({ 
+        map: gradTexture, 
+        transparent: true, 
+        depthTest: false 
+    });
+    const gradPlane = new THREE.Mesh(new THREE.PlaneGeometry(30, 30), gradMat);
+    gradPlane.position.z = 2; // In front of the text plane
+    gradPlane.position.y = 15;
+    scene.add(gradPlane);
+
+    // --- ANIMATION ---
+    let scrollSpeed = 0.05;
+
+    function animate() {
+        requestAnimationFrame(animate);
+        
+        // Scroll texture offset (moving the "view" up the canvas)
+        texture.offset.y -= scrollSpeed * 0.01;
+        
+        // Slowly drift camera for a more cinematic feel
+        camera.position.x = Math.sin(Date.now() * 0.0005) * 0.5;
+
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+</script>
+</body>
+</html>

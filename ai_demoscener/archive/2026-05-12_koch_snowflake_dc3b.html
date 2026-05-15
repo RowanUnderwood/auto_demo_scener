@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const params = {
+    axiom: 'F++F++F',
+    rule: { 'F': 'F-F++F-F' },
+    angle: (Math.PI / 3), // 60 degrees
+    iterations: 5,
+    stepSize: 2
+};
+
+function generateLSystem(iters) {
+    let current = params.axiom;
+    for (let i = 0; i < iters; i++) {
+        let next = '';
+        for (const char of current) {
+            next += params.rule[char] || char;
+        }
+        current = next;
+    }
+    return current;
+}
+
+function getPoints(lString, scale) {
+    const points = [];
+    let x = 0, y = 0, angle = -Math.PI / 2; // Start pointing up
+    points.push(new THREE.Vector3(x, y, 0));
+
+    for (const char of lString) {
+        if (char === 'F') {
+            x += Math.cos(angle) * scale;
+            y += Math.sin(angle) * scale;
+            points.push(new THREE.Vector3(x, y, 0));
+        } else if (char === '+') {
+            angle += params.angle;
+        } else if (char === '-') {
+            angle -= params.angle;
+        }
+    }
+    return points;
+}
+
+const scene = new THREE.Scene();
+const aspect = window.innerWidth / window.innerHeight;
+const d = 10;
+const camera = new THREE.OrthographicCamera(-d * aspect, d * aspect, d, -d, 1, 1000);
+camera.position.z = 5;
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+const group = new THREE.Group();
+scene.add(group);
+
+let line = null;
+let currentIterLevel = 0;
+let lastTime = 0;
+let iterationTimer = 0;
+
+const material = new THREE.LineBasicMaterial({ color: 0x00ffff, transparent: true });
+
+function rebuildGeometry() {
+    if (line) {
+        group.remove(line);
+        line.geometry.dispose();
+    }
+    
+    // Reset group position before adding new object to ensure predictable centering
+    group.position.set(0, 0, 0);
+
+    const lString = generateLSystem(currentIterLevel);
+    // Scale decreases by factor of 3 each iteration to keep the fractal size stable in view
+    const scale = params.stepSize * Math.pow(1/3, currentIterLevel);
+    const points = getPoints(lString, scale);
+    
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    line = new THREE.Line(geometry, material);
+    group.add(line);
+
+    // Center the object in world space
+    const bbox = new THREE.Box3().setFromObject(line);
+    const center = new THREE.Vector3();
+    bbox.getCenter(center);
+    group.position.sub(center);
+}
+
+rebuildGeometry();
+
+function animate(time) {
+    requestAnimationFrame(animate);
+    const delta = time - lastTime;
+    lastTime = time;
+
+    // Cycle iteration 0 -> 5 every 12 seconds
+    iterationTimer += delta;
+    if (iterationTimer > 2000) {
+        iterationTimer = 0;
+        currentIterLevel = (currentIterLevel + 1) % 6;
+        rebuildGeometry();
+    }
+
+    // Rotation for visual effect
+    group.rotation.z += 0.005;
+    group.rotation.y += 0.002;
+
+    // Color Pulse: Cyan to White
+    const pulse = (Math.sin(time * 0.001) + 1) / 2; // 0 to 1
+    const cyan = new THREE.Color(0x00ffff);
+    const white = new THREE.Color(0xffffff);
+    material.color.lerpColors(cyan, white, pulse);
+
+    renderer.render(scene, camera);
+}
+
+window.addEventListener('resize', () => {
+    const aspect = window.innerWidth / window.innerHeight;
+    camera.left = -d * aspect;
+    camera.right = d * aspect;
+    camera.top = d;
+    camera.bottom = -d;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+requestAnimationFrame(animate);
+</script>
+</body>
+</html>

@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Glowing Chaos Box</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #050505; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<!-- Import map for clean Three.js module loading -->
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+    }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+// --- Configuration ---
+const BALL_COUNT = 60;
+const BOX_SIZE = 15; // Half width, height, depth
+const TRAIL_LENGTH = 8;
+const GRAVITY = -0.25;
+const RESTITUTION = 0.98;
+const FRICTION = 0.001;
+
+// --- Setup Scene ---
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x050505);
+scene.fog = new THREE.FogExp2(0x050505, 0.02);
+
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+camera.position.set(30, 30, 30);
+camera.lookAt(0, 0, 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 0.5;
+
+// --- Post Processing (Bloom) ---
+const renderScene = new RenderPass(scene, camera);
+
+const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
+bloomPass.threshold = 0;
+bloomPass.strength = 2.0; // High bloom strength
+bloomPass.radius = 0.5;
+
+const composer = new EffectComposer(renderer);
+composer.addPass(renderScene);
+composer.addPass(bloomPass);
+
+// --- Materials & Geometry Pools ---
+// We pool geometries to prevent GC stutter from creating/destroying meshes every frame
+const ballGeometry = new THREE.SphereGeometry(0.6, 16, 16);
+
+const lights = [];
+const ambientLight = new THREE.AmbientLight(0x404040, 2); // Soft white light
+scene.add(ambientLight);
+
+const dirLight = new THREE.DirectionalLight(0xffffff, 2);
+dirLight.position.set(10, 20, 10);
+scene.add(dirLight);
+
+// --- Build The Box ---
+const boxGroup = new THREE.Group();
+scene.add(boxGroup);
+
+// Semi-transparent walls with wireframe
+for (let i = 0; i < 6; i++) {
+    const geometry = new THREE.PlaneGeometry(BOX_SIZE * 2, BOX_SIZE * 2);
+    
+    // Create a material for the face
+    const material = new THREE.MeshBasicMaterial({ 
+        color: 0x445566, 
+        transparent: true, 
+        opacity: 0.15,
+        side: THREE.DoubleSide
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+
+    // Create a wireframe overlay for visibility
+    const wireMaterial = new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 2 });
+    const edges = new THREE.EdgesGeometry(geometry);
+    const line = new THREE.LineSegments(edges, wireMaterial);
+
+    mesh.add(line);
+
+    // Position walls
+    if (i === 0) { boxGroup.add(mesh); } // +X
+    if (i === 1) { boxGroup.add(mesh); } // -X
+    if (i === 2) { 
+        mesh.rotation.y = Math.PI / 2;
+        boxGroup.add(mesh); 
+    } // +Z
+    if (i === 3) { 
+        mesh.rotation.y = -Math.PI / 2;
+        boxGroup.add(mesh); 
+    } // -Z
+    if (i === 4) { 
+        mesh.rotation.x = Math.PI / 2;
+        boxGroup.add(mesh); 
+    } // +Y
+    if (i === 5) { 
+        mesh.rotation.x = -Math.PI / 2;
+        boxGroup.add(mesh); 
+    } // -Y
+}
+
+// --- Ball Factory ---
+const balls = [];
+const trailMeshes = [];
+
+for (let i = 0; i < BALL_COUNT; i++) {
+    const ball = new THREE.Mesh(ballGeometry, null); // Material set below
+    
+    // Random Position (inside box)
+    const x = (Math.random() - 0.5) * (BOX_SIZE * 1.8);
+    const y = (Math.random() - 0.5) * (BOX_SIZE * 1.8);
+    const z = (Math.random() - 0.5) * (BOX_SIZE * 1.8);
+    
+    ball.position.set(x, y, z);
+
+    // Physics State
+    const velocity = new THREE.Vector3(
+        (Math.random() - 0.5) * 0.8,
+        (Math.random() - 0.5) * 0.8,
+        (Math.random() - 0.5) * 0.8
+    );
+
+    // Appearance State
+    const randomHue = Math.random();
+    const baseColor = new THREE.Color().setHSL(randomHue, 1.0, 0.6);
+    
+    // Initial Emissive (strong for bloom)
+    ball.material = new THREE.MeshPhongMaterial({
+        color: baseColor,
+        emissive: baseColor,
+        emissiveIntensity: 1.2,
+        shininess: 100
+    });
+
+    scene.add(ball);
+
+    // History for trails (stores {x, y, z} objects)
+    ball.history = []; 
+    for(let j=0; j<TRAIL_LENGTH; j++) {
+        ball.history.push({ x: ball.position.x, y: ball.position.y, z: ball.position.z });
+    }
+
+    balls.push({
+        mesh: ball,
+        velocity: velocity,
+        color: baseColor, // Keep reference to cycle color later
+        trailMeshes: [] // We will build this
+    });
+    
+    // FIX: Pass history along with the ball data so it persists in animate loop
+    balls[balls.length - 1].history = ball.history;
+
+}
+
+// --- Build Trail Systems (Optimized) ---
+// We pre-create a pool of small spheres and assign them to balls.
+const trailGeometry = new THREE.SphereGeometry(0.2, 4, 4);
+const trailMatPool = [];
+
+for(let i=0; i<BALL_COUNT * TRAIL_LENGTH; i++) {
+    const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true });
+    
+    const trailMesh = new THREE.Mesh(trailGeometry, mat);
+    scene.add(trailMesh);
+    // FIX: Push the mesh directly instead of an object wrapper
+    trailMeshes.push(trailMesh);
+}
+
+// Assign specific trail meshes to each ball (last 8 of the pool)
+balls.forEach((ballObj, index) => {
+    for(let i=0; i<TRAIL_LENGTH; i++) {
+        const meshIndex = (index * TRAIL_LENGTH) + i;
+        ballObj.trailMeshes.push(trailMeshes[meshIndex]);
+        
+        // Set initial position
+        ballObj.trailMeshes[i].position.set(
+            ballObj.history[i].x, 
+            ballObj.history[i].y, 
+            ballObj.history[i].z
+        );
+    }
+});
+
+// --- Animation Loop ---
+let time = 0;
+
+const clock = new THREE.Clock();
+
+function animate() {
+    requestAnimationFrame(animate);
+
+    const dt = Math.min(clock.getDelta(), 0.1); // Cap delta to prevent explosion on tab switch
+    
+    controls.update();
+    time += dt;
+
+    balls.forEach((ballObj, index) => {
+        const mesh = ballObj.mesh;
+        
+        // 1. Update Color (Subtle cycling)
+        ballObj.color.hue = (ballObj.color.hue + 0.005) % 1;
+        // Slowly modulate emissive intensity based on time for "heartbeat" effect
+        const beat = Math.sin(time * 2) * 0.5 + 0.5; 
+        mesh.material.emissiveIntensity = 1.2 * beat;
+
+        // 2. Physics Integration
+        ballObj.velocity.y += GRAVITY;
+        
+        // Apply velocity
+        mesh.position.add(ballObj.velocity);
+
+        // Damping (air resistance)
+        ballObj.velocity.multiplyScalar(1 - FRICTION);
+
+        // 3. Wall Collisions
+        // Check X
+        if (mesh.position.x > BOX_SIZE || mesh.position.x < -BOX_SIZE) {
+            ballObj.velocity.x *= -RESTITUTION;
+            mesh.position.x = Math.sign(mesh.position.x) * BOX_SIZE; // Clamp position
+            
+            // Prevent sticking: small nudge
+            mesh.position.x += ballObj.velocity.x * 0.1; 
+        }
+
+        // Check Y
+        if (mesh.position.y > BOX_SIZE || mesh.position.y < -BOX_SIZE) {
+            ballObj.velocity.y *= -RESTITUTION;
+            mesh.position.y = Math.sign(mesh.position.y) * BOX_SIZE;
+            
+            mesh.position.y += ballObj.velocity.y * 0.1; 
+        }
+
+        // Check Z
+        if (mesh.position.z > BOX_SIZE || mesh.position.z < -BOX_SIZE) {
+            ballObj.velocity.z *= -RESTITUTION;
+            mesh.position.z = Math.sign(mesh.position.z) * BOX_SIZE;
+            
+            mesh.position.z += ballObj.velocity.z * 0.1; 
+        }
+
+        // 4. Update Trails History
+        // Add current, remove oldest (circular buffer or array splice)
+        
+        ballObj.history.push({ x: mesh.position.x, y: mesh.position.y, z: mesh.position.z });
+        
+        if (ballObj.history.length > TRAIL_LENGTH) {
+            ballObj.history.shift();
+        }
+
+        // 5. Render Trails
+        const history = ballObj.history;
+        for (let i = 0; i < TRAIL_LENGTH; i++) {
+            const tMesh = ballObj.trailMeshes[i];
+            
+            // Fade: later indices (newer) are brighter/larger, earlier (older) smaller/fainter
+            // We reverse mapping so history[0] is tail, history[7] is head
+            const strength = i / TRAIL_LENGTH; 
+            tMesh.material.opacity = 0.2 + (strength * 0.8);
+            
+            // Size: Head is slightly larger or distinct? Prompt says "fading smaller spheres".
+            // Let's make them shrink as they get older.
+            tMesh.scale.setScalar(1 - strength);
+
+            // Color mapping: The tail should match the head color but maybe shifted?
+            // Or just follow ball color. Let's follow ball color but darken slightly.
+            const trailColor = new THREE.Color(mesh.material.color).multiplyScalar(0.8 + 0.2 * (1-strength));
+            
+            tMesh.material.color.copy(trailColor);
+            
+            tMesh.position.set(history[i].x, history[i].y, history[i].z);
+        }
+
+        // Update ball emissive to match current color for bloom consistency
+        mesh.material.emissive.copy(mesh.material.color); 
+    });
+
+    // Render with Bloom
+    composer.render();
+}
+
+// Handle Resize
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    composer.setSize(window.innerWidth, window.innerHeight);
+});
+
+animate();
+
+</script>
+</body>
+</html>

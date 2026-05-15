@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kinetic Icosahedron Core</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #020205; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+    }
+</script>
+
+<script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+    import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+    let scene, camera, renderer, composer;
+    const shells = [];
+    const shellCount = 5;
+    const clock = new THREE.Clock();
+
+    init();
+    animate();
+
+    function init() {
+        scene = new THREE.Scene();
+        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 12;
+
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        // Bloom setup for energy effect
+        const renderScene = new RenderPass(scene, camera);
+        const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
+        bloomPass.threshold = 0;
+        bloomPass.strength = 1.2;
+        bloomPass.radius = 0.5;
+
+        composer = new EffectComposer(renderer);
+        composer.addPass(renderScene);
+        composer.addPass(bloomPass);
+
+        // Create nested shells
+        const colors = [0x00ffff, 0x0088ff, 0x8800ff, 0xff00aa, 0xffffff];
+        
+        for (let i = 0; i < shellCount; i++) {
+            // Use IcosahedronGeometry. Detail 1 provides more vertices for a smoother morph
+            const geometry = new THREE.IcosahedronGeometry(2 + i * 1.5, 1);
+            
+            // Store original positions to calculate displacement along normals
+            geometry.userData.origPos = new Float32Array(geometry.attributes.position.array);
+            
+            const material = new THREE.LineBasicMaterial({ 
+                color: colors[i], 
+                transparent: true, 
+                opacity: 0.6 - (i * 0.1), 
+                blending: THREE.AdditiveBlending 
+            });
+
+            const mesh = new THREE.LineSegments(geometry, material);
+            
+            // Vary rotation speeds and directions
+            mesh.userData = {
+                rotSpeedX: (Math.random() - 0.5) * 0.5,
+                rotSpeedY: (Math.random() - 0.5) * 0.5,
+                phaseOffset: Math.random() * Math.PI * 2
+            };
+
+            scene.add(mesh);
+            shells.push(mesh);
+        }
+
+        // Particle Cloud
+        const partGeo = new THREE.BufferGeometry();
+        const partCount = 1500;
+        const posArray = new Float32Array(partCount * 3);
+        for(let i=0; i<partCount*3; i++) {
+            posArray[i] = (Math.random() - 0.5) * 30;
+        }
+        partGeo.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+        const partMat = new THREE.PointsMaterial({ size: 0.05, color: 0xffffff, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending });
+        const particles = new THREE.Points(partGeo, partMat);
+        scene.add(particles);
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+        const t = clock.getElapsedTime();
+
+        shells.forEach((shell) => {
+            // Rotation
+            shell.rotation.x += shell.userData.rotSpeedX * 0.01;
+            shell.rotation.y += shell.userData.rotSpeedY * 0.01;
+
+            // Morphing Logic
+            const positions = shell.geometry.attributes.position.array;
+            const originals = shell.geometry.userData.origPos;
+            
+            const pulse = Math.sin(t * 1.2 + shell.userData.phaseOffset) * 0.4;
+            
+            for (let i = 0; i < positions.length; i += 3) {
+                const nx = originals[i];
+                const ny = originals[i+1];
+                const nz = originals[i+2];
+                const len = Math.sqrt(nx*nx + ny*ny + nz*nz);
+                
+                const wave = Math.cos(t * 2 + (ny * 0.5)) * 0.2;
+                const displacement = pulse + wave;
+
+                positions[i] = nx * (1 + displacement / len);
+                positions[i+1] = ny * (1 + displacement / len);
+                positions[i+2] = nz * (1 + displacement / len);
+            }
+            shell.geometry.attributes.position.needsUpdate = true;
+        });
+
+        composer.render();
+    }
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        composer.setSize(window.innerWidth, window.innerHeight);
+    });
+</script>
+</body>
+</html>

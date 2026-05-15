@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Neural Nebula</title>
+  <style>
+    body { margin: 0; overflow: hidden; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+  <script>
+    // Neural Nebula - a dynamic visualization of interconnected nodes that pulse with light and data flow
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x000000);
+    
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.z = 5;
+    
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    document.body.appendChild(renderer.domElement);
+    
+    // Create a custom shader for the neural connections
+    const neuralShader = {
+      uniforms: {
+        time: { value: 0 },
+        resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+        glowColor: { value: new THREE.Color(0x00ffcc) }
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 glowColor;
+        uniform float time;
+        uniform vec2 resolution;
+        
+        varying vec2 vUv;
+        
+        void main() {
+          vec2 uv = vUv;
+          uv -= 0.5;
+          uv *= 2.0;
+          
+          // Create a radial pattern that pulsates
+          float dist = length(uv);
+          float pattern = sin(dist * 5.0 + time) * 0.5 + 0.5;
+          
+          // Add some noise for organic feel
+          float noise = sin(uv.x * 10.0 + time) * sin(uv.y * 10.0 + time * 0.5);
+          
+          // Create a glow effect with color gradient
+          float glow = 1.0 - pow(dist, 2.0) * 0.8;
+          glow *= pattern;
+          glow += noise * 0.1;
+          
+          // Create neural connection pattern
+          float connections = sin(uv.x * 20.0 + time) * sin(uv.y * 20.0 + time * 0.7) * 0.5 + 0.5;
+          
+          // Combine effects
+          float final = glow * connections;
+          final = clamp(final, 0.0, 1.0);
+          
+          gl_FragColor = vec4(glowColor * final, 1.0);
+        }
+      `
+    };
+    
+    // Create a full-screen quad to display the neural network
+    const neuralMaterial = new THREE.ShaderMaterial({
+      uniforms: neuralShader.uniforms,
+      vertexShader: neuralShader.vertexShader,
+      fragmentShader: neuralShader.fragmentShader,
+      transparent: true
+    });
+    
+    const neuralGeometry = new THREE.PlaneGeometry(2, 2);
+    const neuralMesh = new THREE.Mesh(neuralGeometry, neuralMaterial);
+    scene.add(neuralMesh);
+    
+    // Create nodes that represent neural elements
+    const nodeCount = 200;
+    const nodes = [];
+    
+    for (let i = 0; i < nodeCount; i++) {
+      const node = new THREE.Mesh(
+        new THREE.SphereGeometry(0.05, 16, 16),
+        new THREE.MeshBasicMaterial({ color: 0x00ffcc })
+      );
+      
+      // Random position within a sphere
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.random() * Math.PI;
+      const radius = Math.random() * 2 + 0.5;
+      
+      node.position.x = radius * Math.sin(phi) * Math.cos(theta);
+      node.position.y = radius * Math.sin(phi) * Math.sin(theta);
+      node.position.z = radius * Math.cos(phi);
+      
+      // Add velocity for movement
+      node.velocity = new THREE.Vector3(
+        (Math.random() - 0.5) * 0.005,
+        (Math.random() - 0.5) * 0.005,
+        (Math.random() - 0.5) * 0.005
+      );
+      
+      node.scale.set(0.01, 0.01, 0.01);
+      scene.add(node);
+      nodes.push(node);
+    }
+    
+    // Create connections between nodes
+    const connections = [];
+    const connectionMaterial = new THREE.LineBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.2 });
+    
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        // Connect nodes with probability based on distance
+        const dist = nodes[i].position.distanceTo(nodes[j].position);
+        if (dist < 1.5) {
+          const geometry = new THREE.BufferGeometry().setFromPoints([
+            nodes[i].position.clone(),
+            nodes[j].position.clone()
+          ]);
+          
+          const connection = new THREE.Line(geometry, connectionMaterial);
+          connection.material.uniforms = {
+            time: { value: 0 }
+          };
+          
+          connections.push(connection);
+          scene.add(connection);
+        }
+      }
+    }
+    
+    // Handle window resize
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+    
+    // Animation loop
+    const clock = new THREE.Clock();
+    function animate() {
+      requestAnimationFrame(animate);
+      
+      const time = clock.getElapsedTime();
+      
+      // Update neural mesh time
+      neuralMaterial.uniforms.time.value = time;
+      
+      // Update node positions and scale
+      nodes.forEach(node => {
+        // Move nodes with some randomness
+        node.position.add(node.velocity);
+        
+        // Bounce off boundaries
+        if (Math.abs(node.position.x) > 3) {
+          node.velocity.x *= -0.9;
+        }
+        if (Math.abs(node.position.y) > 3) {
+          node.velocity.y *= -0.9;
+        }
+        if (Math.abs(node.position.z) > 3) {
+          node.velocity.z *= -0.9;
+        }
+        
+        // Add some pulsing effect
+        const pulse = Math.sin(time * 3 + node.position.length()) * 0.02 + 0.01;
+        node.scale.set(pulse, pulse, pulse);
+      });
+      
+      // Update connection positions
+      connections.forEach(connection => {
+        connection.geometry.attributes.position.array[0] = connection.geometry.attributes.position.array[0];
+        connection.geometry.attributes.position.array[1] = connection.geometry.attributes.position.array[1];
+        connection.geometry.attributes.position.array[2] = connection.geometry.attributes.position.array[2];
+        connection.geometry.attributes.position.array[3] = connection.geometry.attributes.position.array[3];
+        connection.geometry.attributes.position.array[4] = connection.geometry.attributes.position.array[4];
+        connection.geometry.attributes.position.array[5] = connection.geometry.attributes.position.array[5];
+        connection.geometry.attributes.position.needsUpdate = true;
+      });
+      
+      renderer.render(scene, camera);
+    }
+    
+    animate();
+  </script>
+</body>
+</html>

@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEON QUANTUM // DEMO</title>
+    <style>
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            background-color: #000; 
+            font-family: 'Courier New', Courier, monospace; 
+        }
+        canvas { 
+            display: block; 
+        }
+        #ui {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: #f0f;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            font-size: 9px;
+            pointer-events: none;
+            text-shadow: 0 0 8px #f0f;
+            opacity: 0.7;
+        }
+    </style>
+</head>
+<body>
+    <div id="ui">Quantum.State: Oscillating // Protocol: Neon_Quantum</div>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        const vertexShader = `
+            varying vec3 vColor;
+            varying float vOpacity;
+            uniform float uTime;
+            uniform float uSize;
+
+            // Improved noise function
+            float noise(vec3 p) {
+                return fract(sin(dot(p, vec3(12.9898, 78.233, 45.164))) * 43758.5453);
+            }
+
+            void main() {
+                vec3 pos = position;
+                
+                // Quantum field distortion
+                float freq = 0.02;
+                float time = uTime * 0.5;
+                pos.x += sin(pos.y * freq + time) * 0.5;
+                pos.y += cos(pos.x * freq + time) * 0.3;
+                pos.z += sin(pos.x * freq * 0.7 + time * 1.3) * 0.4;
+                
+                // Quantum tunneling effect
+                float tunnel = noise(pos * 0.3 + time * 0.2) * 2.0 - 1.0;
+                pos += normal * tunnel * 0.8;
+
+                // Phase modulation
+                float phase = sin(uTime * 0.7 + length(pos) * 0.1) * 0.5 + 0.5;
+                pos *= 1.0 + phase * 0.3;
+
+                vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+                gl_PointSize = uSize * (200.0 / -mvPosition.z) * (1.0 + tunnel * 0.3);
+                gl_Position = projectionMatrix * mvPosition;
+
+                // Quantum color palette
+                float hue = mod(length(pos) * 0.1 + uTime * 0.1, 1.0);
+                vColor = vec3(
+                    sin(hue * 6.28318 + 0.0) * 0.5 + 0.5,
+                    sin(hue * 6.28318 + 2.094) * 0.5 + 0.5,
+                    sin(hue * 6.28318 + 4.188) * 0.5 + 0.5
+                );
+                
+                // Quantum opacity modulation
+                vOpacity = smoothstep(0.0, 1.0, abs(tunnel));
+            }
+        `;
+
+        const fragmentShader = `
+            varying vec3 vColor;
+            varying float vOpacity;
+
+            void main() {
+                vec2 coord = gl_PointCoord - vec2(0.5);
+                float dist = length(coord);
+                
+                if (dist > 0.5) discard;
+                
+                // Quantum glow effect
+                float alpha = 1.0 - smoothstep(0.0, 0.5, dist);
+                float pulse = sin(gl_FragCoord.y * 0.1 + gl_FragCoord.x * 0.1 + uTime * 2.0) * 0.3 + 0.7;
+                
+                gl_FragColor = vec4(vColor * pulse, alpha * vOpacity);
+            }
+        `;
+
+        class Demo {
+            constructor() {
+                this.scene = new THREE.Scene();
+                this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+                this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+                this.clock = new THREE.Clock();
+                
+                this.init();
+            }
+
+            init() {
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                document.body.appendChild(this.renderer.domElement);
+
+                this.camera.position.z = 20;
+
+                // Create Geometry: A fractal-like sphere with many points
+                const geometry = new THREE.SphereGeometry(8, 128, 128);
+                const positions = geometry.attributes.position;
+                const count = positions.count;
+                
+                // Reduce points for better performance
+                const newPositions = [];
+                for (let i = 0; i < count; i += 3) {
+                    if (Math.random() > 0.7) {
+                        newPositions.push(positions.getX(i), positions.getY(i), positions.getZ(i));
+                    }
+                }
+                
+                const reducedGeometry = new THREE.BufferGeometry();
+                reducedGeometry.setAttribute('position', new THREE.Float32BufferAttribute(newPositions, 3));
+                
+                this.material = new THREE.ShaderMaterial({
+                    uniforms: {
+                        uTime: { value: 0 },
+                        uSize: { value: 3.0 }
+                    },
+                    vertexShader,
+                    fragmentShader,
+                    transparent: true,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false
+                });
+
+                this.points = new THREE.Points(reducedGeometry, this.material);
+                this.scene.add(this.points);
+
+                // Quantum particles background
+                const particleCount = 2000;
+                const particleGeometry = new THREE.BufferGeometry();
+                const particlePositions = new Float32Array(particleCount * 3);
+                
+                for (let i = 0; i < particleCount; i++) {
+                    particlePositions[i * 3] = (Math.random() - 0.5) * 100;
+                    particlePositions[i * 3 + 1] = (Math.random() - 0.5) * 100;
+                    particlePositions[i * 3 + 2] = (Math.random() - 0.5) * 100;
+                }
+                
+                particleGeometry.setAttribute('position', new THREE.Float32BufferAttribute(particlePositions, 3));
+                const particleMaterial = new THREE.PointsMaterial({
+                    color: 0x00ffff,
+                    size: 0.2,
+                    transparent: true,
+                    opacity: 0.6
+                });
+                
+                this.particles = new THREE.Points(particleGeometry, particleMaterial);
+                this.scene.add(this.particles);
+
+                window.addEventListener('resize', () => this.onResize());
+                this.animate();
+            }
+
+            onResize() {
+                this.camera.aspect = window.innerWidth / window.innerHeight;
+                this.camera.updateProjectionMatrix();
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+            }
+
+            animate() {
+                requestAnimationFrame(() => this.animate());
+                const elapsed = this.clock.getElapsedTime();
+
+                this.material.uniforms.uTime.value = elapsed;
+                
+                // Quantum rotation
+                this.points.rotation.x = elapsed * 0.1;
+                this.points.rotation.y = elapsed * 0.15;
+                
+                // Particle system animation
+                this.particles.rotation.y = -elapsed * 0.03;
+                this.particles.rotation.x = elapsed * 0.02;
+
+                // Camera quantum drift
+                this.camera.position.x = Math.sin(elapsed * 0.2) * 10;
+                this.camera.position.y = Math.cos(elapsed * 0.3) * 8;
+                this.camera.lookAt(0, 0, 0);
+
+                this.renderer.render(this.scene, this.camera);
+            }
+        }
+
+        new Demo();
+    </script>
+</body>
+</html>

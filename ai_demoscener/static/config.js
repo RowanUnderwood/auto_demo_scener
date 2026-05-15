@@ -53,6 +53,7 @@ function populateForm(c) {
   setChecked('showTitleCard',      c.display?.show_title_card       ?? true);
   setChecked('showProgressBar',    c.display?.show_progress_bar     ?? true);
   setChecked('showTitleCardStats', c.display?.show_title_card_stats ?? true);
+  setVal('statsOverlayFontSize',   c.display?.title_card_stats_font_size ?? 11);
   setVal('titleCardSecs',          c.display?.title_card_seconds    ?? 4);
   setVal('palette',                c.display?.palette ?? 'amber_crt');
   setChecked('showStatusBar',      c.display?.show_status_bar       ?? true);
@@ -105,8 +106,9 @@ async function saveSection(section) {
       cfg.display.display_chars_per_sec = +getVal('displayCharsPerSec');
       cfg.display.show_title_card        = getChecked('showTitleCard');
       cfg.display.show_progress_bar      = getChecked('showProgressBar');
-      cfg.display.show_title_card_stats  = getChecked('showTitleCardStats');
-      cfg.display.title_card_seconds     = +getVal('titleCardSecs');
+      cfg.display.show_title_card_stats      = getChecked('showTitleCardStats');
+      cfg.display.title_card_stats_font_size = +getVal('statsOverlayFontSize');
+      cfg.display.title_card_seconds         = +getVal('titleCardSecs');
       cfg.display.palette               = getVal('palette');
       cfg.display.show_status_bar       = getChecked('showStatusBar');
       cfg.display.show_retry_messages   = getChecked('showRetry');

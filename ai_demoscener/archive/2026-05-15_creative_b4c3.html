@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Fractal Universe</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Scene setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Fractal generator
+        function generateFractal(levels, position) {
+            const group = new THREE.Group();
+            for (let i = 0; i < levels; i++) {
+                for (let j = 0; j < levels * 2; j++) {
+                    const geometry = new THREE.BufferGeometry().setFromPoints([
+                        new THREE.Vector3(1, 0, -2).applyQuaternion(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), i * Math.PI / levels)),
+                        new THREE.Vector3(1, 0, -2).applyQuaternion(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), (i + 1) * Math.PI / levels)),
+                        position
+                    ]);
+                    const line = new THREE.Line(geometry, new THREE.LineBasicMaterial({ color: 0xffffff }));
+                    group.add(line);
+                }
+            }
+            return group;
+        }
+
+        // Create fractal universe
+        for (let i = 0; i < 10; i++) {
+            const fractal = generateFractal(Math.floor(Math.random() * 4) + 3, new THREE.Vector3(
+                Math.cos(i * 0.5) * 2,
+                Math.sin(i * 0.3) * 2,
+                Math.cos(i * 0.7) * -5
+            ));
+            fractal.rotation.y = i;
+            scene.add(fractal);
+        }
+
+        // Add particle field effect
+        const particlesGeometry = new THREE.BufferGeometry();
+        const particlesCount = 10000;
+        const positions = new Float32Array(particlesCount * 3);
+        for (let i = 0; i < particlesCount; i++) {
+            positions[i * 3] = (Math.random() - 0.5) * 20;
+            positions[i * 3 + 1] = Math.random() * 5;
+            positions[i * 3 + 2] = (Math.random() - 0.5) * 20;
+        }
+        particlesGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        const particlesMaterial = new THREE.PointsMaterial({
+            size: 0.1,
+            color: 0xffffff,
+            transparent: true,
+            opacity: Math.random(),
+            sizeAttenuation: true
+        });
+        const particleField = new THREE.Points(particlesGeometry, particlesMaterial);
+        scene.add(particleField);
+
+        // Add light
+        const ambientLight = new THREE.AmbientLight(0x404040);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+        directionalLight.position.set(1, 1, 1);
+        scene.add(directionalLight);
+
+        // Camera position
+        camera.position.z = 5;
+
+        // Animation loop with rotating fractals and particles
+        function animate() {
+            requestAnimationFrame(animate);
+            for (let i = 0; i < scene.children.length; i++) {
+                if (scene.children[i] instanceof THREE.Group) {
+                    scene.children[i].rotation.y += 0.01;
+                }
+            }
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>

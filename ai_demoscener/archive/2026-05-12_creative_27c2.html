@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ethereal Recursion // Demoscene</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script id="vertexShader" type="x-shader/x-vertex">
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    </script>
+    <script id="fragmentShader" type="x-shader/x-fragment">
+        uniform float uTime;
+        uniform vec2 uResolution;
+        varying vec2 vUv;
+
+        #define MAX_STEPS 100
+        #define SURFACE_DIST 0.001
+        #define MAX_DIST 20.0
+
+        mat2 rot(float a) {
+            float s = sin(a), c = cos(a);
+            return mat2(c, -s, s, c);
+        }
+
+        // Smooth minimum for organic blending
+        float smin(float a, float b, float k) {
+            float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+            return mix(b, a, h) - k * h * (1.0 - h);
+        }
+
+        // Fractal SDF
+        float map(vec3 p) {
+            vec3 p_orig = p;
+            float scale = 1.0;
+            
+            // Space folding
+            for(int i = 0; i < 5; i++) {
+                p = abs(p) - 0.5;
+                p.xy *= rot(uTime * 0.2 + float(i));
+                p.xz *= rot(uTime * 0.1);
+                float r2 = dot(p, p);
+                float k = 1.5 / clamp(r2, 0.2, 1.0);
+                p *= k;
+                scale *= k;
+            }
+
+            // Shape base
+            float sphere = length(p) - 0.3;
+            float box = max(abs(p.x), max(abs(p.y), abs(p.z))) - 0.1;
+            
+            return smin(sphere, box, 0.2) / scale;
+        }
+
+        vec3 getNormal(vec3 p) {
+            vec2 e = vec2(0.01, 0);
+            float d = map(p);
+            vec3 n = d - vec3(
+                map(p - e.xyy),
+                map(p - e.yxy),
+                map(p - e.yyx)
+            );
+            return normalize(n);
+        }
+
+        void main() {
+            vec2 uv = (gl_FragCoord.xy - 0.5 * uResolution.xy) / min(uResolution.y, uResolution.x);
+            
+            // Camera setup
+            vec3 ro = vec3(0, 0, -3.0); // Ray Origin
+            vec3 rd = normalize(vec3(uv, 1.5)); // Ray Direction
+            
+            // Camera rotation
+            ro.xz *= rot(uTime * 0.3);
+            rd.xz *= rot(uTime * 0.3);
+
+            float dO = 0.0;
+            int steps = 0;
+            for(int i = 0; i < MAX_STEPS; i++) {
+                vec3 p = ro + rd * dO;
+                float dS = map(p);
+                dO += dS;
+                steps = i;
+                if(dO > MAX_DIST || abs(dS) < SURFACE_DIST) break;
+            }
+
+            vec3 col = vec3(0.0);
+
+            if(dO < MAX_DIST) {
+                vec3 p = ro + rd * dO;
+                vec3 n = getNormal(p);
+                vec3 r = reflect(rd, n);
+
+                // Lighting
+                float diff = dot(n, normalize(vec3(1, 2, -3))) * 0.5 + 0.5;
+                float spec = pow(max(dot(r, normalize(vec3(0, 5, -2))), 0.0), 32.0);
+                
+                // Color Palette: Neon Cyberpunk (Cyan/Purple/Gold)
+                vec3 baseCol = mix(vec3(0.1, 0.0, 0.3), vec3(0.0, 0.8, 0.9), sin(uTime * 0.5 + p.z) * 0.5 + 0.5);
+                baseCol = mix(baseCol, vec3(1.0, 0.8, 0.2), cos(p.x * 5.0 + uTime) * 0.5 + 0.5);
+
+                col = baseCol * diff + spec;
+                
+                // Ambient occlusion / Depth fog
+                float fog = 1.0 - exp(-dO * 0.2);
+                col *= (1.0 - fog);
+            }
+
+            // Glow effect based on steps/distance
+            float glow = float(steps) / float(MAX_STEPS);
+            col += vec3(0.2, 0.05, 0.4) * glow * 1.5;
+            
+            // Post-process: Vignette and Grain
+            float vignette = smoothstep(1.5, 0.5, length(uv));
+            col *= vignette;
+            
+            // Glitch flicker
+            float glitch = sin(uTime * 50.0) * 0.02 * step(0.98, sin(uTime * 2.0));
+            col += glitch;
+
+            gl_FragColor = vec4(col, 1.0);
+        }
+    </script>
+    <script>
+        let scene, camera, renderer, material;
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            const geometry = new THREE.PlaneGeometry(2, 2);
+            material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: { value: 0 },
+                    uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+                },
+                vertexShader: document.getElementById('vertexShader').textContent,
+                fragmentShader: document.getElementById('fragmentShader').textContent
+            });
+
+            const mesh = new THREE.Mesh(geometry, material);
+            scene.add(mesh);
+
+            window.addEventListener('resize', onWindowResize, false);
+            animate();
+        }
+
+        function onWindowResize() {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            material.uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            material.uniforms.uTime.value += 0.015;
+            renderer.render(scene, camera);
+        }
+
+        init();
+    </script>
+</body>
+</html>

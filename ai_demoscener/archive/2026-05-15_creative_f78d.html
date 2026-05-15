@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chrono Weave</title>
+<style>
+html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
+canvas { display: block; width: 100%; height: 100%; }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x000000, 0.06);
+
+const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.1, 100);
+camera.position.set(0, 0, 4.5);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+document.body.appendChild(renderer.domElement);
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 1.8, 0.6, 0.82);
+composer.addPass(bloom);
+
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+const masterGain = audioCtx.createGain();
+masterGain.gain.value = 0.12;
+masterGain.connect(audioCtx.destination);
+
+const BPM = 128;
+const beatInterval = 60 / BPM;
+let beatTime = -beatInterval;
+
+function triggerBeat(t) {
+  const now = audioCtx.currentTime;
+  const kick = audioCtx.createOscillator();
+  const kGain = audioCtx.createGain();
+  kick.type = 'sine';
+  kick.frequency.setValueAtTime(140, now);
+  kick.frequency.exponentialRampToValueAtTime(0.01, now + 0.18);
+  kGain.gain.setValueAtTime(1.0, now);
+  kGain.gain.exponentialRampToValueAtTime(0.01, now + 0.18);
+  kick.connect(kGain).connect(masterGain);
+  kick.start(now);
+  kick.stop(now + 0.19);
+
+  if (Math.random() > 0.3) {
+    const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.04, audioCtx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * 0.15;
+    const src = audioCtx.createBufferSource();
+    src.buffer = buf;
+    const hGain = audioCtx.createGain();
+    hGain.gain.value = 0.4;
+    src.connect(hGain).connect(masterGain);
+    src.start(now);
+  }
+}
+
+const ribbonVert = `
+uniform float uTime;
+varying vec2 vUv;
+varying vec3 vNormal;
+varying vec3 vViewPos;
+void main() {
+  vUv = uv;
+  vec3 pos = position;
+  float twist = sin(pos.x * 3.0 + uTime * 1.5) * 0.25;
+  pos.y += twist;
+  pos.z += cos(pos.x * 2.0 + uTime * 2.0) * 0.18;
+  vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
+  vViewPos = mvPos.xyz;
+  vNormal = normalize(normalMatrix * normal);
+  gl_Position = projectionMatrix * mvPos;
+}`;
+
+const ribbonFrag = `
+uniform float uTime;
+varying vec2 vUv;
+varying vec3 vNormal;
+varying vec3 vViewPos;
+void main() {
+  vec3 viewDir = normalize(-vViewPos);
+  float fresnel = pow(1.0 - max(dot(viewDir, vNormal), 0.0), 2.5);
+  float pattern = sin(vUv.x * 25.0 + uTime * 4.0) * 0.5 + 0.5;
+  vec3 col1 = vec3(0.0, 0.6, 1.0);
+  vec3 col2 = vec3(1.0, 0.1, 0.4);
+  vec3 col3 = vec3(0.2, 1.0, 0.7);
+  vec3 col = mix(col1, col2, pattern);
+  col = mix(col, col3, fresnel);
+  float alpha = 0.75 + 0.25 * sin(uTime * 2.0 + vUv.y * 8.0);
+  gl_FragColor = vec4(col, alpha);
+}`;
+
+const coreVert = `
+uniform float uBeat;
+varying vec3 vNormal;
+varying vec3 vViewPos;
+void main() {
+  vNormal = normalize(normalMatrix * normal);
+  vec3 pos = position;
+  float pulse = 1.0 + uBeat * 0.25;
+  pos *= pulse;
+  vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
+  vViewPos = mvPos.xyz;
+  gl_Position = projectionMatrix * mvPos;
+}`;
+
+const coreFrag = `
+uniform float uBeat;
+varying vec3 vNormal;
+varying vec3 vViewPos;
+void main() {
+  vec3 viewDir = normalize(-vViewPos);
+  float fresnel = pow(1.0 - max(dot(viewDir, vNormal), 0.0), 1.8);
+  vec3 col = vec3(1.0, 0.35, 0.15) * (0.6 + uBeat * 0.4);
+  col += vec3(0.05, 0.15, 0.4) * fresnel;
+  float grid = step(0.6, fract(vNormal.x * 8.0 + uBeat * 3.0)) *
+               step(0.6, fract(vNormal.y * 8.0 + uBeat * 3.0));
+  col += grid * 0.25;
+  gl_FragColor = vec4(col, 0.95);
+}`;
+
+const partVert = `
+attribute float aSize;
+attribute float aSeed;
+uniform float uTime;
+uniform float uBeat;
+varying float vAlpha;
+void main() {
+  vec3 pos = position;
+  float t = uTime * 0.4 + aSeed * 6.28;
+  pos.x += sin(t) * 0.6;
+  pos.y += cos(t * 1.4) * 0.5;
+  pos.z += sin(t * 0.8) * 0.5;
+  pos += normalize(pos) * uBeat * 0.15;
+  vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
+  gl_Position = projectionMatrix * mvPos;
+  gl_PointSize = aSize * (280.0 / -mvPos.z) * (1.0 + uBeat * 0.4);
+  vAlpha = 0.25 + 0.75 * sin(t + uTime * 1.5);
+}`;
+
+const partFrag = `
+varying float vAlpha;
+void main() {
+  float d = length(gl_PointCoord - 0.5);
+  if(d > 0.5) discard;
+  float alpha = smoothstep(0.5, 0.0, d) * vAlpha;
+  gl_FragColor = vec4(0.35, 0.75, 1.0, alpha * 0.55);
+}`;
+
+const ribbonGeo = new THREE.PlaneGeometry(7, 2.5, 64, 16);
+const ribbonMat = new THREE.ShaderMaterial({
+  uniforms: { uTime: { value: 0 } },
+  vertexShader: ribbonVert,
+  fragmentShader: ribbonFrag,
+  transparent: true,
+  side: THREE.DoubleSide,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false
+});
+
+const ribbons = new THREE.Group();
+for (let i = 0; i < 4; i++) {
+  const r = new THREE.Mesh(ribbonGeo, ribbonMat);
+  r.rotation.z = (Math.PI / 4) * i;
+  ribbons.add(r);
+}
+scene.add(ribbons);
+
+const coreGeo = new THREE.IcosahedronGeometry(0.75, 2);
+const coreMat = new THREE.ShaderMaterial({
+  uniforms: { uBeat: { value: 0 } },
+  vertexShader: coreVert,
+  fragmentShader: coreFrag,
+  transparent: true,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false
+});
+const core = new THREE.Mesh(coreGeo, coreMat);
+scene.add(core);
+
+const pCount = 2500;
+const pGeo = new THREE.BufferGeometry();
+const pPos = new Float32Array(pCount * 3);
+const pSize = new Float32Array(pCount);
+const pSeed = new Float32Array(pCount);
+for (let i = 0; i < pCount; i++) {
+  const theta = Math.random() * Math.PI * 2;
+  const phi = Math.acos(2 * Math.random() - 1);
+  const r = 1.8 + Math.random() * 3.5;
+  pPos[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+  pPos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+  pPos[i * 3 + 2] = r * Math.cos(phi);
+  pSize[i] = Math.random() * 2.2 + 0.4;
+  pSeed[i] = Math.random();
+}
+pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+pGeo.setAttribute('aSize', new THREE.BufferAttribute(pSize, 1));
+pGeo.setAttribute('aSeed', new THREE.BufferAttribute(pSeed, 1));
+const pMat = new THREE.ShaderMaterial({
+  uniforms: { uTime: { value: 0 }, uBeat: { value: 0 } },
+  vertexShader: partVert,
+  fragmentShader: partFrag,
+  transparent: true,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false
+});
+const particles = new THREE.Points(pGeo, pMat);
+scene.add(particles);
+
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+});
+
+document.addEventListener('click', () => { if (audioCtx.state === 'suspended') audioCtx.resume(); }, { once: true });
+
+const clock = new THREE.Clock();
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+
+  if (t - beatTime >= beatInterval) {
+    beatTime = t;
+    triggerBeat(t);
+  }
+
+  const beatPhase = (t - beatTime) / beatInterval;
+  const beatPulse = Math.exp(-beatPhase * 4.5);
+
+  ribbonMat.uniforms.uTime.value = t;
+  coreMat.uniforms.uBeat.value = beatPulse;
+  pMat.uniforms.uTime.value = t;
+  pMat.uniforms.uBeat.value = beatPulse;
+
+  ribbons.rotation.z = t * 0.15;
+  ribbons.rotation.x = Math.sin(t * 0.2) * 0.1;
+  core.rotation.y = t * 0.4;
+  core.rotation.z = t * 0.25;
+  particles.rotation.y = -t * 0.06;
+
+  camera.position.x = Math.sin(t * 0.12) * 0.6;
+  camera.position.y = Math.cos(t * 0.18) * 0.4;
+  camera.lookAt(0, 0, 0);
+
+  composer.render();
+}
+
+animate();
+</script>
+</body>
+</html>

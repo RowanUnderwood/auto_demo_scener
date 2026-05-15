@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Three.js Rubik's Cube</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #111; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+{
+    "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+// Configuration
+const CUBIE_SIZE = 0.95;
+const ANIM_DURATION = 400; // ms
+const MOVE_INTERVAL = 1000; // ms
+const SCRAMBLE_STEPS = 20;
+
+// Scene Setup
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+scene.add(ambientLight);
+const pointLight = new THREE.PointLight(0xffffff, 1);
+pointLight.position.set(5, 5, 5);
+scene.add(pointLight);
+
+// Cube Creation
+const cubies = [];
+const colors = [
+    0xff0000, // +X Red
+    0xffa500, // -X Orange
+    0xffffff, // +Y White
+    0xffff00, // -Y Yellow
+    0x00ff00, // +Z Green
+    0x0000ff  // -Z Blue
+];
+
+function createCube() {
+    const geometry = new THREE.BoxGeometry(CUBIE_SIZE, CUBIE_SIZE, CUBIE_SIZE);
+    for (let x = -1; x <= 1; x++) {
+        for (let y = -1; y <= 1; y++) {
+            for (let z = -1; z <= 1; z++) {
+                // Create materials for each face based on position
+                const materials = colors.map((color, i) => {
+                    // Check if this face is an outer face
+                    let isVisible = false;
+                    if (i === 0 && x === 1) isVisible = true;
+                    if (i === 1 && x === -1) isVisible = true;
+                    if (i === 2 && y === 1) isVisible = true;
+                    if (i === 3 && y === -1) isVisible = true;
+                    if (i === 4 && z === 1) isVisible = true;
+                    if (i === 5 && z === -1) isVisible = true;
+                    return new THREE.MeshPhongMaterial({ color: isVisible ? color : 0x000000 });
+                });
+
+                const cubie = new THREE.Mesh(geometry, materials);
+                cubie.position.set(x, y, z);
+                scene.add(cubie);
+                cubies.push(cubie);
+            }
+        }
+    }
+}
+createCube();
+
+// Movement Logic
+let moveQueue = [];
+let isAnimating = false;
+let lastMoveTime = 0;
+
+function generateScramble() {
+    const axes = ['x', 'y', 'z'];
+    const layers = [-1, 0, 1];
+    const dirs = [Math.PI / 2, -Math.PI / 2];
+    for (let i = 0; i < SCRAMBLE_STEPS; i++) {
+        moveQueue.push({
+            axis: axes[Math.floor(Math.random() * 3)],
+            layer: layers[Math.floor(Math.random() * 3)],
+            angle: dirs[Math.floor(Math.random() * 2)]
+        });
+    }
+    // Add reverse moves for solving
+    const solveMoves = [...moveQueue].reverse().map(m => ({
+        axis: m.axis,
+        layer: m.layer,
+        angle: -m.angle
+    }));
+    moveQueue = moveQueue.concat(solveMoves);
+}
+generateScramble();
+
+function performMove(move) {
+    isAnimating = true;
+    const pivot = new THREE.Group();
+    scene.add(pivot);
+
+    // Find cubies on the target layer
+    const movingCubies = cubies.filter(c => Math.round(c.position[move.axis]) === move.layer);
+    movingCubies.forEach(c => pivot.attach(c));
+
+    const startQuaternion = pivot.quaternion.clone();
+    const targetRotation = new THREE.Quaternion().setFromAxisAngle(
+        new THREE.Vector3(
+            move.axis === 'x' ? 1 : 0,
+            move.axis === 'y' ? 1 : 0,
+            move.axis === 'z' ? 1 : 0
+        ),
+        move.angle
+    );
+    const endQuaternion = new THREE.Quaternion().multiplyQuaternions(startQuaternion, targetRotation);
+
+    let startTime = null;
+
+    function animateMove(timestamp) {
+        if (!startTime) startTime = timestamp;
+        const progress = Math.min((timestamp - startTime) / ANIM_DURATION, 1);
+        
+        // Use Slerp for smooth rotation
+        pivot.quaternion.slerpQuaternions(startQuaternion, endQuaternion, progress);
+
+        if (progress < 1) {
+            requestAnimationFrame(animateMove);
+        } else {
+            // Cleanup: Re-attach cubies to scene and update their world transforms
+            const tempArray = [...pivot.children];
+            tempArray.forEach(c => {
+                scene.attach(c);
+            });
+            scene.remove(pivot);
+            isAnimating = false;
+            lastMoveTime = performance.now();
+        }
+    }
+    requestAnimationFrame(animateMove);
+}
+
+// Camera Orbiting
+let angle = 0;
+function updateCamera() {
+    angle += 0.005;
+    const radius = 6;
+    camera.position.x = Math.sin(angle) * radius;
+    camera.position.z = Math.cos(angle) * radius;
+    camera.position.y = 4;
+    camera.lookAt(0, 0, 0);
+}
+
+// Main Loop
+function animate(time) {
+    requestAnimationFrame(animate);
+    updateCamera();
+
+    if (!isAnimating && moveQueue.length > 0) {
+        if (time - lastMoveTime >= MOVE_INTERVAL) {
+            const nextMove = moveQueue.shift();
+            performMove(nextMove);
+        }
+    }
+
+    renderer.render(scene, camera);
+}
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+requestAnimationFrame(animate);
+</script>
+</body>
+</html>

@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flowing Shader Curtains</title>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { overflow: hidden; background-color: #050515; }
+    canvas { display: block; }
+</style>
+</head>
+<body>
+
+<script type="importmap">
+{
+    "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+    }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+// --- Scene Setup ---
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x050515); // Very deep navy sky
+scene.fog = new THREE.FogExp2(0x050515, 0.02);
+
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 200);
+camera.position.set(0, 3, 40);
+camera.lookAt(0, -2, -20);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+// --- Stars (THREE.Points) ---
+const starCount = 3000;
+const starGeo = new THREE.BufferGeometry();
+const starPos = new Float32Array(starCount * 3);
+for (let i = 0; i < starCount; i++) {
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(Math.random() * 2 - 1);
+    const r = 80 + Math.random() * 40;
+    starPos[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+    starPos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+    starPos[i * 3 + 2] = -r * Math.cos(phi); // Push stars far back
+}
+starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.5, transparent: true, opacity: 0.8 });
+scene.add(new THREE.Points(starGeo, starMat));
+
+// --- Jagged Mountains Silhouette ---
+const mountainGeo = new THREE.PlaneGeometry(120, 30, 64, 1);
+const mVerts = mountainGeo.attributes.position;
+for (let i = 0; i < mVerts.count; i++) {
+    const x = mVerts.getX(i);
+    // Jagged profile using overlapping sine waves
+    let y = Math.sin(x * 0.15) * 3 + Math.sin(x * 0.4 + 2) * 1.5 + Math.sin(x * 1.2 + 5) * 0.8;
+    // Only keep the upper portion to create a silhouette peak
+    y = Math.min(y, 4); 
+    mVerts.setY(i, y - 6); // Lower than horizon
+}
+mountainGeo.computeVertexNormals();
+const mountainMat = new THREE.MeshBasicMaterial({ color: 0x0a0a25, side: THREE.DoubleSide });
+const mountains = new THREE.Mesh(mountainGeo, mountainMat);
+mountains.position.z = -25;
+scene.add(mountains);
+
+// --- Curtain Shader Material ---
+const curtainVertexShader = `
+    varying vec2 vUv;
+    void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+`;
+
+const curtainFragmentShader = `
+    uniform float uTime;
+    uniform float uOffset; // Each curtain gets a unique phase offset
+    varying vec2 vUv;
+
+    // Value Noise
+    float hash(float n) { return fract(sin(n) * 43758.5453123); }
+    
+    float noise(vec2 x) {
+        vec2 p = floor(x);
+        vec2 f = fract(x);
+        f = f * f * (3.0 - 2.0 * f);
+        float n = p.x + p.y * 57.0;
+        return mix(mix(hash(n), hash(n + 1.0), f.x), 
+                   mix(hash(n + 57.0), hash(n + 58.0), f.x), f.y);
+    }
+
+    // 2-Octave Noise (FBM)
+    float fbm(vec2 p) {
+        float val = 0.0;
+        val += noise(p) * 0.5;
+        p *= 2.01;
+        val += noise(p) * 0.25;
+        return val;
+    }
+
+    void main() {
+        vec2 uv = vUv;
+        
+        // Sideways scrolling time for the curtains
+        float t = uTime * 0.4 + uOffset;
+
+        // Modulate UVs with noise to create organic vertical flow
+        vec2 p = uv * vec2(3.0, 1.5);
+        float nVal = fbm(p + vec2(t, 0.0));
+        
+        // Create vertical bands by shifting X based on the noise value
+        vec2 bandUv = uv;
+        bandUv.x += nVal * 0.8; 
+
+        // Sine wave to create distinct bright/dark vertical stripes
+        float bands = sin(bandUv.y * 12.0 + nVal * 4.0);
+        
+        // Base Gradient: Bottom (Lime) -> Middle (Teal) -> Top (Violet)
+        vec3 colBottom = vec3(0.2, 1.0, 0.05);   // Bright Lime Green
+        vec3 colMid    = vec3(0.0, 0.95, 1.0);   // Electric Teal
+        vec3 colTop    = vec3(0.4, 0.02, 0.7);   // Deep Violet
+        
+        vec3 color = mix(colBottom, colMid, smoothstep(0.0, 0.5, uv.y));
+        color = mix(color, colTop, smoothstep(0.5, 1.0, uv.y));
+
+        // Modulate base color with the vertical bands
+        float bandMask = (bands + 1.0) * 0.5; // Normalize to [0, 1]
+        vec3 brightColor = mix(vec3(0.8), vec3(0.4), uv.y); // Brighter at bottom, dimmer at top
+        color += brightColor * bandMask * 0.6;
+
+        // Occasional Pink Flares (peaks of the noise wave)
+        float flare = smoothstep(0.75, 1.0, sin(nVal * 2.0 + uTime));
+        vec3 pinkFlare = vec3(1.0, 0.0, 0.6); // Pink/Magenta
+        // Flares are more prominent in the middle/lower sections and fade at the very top
+        float flareMask = smoothstep(0.85, 0.4, uv.y) * smoothstep(-0.2, 0.3, bands - 0.6);
+        color += pinkFlare * flare * flareMask;
+
+        // Soft edge fade at the very top (curtain disappearing into sky)
+        float alpha = 1.0 - smoothstep(0.75, 1.0, uv.y);
+        
+        gl_FragColor = vec4(color, alpha * 0.85);
+    }
+`;
+
+// --- Curtain Creation & Placement ---
+const curtainMat = new THREE.ShaderMaterial({
+    vertexShader: curtainVertexShader,
+    fragmentShader: curtainFragmentShader,
+    uniforms: {
+        uTime: { value: 0 },
+        uOffset: { value: 0 }
+    },
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false, // Allow light from behind to pass through slightly for better additive effect
+    side: THREE.DoubleSide
+});
+
+const curtainGeo = new THREE.PlaneGeometry(25, 30, 1, 40);
+
+// Place multiple curtains at varying depths (z) and x positions
+const numCurtains = 7;
+for (let i = 0; i < numCurtains; i++) {
+    const curtain = new THREE.Mesh(curtainGeo, curtainMat.clone());
+    
+    // Distribute across the X axis with some randomness
+    curtain.position.x = (i - numCurtains / 2) * 10 + Math.random() * 5;
+    // Vary depth between -5 and -30 to create parallax layers
+    curtain.position.z = -5 - (i * 4); 
+    // Slight rotation for organic feel
+    curtain.rotation.y = (Math.random() - 0.5) * 0.2;
+    
+    // Set unique offset uniform for each curtain so they don't flow perfectly in sync
+    curtain.material.uniforms.uOffset.value = i * 1.5 + Math.random();
+    
+    scene.add(curtain);
+}
+
+// --- Animation Loop ---
+const clock = new THREE.Clock();
+
+function animate() {
+    requestAnimationFrame(animate);
+    
+    const elapsedTime = clock.getElapsedTime();
+
+    // Update time uniform for all curtains
+    scene.traverse((object) => {
+        if (object.material && object.material.uniforms && object.material.uniforms.uTime) {
+            object.material.uniforms.uTime.value = elapsedTime;
+        }
+    });
+
+    renderer.render(scene, camera);
+}
+
+// --- Resize Handler ---
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+animate();
+</script>
+</body>
+</html>

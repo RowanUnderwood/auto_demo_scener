@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Volumetric Nebula Visualization</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #000;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        canvas {
+            display: block;
+        }
+        .container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        .info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 15px;
+            border-radius: 10px;
+            max-width: 300px;
+            backdrop-filter: blur(5px);
+        }
+        .info h1 {
+            margin-top: 0;
+            font-size: 1.5em;
+            color: #4fc3f7;
+        }
+        .info p {
+            line-height: 1.6;
+            font-size: 0.9em;
+        }
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: white;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 15px;
+            border-radius: 10px;
+            backdrop-filter: blur(5px);
+        }
+        .controls label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 0.9em;
+        }
+        .controls input {
+            width: 200px;
+        }
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 1.5em;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="info">
+            <h1>Volumetric Nebula Visualization</h1>
+            <p>Experience a dynamic cosmic landscape with interactive parallax effects, layered noise patterns, and real-time starfield generation.</p>
+            <p>Move your cursor to explore the nebula from different perspectives. The visualization uses advanced WebGL shaders for realistic volumetric cloud formations.</p>
+        </div>
+        
+        <div class="controls">
+            <label for="density">Nebula Density</label>
+            <input type="range" id="density" min="0.1" max="2.0" step="0.1" value="1.0">
+            
+            <label for="speed">Animation Speed</label>
+            <input type="range" id="speed" min="0.1" max="3.0" step="0.1" value="1.0">
+        </div>
+        
+        <div class="loading" id="loading">Initializing Cosmic Visualization...</div>
+    </div>
+
+    <script>
+        // Main Three.js variables
+        let scene, camera, renderer;
+        let nebulaMesh, starField;
+        let mouseX = 0, mouseY = 0;
+        let windowHalfX = window.innerWidth / 2;
+        let windowHalfY = window.innerHeight / 2;
+        
+        // Shader materials
+        const nebulaMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                time: { value: 0 },
+                mouse: { value: new THREE.Vector2(0, 0) },
+                density: { value: 1.0 },
+                speed: { value: 1.0 }
+            },
+            vertexShader: `
+                varying vec3 vWorldPosition;
+                void main() {
+                    vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+                    vWorldPosition = worldPosition.xyz;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float time;
+                uniform vec2 mouse;
+                uniform float density;
+                uniform float speed;
+                varying vec3 vWorldPosition;
+                
+                // Classic Perlin noise implementation
+                vec4 permute(vec4 x){return mod(((x*34.0)+1.0)*x, 289.0);}
+                vec4 taylorInvSqrt(vec4 r){return 1.79284291400159 - 0.85373472095314 * r;}
+                vec3 fade(vec3 t) {return t*t*t*(t*(t*6.0-15.0)+10.0);}
+                
+                float cnoise(vec3 P){
+                    vec3 Pi0 = floor(P);
+                    vec3 Pi1 = Pi0 + vec3(1.0);
+                    Pi0 = mod(Pi0, 289.0);
+                    Pi1 = mod(Pi1, 289.0);
+                    vec3 Pf0 = fract(P);
+                    vec3 Pf1 = Pf0 - vec3(1.0);
+                    vec4 ix = vec4(Pi0.x, Pi1.x, Pi0.x, Pi1.x);
+                    vec4 iy = vec4(Pi0.yy, Pi1.yy);
+                    vec4 iz0 = Pi0.zzzz;
+                    vec4 iz1 = Pi1.zzzz;
+                    
+                    vec4 ixy = permute(permute(ix) + iy);
+                    vec4 ixy0 = permute(ixy + iz0);
+                    vec4 ixy1 = permute(ixy + iz1);
+                    
+                    vec4 gx0 = ixy0 / 7.0;
+                    vec4 gy0 = fract(gx0 * 0.1031);
+                    gx0 = fract(gx0);
+                    gy0 -= gx0;
+                    
+                    vec4 gz0 = vec4(0.5 + 0.5*cos(ixy0.z + 0.0 + 0.001));
+                    
+                    vec4 gx1 = ixy1 / 7.0;
+                    vec4 gy1 = fract(gx1 * 0.1031);
+                    gx1 = fract(gx1);
+                    gy1 -= gx1;
+                    
+                    vec4 gz1 = vec4(0.5 + 0.5*cos(ixy1.z + 0.0 + 0.001));
+                    
+                    vec3 g000 = vec3(gx0.x,gy0.x,gz0.x);
+                    vec3 g100 = vec3(gx0.y,gy0.y,gz0.y);
+                    vec3 g010 = vec3(gx0.z,gy0.z,gz0.z);
+                    vec3 g110 = vec3(gx0.w,gy0.w,gz0.w);
+                    
+                    vec3 g001 = vec3(gx1.x,gy1.x,gz1.x);
+                    vec3 g101 = vec3(gx1.y,gy1.y,gz1.y);
+                    vec3 g011 = vec3(gx1.z,gy1.z,gz1.z);
+                    vec3 g111 = vec3(gx1.w,gy1.w,gz1.w);
+                    
+                    vec4 norm0 = taylorInvSqrt(vec4(dot(g000, g000), dot(g010, g010), dot(g100, g100), dot(g110, g110)));
+                    g000 *= norm0.x;
+                    g010 *= norm0.y;
+                    g100 *= norm0.z;
+                    g110 *= norm0.w;
+                    
+                    vec4 norm1 = taylorInvSqrt(vec4(dot(g001, g001), dot(g011, g011), dot(g101, g101), dot(g111, g111)));
+                    g001 *= norm1.x;
+                    g011 *= norm1.y;
+                    g101 *= norm1.z;
+                    g111 *= norm1.w;
+                    
+                    float n000 = dot(Pf0, g000);
+                    float n100 = dot(Pf0 - vec3(1.0), g100);
+                    float n010 = dot(Pf0 - vec3(0.0, 1.0), g010);
+                    float n110 = dot(Pf0 - vec3(1.0, 1.0), g110);
+                    
+                    float n001 = dot(Pf0 - vec3(0.0, 0.0, 1.0), g001);
+                    float n101 = dot(Pf0 - vec3(1.0, 0.0, 1.0), g101);
+                    float n011 = dot(Pf0 - vec3(0.0, 1.0, 1.0), g011);
+                    float n111 = dot(Pf0 - vec3(1.0, 1.0, 1.0), g111);
+                    
+                    vec3 fade_xyz = fade(Pf0);
+                    vec4 n_z = mix(vec4(n000, n100, n010, n110), vec4(n001, n101, n011, n111), fade_xyz.z);
+                    vec2 n_yz = mix(n_z.xy, n_z.zw, fade_xyz.y);
+                    float n_xyz = mix(n_yz.x, n_yz.y, fade_xyz.x); 
+                    return 2.2 * n_xyz;
+                }
+                
+                // Fractal Brownian Motion (fBm)
+                float fbm(vec3 p) {
+                    float total = 0.0;
+                    float amplitude = 0.5;
+                    for(int i = 0; i < 6; i++) {
+                        total += amplitude * cnoise(p);
+                        p *= 2.0;
+                        amplitude *= 0.5;
+                    }
+                    return total;
+                }
+                
+                void main() {
+                    // Calculate noise coordinates
+                    vec3 pos = vWorldPosition * density;
+                    pos.xz *= 0.5;
+                    
+                    // Add time-based animation
+                    pos += vec3(time * speed * 0.1, time * speed * 0.2, time * speed * 0.1);
+                    
+                    // Generate multiple noise layers for complexity
+                    float n1 = fbm(pos + vec3(0.0, 2.0, 0.0));
+                    float n2 = fbm(pos * 0.7 + vec3(1.5, -1.0, 2.0));
+                    float n3 = fbm(pos * 1.3 + vec3(-2.0, 1.0, -1.5));
+                    
+                    // Combine noise layers with different weights
+                    float finalNoise = (n1 * 0.6) + (n2 * 0.3) + (n3 * 0.1);
+                    
+                    // Create gradient based on noise value
+                    vec3 color1 = vec3(0.2, 0.4, 0.8);   // Deep blue
+                    vec3 color2 = vec3(0.5, 0.2, 0.7);   // Purple
+                    vec3 color3 = vec3(0.9, 0.6, 1.0);   // Pink
+                    
+                    vec3 finalColor;
+                    
+                    if (finalNoise < 0.3) {
+                        finalColor = mix(color1, color2, finalNoise * 3.0);
+                    } else if (finalNoise < 0.7) {
+                        finalColor = mix(color2, color3, (finalNoise - 0.3) * 2.5);
+                    } else {
+                        finalColor = vec3(1.0); // White for the brightest areas
+                    }
+                    
+                    // Add parallax effect based on mouse position
+                    float parallaxEffect = sin((mouse.x + time * speed) * 0.1) * 0.2;
+                    finalColor *= (1.0 + parallaxEffect);
+                    
+                    gl_FragColor = vec4(finalColor, 0.8);
+                }
+            `
+        });
+        
+        // Initialize the scene
+        function init() {
+            // Create scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x000011);
+            
+            // Create camera
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+            camera.position.z = 5;
+            
+            // Create renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            document.querySelector('.container').appendChild(renderer.domElement);
+            
+            // Create nebula geometry
+            const geometry = new THREE.SphereGeometry(5, 64, 64);
+            nebulaMesh = new THREE.Mesh(geometry, nebulaMaterial);
+            scene.add(nebulaMesh);
+            
+            // Add starfield background
+            createStarField();
+            
+            // Event listeners
+            document.addEventListener('mousemove', onDocumentMouseMove);
+            window.addEventListener('resize', onWindowResize);
+            
+            // Hide loading message
+            document.getElementById('loading').style.display = 'none';
+            
+            // Start animation loop
+            animate();
+        }
+        
+        function createStarField() {
+            const starsGeometry = new THREE.BufferGeometry();
+            const starsMaterial = new THREE.PointsMaterial({
+                color: 0xffffff,
+                size: 0.1,
+                transparent: true
+            });
+            
+            const starsVertices = [];
+            for (let i = 0; i < 10000; i++) {
+                const x = THREE.MathUtils.randFloatSpread(200);
+                const y = THREE.MathUtils.randFloatSpread(200);
+                const z = THREE.MathUtils.randFloatSpread(200);
+                starsVertices.push(x, y, z);
+            }
+            
+            starsGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starsVertices, 3));
+            starField = new THREE.Points(starsGeometry, starsMaterial);
+            scene.add(starField);
+        }
+        
+        function onDocumentMouseMove(event) {
+            mouseX = (event.clientX - windowHalfX) / 100;
+            mouseY = (event.clientY - windowHalfY) / 100;
+            
+            nebulaMaterial.uniforms.mouse.value.set(mouseX, mouseY);
+        }
+        
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            windowHalfX = window.innerWidth / 2;
+            windowHalfY = window.innerHeight / 2;
+        }
+        
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Update uniforms
+            nebulaMaterial.uniforms.time.value += 0.01;
+            
+            // Rotate nebula slowly
+            nebulaMesh.rotation.x += 0.001;
+            nebulaMesh.rotation.y += 0.002;
+            
+            // Move starfield with parallax
+            if (starField) {
+                starField.rotation.y += 0.0005;
+            }
+            
+            renderer.render(scene, camera);
+        }
+        
+        // Setup UI controls
+        document.getElementById('density').addEventListener('input', function() {
+            nebulaMaterial.uniforms.density.value = parseFloat(this.value);
+        });
+        
+        document.getElementById('speed').addEventListener('input', function() {
+            nebulaMaterial.uniforms.speed.value = parseFloat(this.value);
+        });
+        
+        // Initialize the application
+        window.onload = init;
+    </script>
+</body>
+</html>

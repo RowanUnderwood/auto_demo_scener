@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Maze Walker</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const SIZE = 16;
+const CELL_SIZE = 4;
+const WALL_HEIGHT = 3.5;
+
+// --- Maze Generation (Recursive Backtracking) ---
+class Maze {
+    constructor(size) {
+        this.size = size;
+        this.grid = Array.from({ length: size }, () => 
+            Array.from({ length: size }, () => ({
+                visited: false,
+                walls: { n: true, s: true, e: true, w: true }
+            }))
+        );
+    }
+
+    generate() {
+        const stack = [];
+        let current = { x: 0, y: 0 };
+        this.grid[0][0].visited = true;
+        stack.push(current);
+
+        while (stack.length > 0) {
+            const neighbors = this.getUnvisitedNeighbors(current.x, current.y);
+            if (neighbors.length > 0) {
+                const next = neighbors[Math.floor(Math.random() * neighbors.length)];
+                this.removeWall(current, next);
+                current = next;
+                this.grid[current.y][current.x].visited = true;
+                stack.push(current);
+            } else {
+                current = stack.pop();
+            }
+        }
+    }
+
+    getUnvisitedNeighbors(x, y) {
+        const neighbors = [];
+        const dirs = [
+            { x: 0, y: -1, wall: 'n', opp: 's' },
+            { x: 0, y: 1,  wall: 's', opp: 'n' },
+            { x: 1, y: 0,  wall: 'e', opp: 'w' },
+            { x: -1, y: 0, wall: 'w', opp: 'e' }
+        ];
+
+        for (const d of dirs) {
+            const nx = x + d.x;
+            const ny = y + d.y;
+            if (nx >= 0 && nx < this.size && ny >= 0 && ny < this.size) {
+                if (!this.grid[ny][nx].visited) {
+                    neighbors.push({ x: nx, y: ny, dir: d });
+                }
+            }
+        }
+        return neighbors;
+    }
+
+    removeWall(a, b) {
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        if (dy === -1) { this.grid[a.y][a.x].walls.n = false; this.grid[b.y][b.x].walls.s = false; }
+        else if (dy === 1) { this.grid[a.y][a.x].walls.s = false; this.grid[b.y][b.x].walls.n = false; }
+        else if (dx === 1) { this.grid[a.y][a.x].walls.e = false; this.grid[b.y][b.x].walls.w = false; }
+        else if (dx === -1) { this.grid[a.y][a.x].walls.w = false; this.grid[b.y][b.x].walls.e = false; }
+    }
+}
+
+// --- Textures ---
+function createWallTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256; canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#444';
+    ctx.fillRect(0, 0, 256, 256);
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 4;
+    for (let i = 0; i < 256; i += 32) {
+        ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 256); ctx.stroke();
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    return tex;
+}
+
+function createFloorTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256; canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#3d2b1f'; // Warm brown
+    ctx.fillRect(0, 0, 256, 256);
+    ctx.strokeStyle = '#2a1d15';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(0, 0, 256, 256);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    return tex;
+}
+
+// --- Scene Setup ---
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x000111, 0.15); // Deep blue fog
+
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+const torch = new THREE.PointLight(0xffaa33, 50, 15);
+torch.decay = 2;
+scene.add(torch);
+scene.add(new THREE.AmbientLight(0x111111));
+
+// --- Build Maze Geometry ---
+const mazeData = new Maze(SIZE);
+mazeData.generate();
+
+const wallGeo = new THREE.BoxGeometry(CELL_SIZE, WALL_HEIGHT, 0.2);
+const wallMat = new THREE.MeshStandardMaterial({ map: createWallTexture() });
+
+for (let y = 0; y < SIZE; y++) {
+    for (let x = 0; x < SIZE; x++) {
+        const cell = mazeData.grid[y][x];
+        const px = x * CELL_SIZE;
+        const pz = y * CELL_SIZE;
+
+        // Walls
+        if (cell.walls.n) {
+            const w = new THREE.Mesh(wallGeo, wallMat);
+            w.position.set(px, WALL_HEIGHT / 2, pz - CELL_SIZE / 2);
+            scene.add(w);
+        }
+        if (cell.walls.s) {
+            const w = new THREE.Mesh(wallGeo, wallMat);
+            w.position.set(px, WALL_HEIGHT / 2, pz + CELL_SIZE / 2);
+            scene.add(w);
+        }
+        if (cell.walls.e) {
+            const w = new THREE.Mesh(wallGeo, wallMat);
+            w.scale.set(0.2, 1, 1);
+            w.position.set(px + CELL_SIZE / 2, WALL_HEIGHT / 2, pz);
+            scene.add(w);
+        }
+        if (cell.walls.w) {
+            const w = new THREE.Mesh(wallGeo, wallMat);
+            w.scale.set(0.2, 1, 1);
+            w.position.set(px - CELL_SIZE / 2, WALL_HEIGHT / 2, pz);
+            scene.add(w);
+        }
+
+        // Floor
+        const fGeo = new THREE.PlaneGeometry(CELL_SIZE, CELL_SIZE);
+        const fMat = new THREE.MeshStandardMaterial({ map: createFloorTexture() });
+        const floor = new THREE.Mesh(fGeo, fMat);
+        floor.rotation.x = -Math.PI / 2;
+        floor.position.set(px, 0, pz);
+        scene.add(floor);
+
+        // Ceiling
+        const cMat = new THREE.MeshStandardMaterial({ color: 0x050505 });
+        const ceil = new THREE.Mesh(fGeo, cMat);
+        ceil.rotation.x = Math.PI / 2;
+        ceil.position.set(px, WALL_HEIGHT, pz);
+        scene.add(ceil);
+    }
+}
+
+// --- Walker Logic ---
+let currentPos = { x: 0, y: 0 };
+let visitedLocal = new Set();
+visitedLocal.add("0,0");
+let targetPos = { x: 0, y: 0 };
+let pathStack = [{ x: 0, y: 0 }];
+
+// Movement state
+let moveState = 'MOVING'; // MOVING, TURNING
+let walkProgress = 0;
+let turnProgress = 0;
+const TURN_SPEED = 2.0; // duration 0.5s -> speed 1/0.5 = 2
+const WALK_SPEED = 0.03;
+
+function getNextTarget() {
+    const cx = currentPos.x;
+    const cy = currentPos.y;
+    const neighbors = [];
+    const dirs = [
+        { x: 0, y: -1 }, { x: 0, y: 1 }, { x: 1, y: 0 }, { x: -1, y: 0 }
+    ];
+
+    for (const d of dirs) {
+        const nx = cx + d.x;
+        const ny = cy + d.y;
+        if (nx >= 0 && nx < SIZE && ny >= 0 && ny < SIZE) {
+            if (!visitedLocal.has(`${nx},${ny}`)) {
+                // Check if there is a path in maze data
+                let canPass = false;
+                const cell = mazeData.grid[cy][cx];
+                if (d.y === -1 && !cell.walls.n) canPass = true;
+                if (d.y === 1 && !cell.walls.s) canPass = true;
+                if (d.x === 1 && !cell.walls.e) canPass = true;
+                if (d.x === -1 && !cell.walls.w) canPass = true;
+
+                if (canPass) neighbors.push({ x: nx, y: ny });
+            }
+        }
+    }
+
+    if (neighbors.length > 0) {
+        const next = neighbors[Math.floor(Math.random() * neighbors.length)];
+        visitedLocal.add(`${next.x},${next.y}`);
+        pathStack.push(next);
+        return next;
+    } else {
+        pathStack.pop();
+        if (pathStack.length === 0) return null; // Done
+        return pathStack[pathStack.length - 1];
+    }
+}
+
+targetPos = getNextTarget();
+
+function update() {
+    const camX = currentPos.x * CELL_SIZE + CELL_SIZE/2;
+    const camZ = currentPos.y * CELL_SIZE + CELL_SIZE/2;
+    const targetX = targetPos.x * CELL_SIZE + CELL_SIZE/2;
+    const targetZ = targetPos.y * CELL_SIZE + CELL_SIZE/2;
+
+    if (moveState === 'MOVING') {
+        // Move towards target
+        const dx = targetX - camera.position.x;
+        const dz = targetZ - camera.position.z;
+        const dist = Math.sqrt(dx*dx + dz*dz);
+
+        if (dist < 0.1) {
+            currentPos.x = targetPos.x;
+            currentPos.y = targetPos.y;
+            
+            // Check if we need to turn or move next
+            const nextTarget = getNextTarget();
+            if (!nextTarget) return; // End
+
+            targetPos = nextTarget;
+            moveState = 'TURNING';
+            turnProgress = 0;
+        } else {
+            camera.position.x += (dx / dist) * WALK_SPEED;
+            camera.position.z += (dz / dist) * WALK_SPEED;
+            camera.position.y = 1.7; // Eye level
+            
+            // Smoothly face direction of movement
+            const lookAngle = Math.atan2(dx, dz);
+            const currentRot = camera.rotation.y;
+            camera.rotation.y += (lookAngle - currentRot) * 0.1;
+        }
+    } else if (moveState === 'TURNING') {
+        turnProgress += TURN_SPEED * 0.016; // approx delta time
+        if (turnProgress >= 1.0) {
+            turnProgress = 1.0;
+            moveState = 'MOVING';
+        }
+        // We handle rotation during MOVING mostly, but can force a lookAt here if desired.
+    }
+
+    torch.position.copy(camera.position);
+}
+
+// Initial camera position
+camera.position.set(CELL_SIZE/2, 1.7, CELL_SIZE/2);
+camera.rotation.y = Math.PI; // Facing "south" initially
+
+function animate() {
+    requestAnimationFrame(animate);
+    update();
+    renderer.render(scene, camera);
+}
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+animate();
+</script>
+</body>
+</html>

@@ -21,6 +21,7 @@ const titleCardDesc  = document.getElementById('titleCardDesc');
 const titleCardFile  = document.getElementById('titleCardFile');
 const titleCardModel = document.getElementById('titleCardModel');
 const titleCardStats = document.getElementById('titleCardStats');
+const modelInfo      = document.getElementById('modelInfo');
 const progressBar    = document.getElementById('progressBar');
 const spinnerChar   = document.getElementById('spinnerChar');
 const spinnerVerb   = document.getElementById('spinnerVerb');
@@ -78,6 +79,8 @@ let rawCode = '';
 let displayQueue = [];
 let cfg = {};
 let currentArchiveFilename = null;  // non-null only when showing an /archive/ file
+let currentTempFilename = null;     // non-null only when showing a /temp/ file (generate mode)
+let currentDisplayMeta = null;      // meta from the active DISPLAY message
 
 // Audition tracking
 let auditActive = false;
@@ -117,11 +120,12 @@ function sendWS(obj) {
 // ── Message handler ───────────────────────────────────────────────────────────
 function handleMsg(msg) {
   switch (msg.type) {
-    case 'state':       handleState(msg);  break;
-    case 'token':       queueToken(msg.token); break;
-    case 'status':      setStatus(msg.text); break;
-    case 'audition':    startAudition(msg.url, msg.seconds); break;
-    case 'config_push': applyConfig(msg.config); break;
+    case 'state':          handleState(msg);  break;
+    case 'token':          queueToken(msg.token); break;
+    case 'status':         setStatus(msg.text); break;
+    case 'audition':       startAudition(msg.url, msg.seconds); break;
+    case 'config_push':    applyConfig(msg.config); break;
+    case 'model_selected': modelInfo.textContent = `[${msg.model}]`; break;
   }
 }
 
@@ -129,6 +133,8 @@ function applyConfig(c) {
   cfg = c;
   const palette = c?.display?.palette || 'amber_crt';
   document.body.className = palette;
+  const statsPx = c?.display?.title_card_stats_font_size ?? 11;
+  titleCardStats.style.fontSize = statsPx + 'px';
 }
 
 // ── State transitions ─────────────────────────────────────────────────────────
@@ -141,6 +147,7 @@ function handleState(msg) {
       showIdle();
       resetTitleCard();
       stopSpinner();
+      modelInfo.textContent = '';
       break;
 
     case 'PICK_MODE':
@@ -150,6 +157,7 @@ function handleState(msg) {
       resetEditor();
       resetTitleCard();
       stopSpinner();
+      modelInfo.textContent = '';
       setStatus('SELECTING MODE…');
       break;
 
@@ -160,6 +168,7 @@ function handleState(msg) {
       resetEditor();
       resetTitleCard();
       modeChip.textContent = (msg.mode || '').toUpperCase();
+      modelInfo.textContent = msg.model ? `[${msg.model}]` : '';
       setStatus('WRITING…');
       startSpinner();
       break;
@@ -183,10 +192,12 @@ function handleState(msg) {
       if (msgUrl && demoFrame.src !== location.origin + msgUrl) {
         demoFrame.src = msgUrl;
       }
-      currentArchiveFilename = msgUrl.startsWith('/archive/')
-        ? msgUrl.split('/').pop()
-        : null;
-      filenameInfo.textContent = msgUrl.split('/').pop();
+      const urlFile = msgUrl.split('/').pop();
+      currentArchiveFilename = msgUrl.startsWith('/archive/') ? urlFile : null;
+      currentTempFilename    = msgUrl.startsWith('/temp/')    ? urlFile : null;
+      currentDisplayMeta     = msg.meta || null;
+      filenameInfo.textContent = urlFile;
+      modelInfo.textContent = msg.meta?.model ? `[${msg.meta.model}]` : '';
       setStatus('RUNNING');
       showDemoFrame();
       hideMockOS();
@@ -332,6 +343,9 @@ function restoreProgressBar(runtime) {
 function resetTitleCard() {
   _currentDisplayUrl = '';
   _displayStartTime  = 0;
+  currentArchiveFilename = null;
+  currentTempFilename    = null;
+  currentDisplayMeta     = null;
   if (_titleCardTimer) { clearTimeout(_titleCardTimer); _titleCardTimer = null; }
   titleCard.classList.add('hidden');
   titleCardStats.classList.remove('visible');
@@ -565,11 +579,17 @@ document.getElementById('deleteNo').onclick = () =>
   deleteConfirm.classList.add('hidden');
 
 document.getElementById('deleteYes').onclick = async () => {
-  const filename = currentArchiveFilename;
+  const archiveFile = currentArchiveFilename;
+  const isTemp      = !!currentTempFilename;
   deleteConfirm.classList.add('hidden');
   currentArchiveFilename = null;
+  currentTempFilename    = null;
   setStatus('DEMO DELETED — loading next…');
-  await fetch(`/api/archive/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+  if (archiveFile) {
+    await fetch(`/api/archive/${encodeURIComponent(archiveFile)}`, { method: 'DELETE' });
+  } else if (isTemp) {
+    await fetch('/api/discard_current', { method: 'POST' });
+  }
 };
 
 function handleKey(key) {
@@ -577,8 +597,15 @@ function handleKey(key) {
     deleteConfirm.classList.add('hidden');
     return;
   }
-  if (key === 'd' && currentArchiveFilename && deleteConfirm.classList.contains('hidden')) {
-    deleteFilename.textContent = currentArchiveFilename;
+  const canDelete = (currentArchiveFilename || currentTempFilename)
+                    && deleteConfirm.classList.contains('hidden');
+  if (key === 'd' && canDelete) {
+    if (currentArchiveFilename) {
+      deleteFilename.textContent = currentArchiveFilename;
+    } else {
+      const m = currentDisplayMeta;
+      deleteFilename.textContent = m?.title || m?.effect || currentTempFilename || '';
+    }
     deleteConfirm.classList.remove('hidden');
   }
 }

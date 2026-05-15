@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Neural Pulse</title>
+  <style>
+    body { margin: 0; overflow: hidden; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script>
+    // Neural Pulse - A dynamic neural network visualization
+    // Inspired by stock effects: Neural Network, Pulse, Light Emission
+    
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x000000);
+    
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.z = 5;
+    
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    document.body.appendChild(renderer.domElement);
+    
+    // Create a neural network structure
+    const network = [];
+    const layers = [3, 8, 16, 8, 3]; // Input, hidden1, hidden2, hidden1, output
+    const layerPositions = [];
+    
+    // Calculate positions for each layer
+    for (let i = 0; i < layers.length; i++) {
+      const layer = [];
+      const x = -2 + (i * 4) / (layers.length - 1);
+      const layerY = 0;
+      const layerZ = 0;
+      const radius = 1.5;
+      
+      for (let j = 0; j < layers[i]; j++) {
+        const y = -2 + (j * 4) / (layers[i] - 1);
+        const z = 0;
+        const position = new THREE.Vector3(x, y, z);
+        layer.push(position);
+      }
+      layerPositions.push(layer);
+      network.push(layer);
+    }
+    
+    // Create nodes
+    const nodes = [];
+    const nodeMaterials = [];
+    
+    for (let i = 0; i < network.length; i++) {
+      for (let j = 0; j < network[i].length; j++) {
+        const geometry = new THREE.SphereGeometry(0.05, 16, 16);
+        const material = new THREE.MeshPhongMaterial({ 
+          color: 0x00ffff,
+          emissive: 0x004444,
+          emissiveIntensity: 0.5,
+          shininess: 100
+        });
+        const node = new THREE.Mesh(geometry, material);
+        node.position.copy(network[i][j]);
+        node.userData = { layer: i, index: j, pulse: 0, pulseSpeed: Math.random() * 0.01 + 0.005 };
+        nodes.push(node);
+        scene.add(node);
+        nodeMaterials.push(material);
+      }
+    }
+    
+    // Create connections between nodes
+    const connections = [];
+    const connectionGeometries = [];
+    const connectionMaterials = [];
+    
+    for (let i = 0; i < network.length - 1; i++) {
+      for (let j = 0; j < network[i].length; j++) {
+        for (let k = 0; k < network[i + 1].length; k++) {
+          const from = network[i][j];
+          const to = network[i + 1][k];
+          
+          // Create a line geometry
+          const geometry = new THREE.BufferGeometry();
+          const positions = new Float32Array([from.x, from.y, from.z, to.x, to.y, to.z]);
+          geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+          
+          // Create material with gradient
+          const material = new THREE.LineBasicMaterial({
+            color: 0x00ffcc,
+            transparent: true,
+            opacity: 0.3,
+            linewidth: 1
+          });
+          
+          const line = new THREE.Line(geometry, material);
+          connections.push(line);
+          connectionGeometries.push(geometry);
+          connectionMaterials.push(material);
+          scene.add(line);
+        }
+      }
+    }
+    
+    // Create a light source that pulses with the network
+    const pointLight = new THREE.PointLight(0x00ffff, 1, 10);
+    pointLight.position.set(0, 0, 0);
+    scene.add(pointLight);
+    
+    // Create a glow effect
+    const glowMaterial = new THREE.ShaderMaterial({
+      uniforms: {
+        time: { value: 0 },
+        resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform vec2 resolution;
+        uniform float time;
+        varying vec2 vUv;
+        
+        void main() {
+          vec2 uv = vUv;
+          vec2 centered = uv - vec2(0.5);
+          float dist = length(centered);
+          float glow = 1.0 / (1.0 + pow(10.0 * dist, 8.0));
+          gl_FragColor = vec4(0.0, 1.0, 1.0, glow * 0.5);
+        }
+      `,
+      transparent: true
+    });
+    
+    const glowGeometry = new THREE.PlaneGeometry(2, 2);
+    const glowMesh = new THREE.Mesh(glowGeometry, glowMaterial);
+    glowMesh.position.z = -1;
+    scene.add(glowMesh);
+    
+    // Add some ambient light
+    const ambientLight = new THREE.AmbientLight(0x111111);
+    scene.add(ambientLight);
+    
+    // Animation loop
+    function animate() {
+      requestAnimationFrame(animate);
+      
+      // Update node pulses
+      nodes.forEach(node => {
+        node.userData.pulse += node.userData.pulseSpeed;
+        const intensity = Math.sin(node.userData.pulse) * 0.5 + 0.5;
+        node.material.emissiveIntensity = intensity * 0.8;
+        node.material.color.setHSL(0.5, 1.0, intensity * 0.7);
+        
+        // Update connection opacity based on node activity
+        connections.forEach(connection => {
+          // In a real implementation, this would be more sophisticated
+          // For now, we'll just make connections pulse randomly
+          connection.material.opacity = 0.2 + Math.sin(Date.now() * 0.001 + Math.random()) * 0.1;
+        });
+      });
+      
+      // Update glow
+      glowMaterial.uniforms.time.value += 0.01;
+      
+      // Rotate camera slightly
+      camera.position.x = Math.sin(Date.now() * 0.0005) * 3;
+      camera.position.y = Math.cos(Date.now() * 0.0005) * 3;
+      camera.lookAt(0, 0, 0);
+      
+      renderer.render(scene, camera);
+    }
+    
+    // Handle window resize
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+    
+    animate();
+  </script>
+</body>
+</html>

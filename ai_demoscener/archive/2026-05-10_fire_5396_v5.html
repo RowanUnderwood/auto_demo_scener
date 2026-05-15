@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Three.js Cosmic Nebula Shader</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+</script>
+<script type="module">
+    import * as THREE from 'three';
+
+    const vertexShader = `
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `;
+
+    const fragmentShader = `
+        uniform float uTime;
+        uniform vec2 uResolution;
+        varying vec2 vUv;
+
+        // Basic hash function for pseudo-randomness
+        float hash12(vec2 p) {
+            return fract(sin(dot(p, vec2(41.34, 28.69))) * 107.5);
+        }
+
+        // Smoothstep implementation
+        float smoothstep_custom(float edge0, float edge1, float x) {
+            return clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
+        }
+
+        // Value Noise (Perlin-like interpolation using hash)
+        float noise(vec2 p) {
+            vec2 i = floor(p);
+            vec2 f = fract(p);
+            f = f * f * (3.0 - 2.0 * f);
+            
+            float a = hash12(i);
+            float b = hash12(i + vec2(1.0, 0.0));
+            float c = hash12(i + vec2(0.0, 1.0));
+            float d = hash12(i + vec2(1.0, 1.0));
+
+            return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+        }
+
+        // Fractional Brownian Motion (FBM) for cloud-like structures
+        float fbm(vec2 p) {
+            float v = 0.0;
+            float amp = 1.0;
+            float freq = 1.0;
+            for (int i = 0; i < 5; i++) {
+                v += noise(p * freq) * amp;
+                p *= 2.0;
+                amp *= 0.6; // Decrease amplitude rapidly for detailed, soft structure
+                freq *= 2.0;
+            }
+            return v;
+        }
+
+        // Color mapping inspired by deep space and nebulae (Cool tones)
+        vec3 getNebulaColor(float intensity) {
+            // Normalize intensity to range [0, 1]
+            intensity = clamp(intensity * 4.0 - 2.0, 0.0, 1.0);
+
+            vec3 dark_purple = vec3(0.05, 0.0, 0.1); // Deep space background
+            vec3 cyan_glow = vec3(0.2, 0.8, 1.0);   // Bright core glow
+            vec3 magenta_swirl = vec3(0.8, 0.4, 1.5); // Swirling energy
+
+            if (intensity < 0.2) {
+                return mix(dark_purple, dark_purple * 1.1, intensity / 0.2);
+            } else if (intensity < 0.6) {
+                // Transition from deep space to cyan glow
+                float t = (intensity - 0.2) / 0.4;
+                return mix(dark_purple, cyan_glow, t);
+            } else {
+                // High intensity: Magenta and Cyan mixing for swirling effect
+                float t = (intensity - 0.6) / 0.4;
+                vec3 color1 = mix(cyan_glow, magenta_swirl, t);
+                return color1 * (0.5 + intensity * 0.5); // Boost brightness at peak
+            }
+        }
+
+        void main() {
+            vec2 uv = vUv;
+            
+            // --- Swirling Motion and Distortion ---
+            // Calculate center point for rotational effects
+            vec2 center = vec2(0.5);
+            vec2 pos = uv - center;
+
+            // Introduce time-based rotation/swirl on the UV coordinates
+            float angle = uTime * 0.15;
+            float swirl_strength = sin(uTime * 0.08) * 0.1; // Subtle breathing motion
+            
+            // Polar coordinates transformation for swirling
+            float r = length(pos);
+            float theta = atan(pos.y, pos.x);
+
+            theta += angle + (r * swirl_strength * uTime * 0.05);
+            
+            vec2 distortedUV = vec2(cos(theta) * r, sin(theta) * r);
+            
+            // Apply a second distortion based on noise itself for turbulent flow
+            float turbulence = fbm(uv * 8.0 + uTime * 0.5) * 0.1;
+            distortedUV += (normalize(pos)) * turbulence;
+
+            // Map back to UV space [0, 1]
+            vec2 noiseUv = distortedUV * 0.5 + 0.5;
+
+
+            // Calculate Noise intensity using FBM
+            float n = fbm(noiseUv);
+
+            // Soft masking: Use a high frequency noise mask combined with low frequency intensity to define the cloud boundary
+            float boundary_n = fbm(uv * 12.0 + uTime * 0.2) * 0.5 + 0.5;
+            float mask = smoothstep(0.4, 0.6, boundary_n);
+
+            // Final intensity is the noise modulated by the soft cloud shape
+            float finalIntensity = n * mask;
+            
+            // Color mapping and output
+            vec3 color = getNebulaColor(finalIntensity);
+
+            gl_FragColor = vec4(color, 1.0);
+        }
+    `;
+
+    let scene, camera, renderer, material;
+
+    function init() {
+        scene = new THREE.Scene();
+        // Orthographic camera setup for fullscreen plane rendering
+        camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setClearColor(0x000000); // Ensure the background is black (deep space)
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+            },
+            vertexShader: vertexShader,
+            fragmentShader: fragmentShader
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        window.addEventListener('resize', onWindowResize, false);
+    }
+
+    function onWindowResize() {
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        material.uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+    }
+
+    function animate(time) {
+        requestAnimationFrame(animate);
+        // Use a slower time scale for the cosmic drift/swirl
+        material.uniforms.uTime.value = time * 0.0008; 
+        renderer.render(scene, camera);
+    }
+
+    init();
+    animate(0);
+</script>
+</body>
+</html>

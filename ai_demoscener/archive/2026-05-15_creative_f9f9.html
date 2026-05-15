@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Neural Network Synthesis</title>
+    <style>
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            background: #000;
+        }
+        canvas { 
+            display: block; 
+        }
+    </style>
+</head>
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Initialize Three.js
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Create neural network visualization
+        const neurons = [];
+        const connections = [];
+        const particleSystem = new THREE.Group();
+        
+        // Create neuron points
+        for (let i = 0; i < 500; i++) {
+            const geometry = new THREE.SphereGeometry(0.05, 8, 8);
+            const material = new THREE.MeshBasicMaterial({ 
+                color: new THREE.Color(Math.random() * 0xffffff),
+                transparent: true,
+                opacity: 0.7
+            });
+            const neuron = new THREE.Mesh(geometry, material);
+            
+            // Position neurons in a spherical pattern
+            const radius = 15;
+            const theta = Math.acos(-1 + (2 * i) / 500);
+            const phi = Math.sqrt(500 * Math.PI) * theta;
+            
+            neuron.position.x = radius * Math.sin(theta) * Math.cos(phi);
+            neuron.position.y = radius * Math.sin(theta) * Math.sin(phi);
+            neuron.position.z = radius * Math.cos(theta);
+            
+            scene.add(neuron);
+            neurons.push(neuron);
+        }
+
+        // Create connections between neurons
+        for (let i = 0; i < 1000; i++) {
+            const start = neurons[Math.floor(Math.random() * neurons.length)];
+            const end = neurons[Math.floor(Math.random() * neurons.length)];
+            
+            if (start !== end) {
+                const points = [];
+                points.push(start.position.clone());
+                
+                // Create curved connection
+                const controlPoint = new THREE.Vector3(
+                    (start.position.x + end.position.x) / 2 + (Math.random() - 0.5) * 10,
+                    (start.position.y + end.position.y) / 2 + (Math.random() - 0.5) * 10,
+                    (start.position.z + end.position.z) / 2 + (Math.random() - 0.5) * 10
+                );
+                
+                const curve = new THREE.QuadraticBezierCurve3(
+                    start.position.clone(),
+                    controlPoint,
+                    end.position.clone()
+                );
+                
+                points.push(...curve.getPoints(50));
+                
+                const geometry = new THREE.BufferGeometry().setFromPoints(points);
+                const material = new THREE.LineBasicMaterial({ 
+                    color: 0x00ffff,
+                    transparent: true,
+                    opacity: 0.3
+                });
+                
+                const line = new THREE.Line(geometry, material);
+                scene.add(line);
+                connections.push({
+                    line: line,
+                    start: start,
+                    end: end,
+                    points: points
+                });
+            }
+        }
+
+        // Add particle system for energy flow
+        const particleCount = 2000;
+        const particles = new THREE.BufferGeometry();
+        const posArray = new Float32Array(particleCount * 3);
+        const colorArray = new Float32Array(particleCount * 3);
+        
+        for (let i = 0; i < particleCount * 3; i += 3) {
+            // Position particles in a torus shape
+            const radius = 15;
+            const tubeRadius = 5;
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.random() * Math.PI * 2;
+            
+            posArray[i] = (radius + tubeRadius * Math.cos(phi)) * Math.cos(theta);
+            posArray[i + 1] = tubeRadius * Math.sin(phi);
+            posArray[i + 2] = (radius + tubeRadius * Math.cos(phi)) * Math.sin(theta);
+            
+            // Color particles
+            colorArray[i] = Math.random();
+            colorArray[i + 1] = Math.random();
+            colorArray[i + 2] = Math.random();
+        }
+        
+        particles.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+        particles.setAttribute('color', new THREE.BufferAttribute(colorArray, 3));
+        
+        const particleMaterial = new THREE.PointsMaterial({
+            size: 0.1,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.8
+        });
+        
+        const particleSystemMesh = new THREE.Points(particles, particleMaterial);
+        scene.add(particleSystemMesh);
+
+        // Add ambient light
+        const ambientLight = new THREE.AmbientLight(0x333333);
+        scene.add(ambientLight);
+        
+        // Add directional light for highlights
+        const directionalLight = new THREE.DirectionalLight(0x00ffff, 1);
+        directionalLight.position.set(5, 5, 5);
+        scene.add(directionalLight);
+
+        // Position camera
+        camera.position.z = 30;
+
+        // Animation variables
+        let time = 0;
+        const pulseSpeed = 0.02;
+        const rotationSpeed = 0.001;
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            time += pulseSpeed;
+            
+            // Rotate the entire system
+            scene.rotation.y += rotationSpeed;
+            
+            // Animate neurons
+            neurons.forEach((neuron, index) => {
+                const wave = Math.sin(time + index * 0.01) * 0.5;
+                neuron.scale.set(1 + wave, 1 + wave, 1 + wave);
+                
+                // Pulsing color effect
+                const hue = (time * 0.1 + index * 0.01) % 1;
+                neuron.material.color.setHSL(hue, 1, 0.5);
+            });
+            
+            // Animate connections
+            connections.forEach(connection => {
+                const pulse = Math.sin(time * 2 + connection.start.position.length() * 0.1) * 0.5 + 0.5;
+                connection.line.material.opacity = 0.3 + pulse * 0.2;
+            });
+            
+            // Animate particles
+            const positions = particles.attributes.position.array;
+            for (let i = 0; i < particleCount * 3; i += 3) {
+                positions[i] += Math.sin(time + i * 0.01) * 0.01;
+                positions[i + 1] += Math.cos(time + i * 0.01) * 0.01;
+                positions[i + 2] += Math.sin(time * 0.5 + i * 0.01) * 0.01;
+            }
+            particles.attributes.position.needsUpdate = true;
+            
+            // Add dynamic lighting effect
+            const lightIntensity = 0.5 + Math.sin(time * 0.5) * 0.3;
+            directionalLight.intensity = lightIntensity;
+            
+            renderer.render(scene, camera);
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Start animation
+        animate();
+    </script>
+</body>
+</html>

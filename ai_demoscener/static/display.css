@@ -521,10 +521,12 @@ body.mac_classic {
 }
 
 #titleCardModel {
-  font-size: 0.65em;
-  color: var(--border);
-  margin-top: 0.4em;
-  opacity: 0.7;
+  font-size: 0.7em;
+  color: var(--fg);
+  margin-top: 0.3em;
+  margin-bottom: 0.4em;
+  opacity: 0.85;
+  font-style: italic;
 }
 
 /* ── Stats overlay (lower left, shown during full DISPLAY phase) ───────────── */
@@ -533,8 +535,7 @@ body.mac_classic {
   bottom: 12px;
   left: 10px;
   z-index: 6;
-  font-size: 0.62em;
-  color: var(--border);
+  color: var(--fg-dim);
   opacity: 0;
   transition: opacity 0.4s;
   pointer-events: none;
@@ -542,7 +543,7 @@ body.mac_classic {
   font-family: 'Courier New', monospace;
   text-shadow: none;
 }
-#titleCardStats.visible { opacity: 0.65; }
+#titleCardStats.visible { opacity: 0.8; }
 
 /* ── Progress bar ──────────────────────────────────────────────────────────── */
 #progressBar {
@@ -556,6 +557,17 @@ body.mac_classic {
   opacity: 0;
   z-index: 6;
   pointer-events: none;
+}
+
+/* ── Model info in status bar ──────────────────────────────────────────────── */
+#modelInfo {
+  color: var(--fg-dim);
+  font-size: 0.8em;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 1;
 }
 
 /* ── Spinner (inline, next to cursor) ──────────────────────────────────────── */

@@ -3,750 +3,1841 @@
     "created": "2026-05-10T08:10:06.535042",
     "mode": "stock",
     "effect": "Lens Flare",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Prismatic Knot Projection Trails",
+    "description": "Chromatic light particles dance around a spinning geometric knot.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_lens_flare_ec6e_v2.html": {
     "created": "2026-05-10T08:11:26.895032",
     "mode": "update",
     "effect": "update",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Azure Neural Synapse Drift",
+    "description": "Glowing data pulses cascade through a fractured crystalline sphere.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_lens_flare_ec6e_v3.html": {
     "created": "2026-05-10T08:13:14.972248",
     "mode": "update",
     "effect": "update",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Golden Knot Data Streams",
+    "description": "Gilded particles orbit a twisting core through crimson light beams.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_lens_flare_ec6e_v4.html": {
     "created": "2026-05-10T08:14:54.194874",
     "mode": "update",
     "effect": "update",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Azure Singularity Drift",
+    "description": "A glowing nucleus pulls drifting stardust through a silent void.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_wireframe_icosahedron_3215.html": {
     "created": "2026-05-10T08:16:09.632863",
     "mode": "stock",
     "effect": "Wireframe Icosahedron",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Neon Emerald Geometric Pulse",
+    "description": "A glowing lattice rotates within the silent black void.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_bouncing_balls_e263.html": {
     "created": "2026-05-10T08:17:34.388660",
     "mode": "stock",
     "effect": "Bouncing Balls",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Chromatic Gravity In A Box",
+    "description": "Vibrant spheres dance within a cage of light and physics.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_creative_16a9.html": {
     "created": "2026-05-10T08:19:01.105846",
     "mode": "creative",
     "effect": "creative",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Fractured Neon Geodesic Drift",
+    "description": "Crystalline structures shatter amidst a pulsing wave of cyan light.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_creative_9693.html": {
     "created": "2026-05-10T08:20:20.482267",
     "mode": "creative",
     "effect": "creative",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Fractal Pulse In Neon Void",
+    "description": "Geometric echoes breathe within a swirling celestial starfield.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_creative_b489.html": {
     "created": "2026-05-10T08:23:38.879404",
     "mode": "creative",
     "effect": "creative",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Fractal Chronos Lattice",
+    "description": "Recursive neon geometries pulse through an infinite digital void.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_glitch_postprocess_2676.html": {
     "created": "2026-05-10T08:25:54.944034",
     "mode": "stock",
     "effect": "Glitch Postprocess",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Fractured Torus In Digital Flux",
+    "description": "Chromatic signals bleed through a decaying geometric knot.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_procedural_terrain_flythrough_59f6.html": {
     "created": "2026-05-10T08:27:16.886200",
     "mode": "stock",
     "effect": "Procedural Terrain Flythrough",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Rolling Verdant Noise Plains",
+    "description": "Endless emerald hills drift through a soft cerulean haze.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_lens_flare_ec6e_v5.html": {
     "created": "2026-05-10T08:28:42.791588",
     "mode": "update",
     "effect": "update",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Cyan Pulse Of The Void",
+    "description": "Electric light dances within the swirling depths of a cosmic knot.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_wormhole_c39c.html": {
     "created": "2026-05-10T08:30:05.719502",
     "mode": "stock",
     "effect": "Wormhole",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Neon Pulse Through Void",
+    "description": "A cyan striped ribbon glides through the endless dark.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_lens_flare_ec6e_v6.html": {
     "created": "2026-05-10T08:31:32.062654",
     "mode": "update",
     "effect": "update",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Cyan Pulse Neural Lattice",
+    "description": "Luminous particles drift through a swirling cosmic web of light.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_creative_2131.html": {
     "created": "2026-05-10T08:32:59.845536",
     "mode": "creative",
     "effect": "creative",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Fractal Chronos Void",
+    "description": "Geometric echoes drift through a shimmering neon abyss.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_kaleidoscope_bff1.html": {
     "created": "2026-05-10T08:40:17.506076",
     "mode": "stock",
     "effect": "Kaleidoscope",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Fractal Symmetry In Motion",
+    "description": "Radiant waves dance within a kaleidoscope of shifting geometric light.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_creative_c89f.html": {
     "created": "2026-05-10T08:48:27.725329",
     "mode": "creative",
     "effect": "creative",
-    "passed_validation": true
-  },
-  "2026-05-10_2d_tunnel_cb48.html": {
-    "created": "2026-05-10T08:55:38.103946",
-    "mode": "stock",
-    "effect": "2D Tunnel",
-    "passed_validation": true
-  },
-  "2026-05-10_creative_e5c6.html": {
-    "created": "2026-05-10T08:57:22.452999",
-    "mode": "creative",
-    "effect": "creative",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Fractal Neural Synapse Drift",
+    "description": "Infinite organic geometries morph through a chromatic digital void.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_starfield_0fb3.html": {
     "created": "2026-05-10T08:59:17.545718",
     "mode": "stock",
     "effect": "Starfield",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Velocity Of Distant Suns",
+    "description": "Endless light streaks past in a breathless cosmic rush.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_boids_flocking_d82c.html": {
     "created": "2026-05-10T09:25:45.565683",
     "mode": "stock",
     "effect": "Boids Flocking",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Cyan Swarm In Cyberspace",
+    "description": "Digital entities dance through a void of mathematical order.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_lens_flare_ec6e_v7.html": {
     "created": "2026-05-10T09:27:09.310908",
     "mode": "update",
     "effect": "update",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Cybernetic Pulse Of The Monolith",
+    "description": "Neon data rains down upon a vibrating digital core.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_fire_5396.html": {
     "created": "2026-05-10T09:28:43.349104",
     "mode": "stock",
     "effect": "Fire",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Embers Of A Dying Sun",
+    "description": "Dancing warmth rises from the dark through rhythmic fractal flames.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_creative_7f06.html": {
     "created": "2026-05-10T09:29:59.613000",
     "mode": "creative",
     "effect": "creative",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Neon Resonance Fractal Pulse",
+    "description": "Electric geometric echoes dancing through a digital void.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_lens_flare_59fb.html": {
     "created": "2026-05-10T09:31:20.880901",
     "mode": "stock",
     "effect": "Lens Flare",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Spectral Orbit Of The Knot",
+    "description": "Luminous particles trace geometric paths around a twisting prismatic core.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_raymarched_scene_da99.html": {
     "created": "2026-05-10T09:32:48.253517",
     "mode": "stock",
     "effect": "Raymarched Scene",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Merging Geometric Echoes",
+    "description": "Softly blended forms drift through a silent blue void.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_water_ripple_1053.html": {
     "created": "2026-05-10T09:34:18.524781",
     "mode": "stock",
     "effect": "Water Ripple",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Azure Sine Wave Rhythms",
+    "description": "Rhythmic blue undulations dance across a digital sea.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_wormhole_c39c_v2.html": {
     "created": "2026-05-10T09:35:37.553927",
     "mode": "update",
     "effect": "update",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Electric Synapse Pulse",
+    "description": "Luminous neon currents drift through a velvet digital void.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_procedural_terrain_flythrough_3fcd.html": {
     "created": "2026-05-10T09:36:53.857905",
     "mode": "stock",
     "effect": "Procedural Terrain Flythrough",
-    "passed_validation": true
-  },
-  "2026-05-10_2d_tunnel_3b15.html": {
-    "created": "2026-05-10T09:38:18.034753",
-    "mode": "stock",
-    "effect": "2D Tunnel",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Emerald Undulations Of Infinite Earth",
+    "description": "Endless rolling hills drift through a soft cerulean haze.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_bloom_torus_knot_4c0b.html": {
     "created": "2026-05-10T09:39:33.910773",
     "mode": "stock",
     "effect": "Bloom Torus Knot",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Radiant Magenta Infinite Knot",
+    "description": "Electric curves pulse within an endless velvet void.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_creative_3987.html": {
     "created": "2026-05-10T09:40:57.202035",
     "mode": "creative",
     "effect": "creative",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Fractal Neural Fold Sequence",
+    "description": "Recursive geometric echoes drift through a kaleidoscopic digital void.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_lens_flare_2495.html": {
     "created": "2026-05-10T09:49:55.848804",
     "mode": "stock",
     "effect": "Lens Flare",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Chromatic Projection Of Twisted Light",
+    "description": "Prismatic sprites dance between a rotating knot and the void.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_wormhole_7e34.html": {
     "created": "2026-05-10T09:55:43.280194",
     "mode": "stock",
     "effect": "Wormhole",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Crimson Arteries Of The Void",
+    "description": "A rhythmic drift through a winding tunnel of pulsing stripes.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_kaleidoscope_68d4.html": {
     "created": "2026-05-10T09:57:05.535286",
     "mode": "stock",
     "effect": "Kaleidoscope",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Fractal Octagonal Pulse",
+    "description": "Eightfold symmetry dances through rhythmic waves of shifting light.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_creative_2b58.html": {
     "created": "2026-05-10T09:58:32.103020",
     "mode": "creative",
     "effect": "creative",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Fractal Chronos Singularity Protocol",
+    "description": "Glowing data shards orbit a pulsing fractal heart of light.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_creative_b489_v2.html": {
     "created": "2026-05-10T10:00:01.877387",
     "mode": "update",
     "effect": "update",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Amber Liquid Monoliths",
+    "description": "Molten gold shapes drift through an endless obsidian void.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_bouncing_balls_af06.html": {
     "created": "2026-05-10T10:00:31.788014",
     "mode": "stock",
     "effect": "Bouncing Balls",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Chromatic Gravity Within Glass",
+    "description": "Vibrant spheres dance inside a void of mathematical precision.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_particle_system_2090.html": {
     "created": "2026-05-10T10:08:43.682255",
     "mode": "stock",
     "effect": "Particle System",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Ephemeral Cascades Of Light",
+    "description": "A rhythmic dance of glowing particles falling through dark void.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_procedural_terrain_flythrough_59f6_v2.html": {
     "created": "2026-05-10T10:09:25.981181",
     "mode": "update",
     "effect": "update",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Neon Pulse Data Ridges",
+    "description": "A synthetic landscape of glowing cyan and magenta digital peaks.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_fire_5396_v2.html": {
     "created": "2026-05-10T10:13:16.501585",
     "mode": "update",
     "effect": "update",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Indigo Plasma Pulse Core",
+    "description": "Swirling electric currents dance within a deep cosmic void.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_lens_flare_59fb_v2.html": {
     "created": "2026-05-10T10:15:17.865266",
     "mode": "update",
     "effect": "update",
-    "passed_validation": true
-  },
-  "2026-05-10_wireframe_icosahedron_e38f.html": {
-    "created": "2026-05-10T10:16:24.635441",
-    "mode": "stock",
-    "effect": "Wireframe Icosahedron",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Crystalline Void Projection",
+    "description": "A glowing geometric core pulses within a deep celestial abyss.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_raymarched_scene_46ea.html": {
     "created": "2026-05-10T10:17:06.420113",
     "mode": "stock",
     "effect": "Raymarched Scene",
-    "passed_validation": true
-  },
-  "2026-05-10_2d_tunnel_d819.html": {
-    "created": "2026-05-10T10:17:50.893776",
-    "mode": "stock",
-    "effect": "2D Tunnel",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Infinite Morphing Geometric Void",
+    "description": "Soft shapes merge within a rhythmic and endless mathematical dream.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_creative_f2da.html": {
     "created": "2026-05-10T10:18:28.265386",
     "mode": "creative",
     "effect": "creative",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Fractal Drift Through Neon Voids",
+    "description": "Shifting geometric echoes pulse within an infinite digital abyss.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_creative_2131_v2.html": {
     "created": "2026-05-10T10:19:56.373786",
     "mode": "update",
     "effect": "update",
-    "passed_validation": true
-  },
-  "2026-05-10_creative_ca73.html": {
-    "created": "2026-05-10T10:20:35.441436",
-    "mode": "creative",
-    "effect": "creative",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Monolith Of Kinetic Geometry",
+    "description": "Brutalist prisms dance within a cold and structured void.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_glitch_postprocess_cefd.html": {
     "created": "2026-05-10T10:22:04.357246",
     "mode": "stock",
     "effect": "Glitch Postprocess",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Fractured Torus In Digital Static",
+    "description": "A twisting knot unravels through rhythmic waves of chromatic distortion.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_mandelbrot_zoom_9a28.html": {
     "created": "2026-05-10T10:23:01.495543",
     "mode": "stock",
     "effect": "Mandelbrot Zoom",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Infinite Descent Into Fractal Chaos",
+    "description": "A rhythmic dive through the shifting colors of complex mathematics.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_wormhole_f6c1.html": {
     "created": "2026-05-10T10:23:38.903511",
     "mode": "stock",
     "effect": "Wormhole",
-    "passed_validation": true
-  },
-  "2026-05-10_cube_twister_66f9.html": {
-    "created": "2026-05-10T10:24:11.850224",
-    "mode": "stock",
-    "effect": "Cube Twister",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Neon Veins Of The Void",
+    "description": "A rhythmic descent through endless glowing emerald corridors.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_creative_ca66.html": {
     "created": "2026-05-10T10:24:50.491352",
     "mode": "creative",
     "effect": "creative",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Recursive Neon Fractal Void",
+    "description": "Infinite geometric folding pulses through a glowing cosmic nebula.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_creative_e4b9.html": {
     "created": "2026-05-10T10:25:27.533648",
     "mode": "creative",
     "effect": "creative",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Chromatic Morphing Cosmic Tunnel",
+    "description": "Infinite fractal shapes dance through a swirling neon starfield.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_creative_b583.html": {
     "created": "2026-05-10T10:26:10.742788",
     "mode": "creative",
     "effect": "creative",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Electric Neural Synapse Flow",
+    "description": "Fractal waves pulse through a digital web of glowing connections.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_creative_55b1.html": {
     "created": "2026-05-10T10:26:53.594011",
     "mode": "creative",
     "effect": "creative",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Fractal Neon Lattice Pulse",
+    "description": "Infinite geometric structures fold through a glowing digital void.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_kaleidoscope_afd6.html": {
     "created": "2026-05-10T10:27:47.643882",
     "mode": "stock",
     "effect": "Kaleidoscope",
-    "passed_validation": true
-  },
-  "2026-05-10_mode_7_floor_a068.html": {
-    "created": "2026-05-10T10:28:26.356591",
-    "mode": "stock",
-    "effect": "Mode-7 Floor",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Octagonal Prism of Chromatic Waves",
+    "description": "Eight-fold symmetry dances through shifting tides of radiant light.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_raymarched_scene_da99_v2.html": {
     "created": "2026-05-10T10:29:05.087118",
     "mode": "update",
     "effect": "update",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Fractal Neon Void Morph",
+    "description": "Geometric shapes dissolve within a pulsing neon cosmic dream.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_procedural_terrain_flythrough_59f6_v3.html": {
     "created": "2026-05-10T10:29:46.150772",
     "mode": "update",
     "effect": "update",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Cybernetic Pulse Of Neon Tides",
+    "description": "Electric waves surge through a dark and infinite digital void.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_creative_7ddb.html": {
     "created": "2026-05-10T10:30:23.968656",
     "mode": "creative",
     "effect": "creative",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Fractal Echoes Of Neon Time",
+    "description": "Concentric geometric shells rotate through a pulsing digital void.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_creative_0353.html": {
     "created": "2026-05-10T10:31:14.540374",
     "mode": "creative",
     "effect": "creative",
-    "passed_validation": true
-  },
-  "2026-05-10_wireframe_icosahedron_d806.html": {
-    "created": "2026-05-10T10:31:44.901966",
-    "mode": "stock",
-    "effect": "Wireframe Icosahedron",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Kaleidoscopic Fractal Singularity",
+    "description": "Infinite geometric descent through a pulsing cosmic nebula.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_kaleidoscope_a20c.html": {
     "created": "2026-05-10T10:32:19.769231",
     "mode": "stock",
     "effect": "Kaleidoscope",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Fractal Symmetry In Prismatic Motion",
+    "description": "Eightfold geometric waves dance through a kaleidoscope of shifting light.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_starfield_0fb3_v2.html": {
     "created": "2026-05-10T10:40:49.082769",
     "mode": "update",
     "effect": "update",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Neon Vortex Velocity",
+    "description": "Electric particles spiral through a deep cerulean cybernetic void.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_bouncing_balls_af06_v2.html": {
     "created": "2026-05-10T10:43:50.927509",
     "mode": "update",
     "effect": "update",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Neon Kinetic Spheres In Motion",
+    "description": "Glowing orbs dance within a glass void of light.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_creative_34a3.html": {
     "created": "2026-05-10T10:50:42.184663",
     "mode": "creative",
     "effect": "creative",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Synaptic Pulse Neural Network",
+    "description": "Electric filaments drift through a swirling sea of digital consciousness.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_creative_f2ed.html": {
     "created": "2026-05-10T10:51:19.788614",
     "mode": "creative",
     "effect": "creative",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Cyan Tesseract Chronos Drift",
+    "description": "Hyperdimensional geometries dance within a swirling neon particle nebula.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_bouncing_balls_af06_v3.html": {
     "created": "2026-05-10T10:52:00.668275",
     "mode": "update",
     "effect": "update",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Kinetic Protocol Phase Two",
+    "description": "Glowing orbs dance within a translucent geometric void.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_creative_8844.html": {
     "created": "2026-05-10T10:52:44.607826",
     "mode": "creative",
     "effect": "creative",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Fractal Pulse Of The Kinetic Void",
+    "description": "A morphing torus breathes within a neon sea of digital dust.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_creative_cd4a.html": {
     "created": "2026-05-10T10:54:21.089325",
     "mode": "creative",
     "effect": "creative",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Synaptic Void Of Dreaming Minds",
+    "description": "A pulsing hyper-organism drifts through a sea of electric synapses.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_creative_9475.html": {
     "created": "2026-05-10T10:54:57.944163",
     "mode": "creative",
     "effect": "creative",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Hypercube Kinetic Resonance",
+    "description": "Morphing tesseracts dance through a rhythmic field of breathing geometry.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_creative_34a3_v2.html": {
     "created": "2026-05-10T11:36:56.504324",
     "mode": "update",
     "effect": "update",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Crystalline Nebula Shard Drift",
+    "description": "Geometric light shards dance through a swirling cosmic void of color.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_starfield_c208.html": {
     "created": "2026-05-10T11:38:16.767455",
     "mode": "stock",
     "effect": "Starfield",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Cascading Light Through Eternal Void",
+    "description": "White sparks drift endlessly into the silent dark.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_creative_8025.html": {
     "created": "2026-05-10T11:39:43.690631",
     "mode": "creative",
     "effect": "creative",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Echoes Of The Fourth Dimension",
+    "description": "Fractal geometries fold through a shifting void of iridescent light.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_copper_bars_44a0.html": {
     "created": "2026-05-10T11:41:11.406262",
     "mode": "stock",
     "effect": "Copper Bars",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Chromatic Oscillating Pulse Waves",
+    "description": "Vibrant bands of light dance across a velvet cosmic void.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_mandelbrot_zoom_ab6b.html": {
     "created": "2026-05-10T11:42:46.740021",
     "mode": "stock",
     "effect": "Mandelbrot Zoom",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Infinite Descent Into Fractal Chaos",
+    "description": "A rhythmic plunge through the kaleidoscopic depths of complex numbers.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_fourier_epicycles_b89a.html": {
     "created": "2026-05-10T11:44:31.043336",
     "mode": "stock",
     "effect": "Fourier Epicycles",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Harmonic Convergence Of Circles",
+    "description": "Rotating epicycles weave a complex path through the void.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_creative_ca66_v2.html": {
     "created": "2026-05-10T11:45:56.493736",
     "mode": "update",
     "effect": "update",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Iridescent Fractal Folding",
+    "description": "Metallic shards dance within a recursive crystalline void of light.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_galaxy_spiral_995f.html": {
     "created": "2026-05-10T11:47:28.260790",
     "mode": "stock",
     "effect": "Galaxy Spiral",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Celestial Spiral Of Dust",
+    "description": "Swirling cosmic arms dance within a glowing pink nebula.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_3d_pipes_screensaver_7643.html": {
     "created": "2026-05-10T11:49:07.278103",
     "mode": "stock",
     "effect": "3D Pipes Screensaver",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Prismatic Conduit Growth Automata",
+    "description": "Luminous geometric veins weave through a silent digital void.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_kaleidoscope_8a92.html": {
     "created": "2026-05-10T11:53:12.396230",
     "mode": "stock",
     "effect": "Kaleidoscope",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Octagonal Prism of Pulsing Light",
+    "description": "Eightfold symmetry dances through a kaleidoscope of shifting chromatic waves.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_iridescent_oil_slick_46d6.html": {
     "created": "2026-05-10T11:59:46.782867",
     "mode": "stock",
     "effect": "Iridescent Oil Slick",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Fractal Ether Of Shifting Tides",
+    "description": "Luminous waves of noise dance across an infinite digital ocean.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_creative_80f9.html": {
     "created": "2026-05-10T12:01:11.518300",
     "mode": "creative",
     "effect": "creative",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Temporal Tesseract Core Recursion",
+    "description": "A morphing hypercube pulses within a shifting sea of neon ripples.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_creative_5b80.html": {
     "created": "2026-05-10T12:02:35.249130",
     "mode": "creative",
     "effect": "creative",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Tesseract Of Infinite Dimensions",
+    "description": "A celestial hypercube dancing through a swirling void of light.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_wormhole_f6c1_v2.html": {
     "created": "2026-05-10T12:03:52.743445",
     "mode": "update",
     "effect": "update",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Neon Pulse Through Digital Veins",
+    "description": "A luminous journey through a rhythmic corridor of shifting light.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_raymarched_scene_b764.html": {
     "created": "2026-05-10T12:05:20.185477",
     "mode": "stock",
     "effect": "Raymarched Scene",
-    "passed_validation": true
-  },
-  "2026-05-10_fire_af55.html": {
-    "created": "2026-05-10T12:06:51.277338",
-    "mode": "stock",
-    "effect": "Fire",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Melting Geometric Echoes",
+    "description": "Softly merging spheres and cubes drift through a silent blue void.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_creative_34a3_v3.html": {
     "created": "2026-05-10T12:08:16.561168",
     "mode": "update",
     "effect": "update",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Neural Lattice Kinetic Flow",
+    "description": "Golden sparks dance through a geometric web of cyan light.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_creative_0402.html": {
     "created": "2026-05-10T12:09:45.351944",
     "mode": "creative",
     "effect": "creative",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Electric Neural Pulse Network",
+    "description": "Cyan synapses drift through a pulsing electromagnetic digital dreamscape.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_creative_db9a.html": {
     "created": "2026-05-10T12:16:58.157037",
     "mode": "creative",
     "effect": "creative",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Hyperdimensional Neural Drift",
+    "description": "A collapsing tesseract dissolves into a swirling sea of cyan light.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_mystify_bezier_lines_efaa.html": {
     "created": "2026-05-10T12:18:17.224382",
     "mode": "stock",
     "effect": "Mystify Bezier Lines",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Chromatic Ghost Polygon Trails",
+    "description": "Shifting geometric specters dance through a void of fading light.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_2d_tunnel_d819_v2.html": {
     "created": "2026-05-10T12:29:27.591712",
     "mode": "update",
     "effect": "update",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Celestial Swirl Of Cosmic Dust",
+    "description": "Radiant nebula waves dance through a deep velvet void.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_bouncing_balls_e986.html": {
     "created": "2026-05-10T12:33:33.694952",
     "mode": "stock",
     "effect": "Bouncing Balls",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Chromatic Kinetic Gravity Chamber",
+    "description": "Prismatic spheres dance within a translucent cage of light.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_galaxy_spiral_8d3a.html": {
     "created": "2026-05-10T12:35:12.664697",
     "mode": "stock",
     "effect": "Galaxy Spiral",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Celestial Spiral Dust",
+    "description": "Glow of pink nebulae swirling through the silent cosmic void.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_fire_5396_v3.html": {
     "created": "2026-05-10T12:38:48.732951",
     "mode": "update",
     "effect": "update",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Neon Nebula Swirl",
+    "description": "Electric violet currents dance through a deep indigo void.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_plasma_backdrop_poem_0519.html": {
     "created": "2026-05-10T12:40:19.330271",
     "mode": "stock",
     "effect": "Plasma Backdrop Poem",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Calculus Of Drifting Light",
+    "description": "Mathematical sine waves dance through a luminous digital void.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_creative_7055.html": {
     "created": "2026-05-10T12:41:47.344242",
     "mode": "creative",
     "effect": "creative",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Hypercube Neural Drift Protocol",
+    "description": "Emerald particles dance through the shifting geometry of a fourth dimension.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_wormhole_c39c_v3.html": {
     "created": "2026-05-10T12:43:08.678597",
     "mode": "update",
     "effect": "update",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Cyan Magenta Kinetic Conduit",
+    "description": "Electric pulses surge through a twisting neon vein in the void.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_creative_5b80_v2.html": {
     "created": "2026-05-10T12:45:02.775600",
     "mode": "update",
     "effect": "update",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Gilded Tesseract Flux",
+    "description": "Golden ribbons dance through the obsidian void of higher dimensions.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_creative_2b58_v2.html": {
     "created": "2026-05-10T12:48:35.893056",
     "mode": "update",
     "effect": "update",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Aetheris Void Singularity",
+    "description": "Ethereal gas clouds swirl around a pulsing cosmic center.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_creative_445b.html": {
     "created": "2026-05-10T12:50:00.822932",
     "mode": "creative",
     "effect": "creative",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Synaptic Pulse In The Void",
+    "description": "Electric filaments drift through a dreaming neural network of light.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_creative_edb8.html": {
     "created": "2026-05-10T12:52:55.561733",
     "mode": "creative",
     "effect": "creative",
-    "passed_validation": true
-  },
-  "2026-05-10_clifford_attractor_f32c.html": {
-    "created": "2026-05-10T12:54:49.830949",
-    "mode": "stock",
-    "effect": "Clifford Attractor",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Neon Fractal Recursion Core",
+    "description": "Glowing geometric structures pulse within an infinite digital void.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_creative_5723.html": {
     "created": "2026-05-10T12:57:32.710231",
     "mode": "creative",
     "effect": "creative",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Fractal Chronos Kinetic Flux",
+    "description": "Neon data fragments drift through a shifting geometric time core.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_copper_bars_ec6a.html": {
     "created": "2026-05-10T13:03:04.411551",
     "mode": "stock",
     "effect": "Copper Bars",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Chromatic Rhythms In Motion",
+    "description": "Vibrant light bands dance across a deep midnight void.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_particle_system_1d7a.html": {
     "created": "2026-05-10T13:07:50.100901",
     "mode": "stock",
     "effect": "Particle System",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Ethereal Ascent Of Light",
+    "description": "Glowing particles dance upward through the silent cosmic void.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_2d_tunnel_654e.html": {
     "created": "2026-05-10T13:09:28.555907",
     "mode": "stock",
     "effect": "2D Tunnel",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Infinite Radial Checker Vortex",
+    "description": "Geometric wedges spin endlessly through a rhythmic polar void.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_volumetric_clouds_792c.html": {
     "created": "2026-05-10T13:10:49.303046",
     "mode": "stock",
     "effect": "Volumetric Clouds",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Drifting Ether Of Golden Light",
+    "description": "Soft volumetric vapors dance beneath a glowing solar crown.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_rotozoomer_f903.html": {
     "created": "2026-05-10T13:30:48.365628",
     "mode": "stock",
     "effect": "Rotozoomer",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Cyan Tides Of Geometric Drift",
+    "description": "Rotating navy tiles dance within a pulsing cyan void.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_creative_b7d6.html": {
     "created": "2026-05-10T13:32:18.111799",
     "mode": "creative",
     "effect": "creative",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Chrono Fractal Hyper Flux",
+    "description": "A geometric descent through rotating four-dimensional light and digital drift.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_mode_7_floor_a068_v2.html": {
     "created": "2026-05-10T13:33:37.417449",
     "mode": "update",
     "effect": "update",
-    "passed_validation": true
-  },
-  "2026-05-10_wireframe_icosahedron_5688.html": {
-    "created": "2026-05-10T13:34:51.937490",
-    "mode": "stock",
-    "effect": "Wireframe Icosahedron",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Neon Horizon Synthwave Drift",
+    "description": "A glowing digital grid races through a pulsing violet cosmos.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_glitch_postprocess_5030.html": {
     "created": "2026-05-10T13:36:06.995685",
     "mode": "stock",
     "effect": "Glitch Postprocess",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Fractured Torus Knot Distortion",
+    "description": "A twisting geometric knot shatters through chromatic digital noise.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_creative_f0d4.html": {
     "created": "2026-05-10T13:38:05.972275",
     "mode": "creative",
     "effect": "creative",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Synaptic Singularity Drift",
+    "description": "Swarming neuro-particles orbit a void of infinite recursive depth.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_creative_3ced.html": {
     "created": "2026-05-10T15:45:56.828847",
     "mode": "creative",
     "effect": "creative",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Neural Drift Of Dreaming Machines",
+    "description": "Luminous particles dance through shifting currents of a digital subconscious.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_starfield_42ab.html": {
     "created": "2026-05-10T15:47:18.547036",
     "mode": "stock",
     "effect": "Starfield",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Velocity Of Distant Starlight",
+    "description": "Endless particles racing through the velvet cosmic dark.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_creative_af9f.html": {
     "created": "2026-05-10T15:50:45.538345",
     "mode": "creative",
     "effect": "creative",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Temporal Decay Of Cyan Monoliths",
+    "description": "Shifting geometric tides pulse through a fractured digital void.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_barnsley_fern_5750.html": {
     "created": "2026-05-10T15:54:57.035012",
     "mode": "stock",
     "effect": "Barnsley Fern",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Fractal Ferns In Emerald Mist",
+    "description": "Recursive green shadows dance through a digital woodland haze.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_copper_bars_f7c7.html": {
     "created": "2026-05-10T16:00:16.121100",
     "mode": "stock",
     "effect": "Copper Bars",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Oscillating Chromatic Pulse Strips",
+    "description": "Vibrant neon bands dance across a deep midnight void.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_sorting_visualizer_1601.html": {
     "created": "2026-05-10T16:06:22.249715",
     "mode": "stock",
     "effect": "Sorting Visualizer",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Chromatic Order From Chaos",
+    "description": "Prismatic monoliths dancing through the logic of structured entropy.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_volumetric_clouds_cc75.html": {
     "created": "2026-05-10T16:12:34.273681",
     "mode": "stock",
     "effect": "Volumetric Clouds",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Drifting Cumulus Ether",
+    "description": "Soft white vapors float across a sunlit azure sky.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_creative_8fdb.html": {
     "created": "2026-05-10T16:14:08.742819",
     "mode": "creative",
     "effect": "creative",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Fractal Kinetic Neural Void",
+    "description": "Pulsing organic geometries drift through a deep digital abyss.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_auto_play_pong_af57.html": {
     "created": "2026-05-10T16:16:01.488886",
     "mode": "stock",
     "effect": "Auto-Play Pong",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Cyan Velocity Digital Echo",
+    "description": "A luminous sphere dances between neon barriers in the void.",
+    "model": "google/gemma-4-26b-a4b"
   },
   "2026-05-10_glitch_postprocess_7754.html": {
     "created": "2026-05-10T16:17:11.913091",
     "mode": "stock",
     "effect": "Glitch Postprocess",
-    "passed_validation": true
+    "passed_validation": true,
+    "title": "Chromatic Knot Of Digital Static",
+    "description": "A twisting prism fractured by rhythmic waves of neon glitch.",
+    "model": "google/gemma-4-26b-a4b"
+  },
+  "2026-05-12_voronoi_bloom_aad9.html": {
+    "created": "2026-05-12T04:33:02.203761",
+    "mode": "stock",
+    "effect": "Voronoi Bloom",
+    "passed_validation": true,
+    "title": "Cerulean Voronoi Orbitals",
+    "description": "Shifting indigo cells drift through a web of luminous cyan light.",
+    "model": "google/gemma-4-26b-a4b"
+  },
+  "2026-05-12_clifford_attractor_62fb.html": {
+    "created": "2026-05-12T04:35:17.542773",
+    "mode": "stock",
+    "effect": "Clifford Attractor",
+    "passed_validation": true,
+    "title": "Clifford's Chromatic Drift",
+    "description": "Swirling mathematical particles weave complex patterns through a vibrant cosmic void.",
+    "model": "google/gemma-4-26b-a4b"
+  },
+  "2026-05-12_flying_toasters_6e1d.html": {
+    "created": "2026-05-12T04:36:06.659807",
+    "mode": "stock",
+    "effect": "Flying Toasters",
+    "passed_validation": true,
+    "title": "Chrome Wings And Toasted Skies",
+    "description": "Metallic breakfast birds drift through a pastel morning dream.",
+    "model": "google/gemma-4-26b-a4b"
+  },
+  "2026-05-12_bouncing_balls_b044.html": {
+    "created": "2026-05-12T04:38:57.501360",
+    "mode": "stock",
+    "effect": "Bouncing Balls",
+    "passed_validation": true,
+    "title": "Chromatic Gravity In A Box",
+    "description": "Vibrant spheres dance within the confines of a digital void.",
+    "model": "google/gemma-4-26b-a4b"
+  },
+  "2026-05-12_creative_27c2.html": {
+    "created": "2026-05-12T04:39:52.928887",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "title": "Fractal Neon Void",
+    "description": "Infinite geometric echoes dancing through a pulsing cyberpunk dreamscape.",
+    "model": "google/gemma-4-26b-a4b"
+  },
+  "2026-05-12_mode_7_floor_9d9d.html": {
+    "created": "2026-05-12T04:40:48.564849",
+    "mode": "stock",
+    "effect": "Mode-7 Floor",
+    "passed_validation": true,
+    "title": "Retro Horizon Grid Drift",
+    "description": "A pixelated checkerboard glides beneath a sunset violet sky.",
+    "model": "google/gemma-4-26b-a4b"
+  },
+  "2026-05-12_aurora_borealis_e1b0.html": {
+    "created": "2026-05-12T04:41:53.759199",
+    "mode": "stock",
+    "effect": "Aurora Borealis",
+    "passed_validation": true,
+    "title": "Neon Silk Aurora Tides",
+    "description": "Vibrant chromatic waves drift through a silent, starlit midnight landscape.",
+    "model": "google/gemma-4-26b-a4b"
+  },
+  "2026-05-12_barnsley_fern_d3b1.html": {
+    "created": "2026-05-12T04:45:35.945342",
+    "mode": "stock",
+    "effect": "Barnsley Fern",
+    "passed_validation": true,
+    "title": "Fractal Frond In The Wind",
+    "description": "Algorithmic green leaves sway within a mathematical garden of light.",
+    "model": "google/gemma-4-26b-a4b"
+  },
+  "2026-05-12_auto_play_breakout_7687.html": {
+    "created": "2026-05-12T04:46:26.737232",
+    "mode": "stock",
+    "effect": "Auto-Play Breakout",
+    "passed_validation": true,
+    "title": "Chromatic Prism Collision",
+    "description": "A bouncing sphere shatters vibrant geometric layers in rhythmic motion.",
+    "model": "google/gemma-4-26b-a4b"
+  },
+  "2026-05-12_auto_solving_rubik_s_cube_f811.html": {
+    "created": "2026-05-12T04:50:03.993455",
+    "mode": "stock",
+    "effect": "Auto-Solving Rubik's Cube",
+    "passed_validation": true,
+    "title": "Chromatic Logic In Motion",
+    "description": "Vibrant geometric layers twist through a cycle of endless disorder.",
+    "model": "google/gemma-4-26b-a4b"
+  },
+  "2026-05-12_flurry_plasma_tendrils_cd74.html": {
+    "created": "2026-05-12T04:51:40.838101",
+    "mode": "stock",
+    "effect": "Flurry Plasma Tendrils",
+    "passed_validation": true,
+    "title": "Chromatic Curl Vortex",
+    "description": "Vibrant particles spiral through an infinite mathematical field of color.",
+    "model": "google/gemma-4-26b-a4b"
+  },
+  "2026-05-12_maze_walker_screensaver_0bd0.html": {
+    "created": "2026-05-12T04:54:20.851346",
+    "mode": "stock",
+    "effect": "Maze Walker Screensaver",
+    "passed_validation": true,
+    "title": "Labyrinth Of The Flickering Torch",
+    "description": "A lonely light wanders through endless corridors of shifting shadows.",
+    "model": "google/gemma-4-26b-a4b"
+  },
+  "2026-05-12_creative_b7c7.html": {
+    "created": "2026-05-12T04:58:50.498491",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "title": "Luminous Threads Of Time",
+    "description": "Glowing neon filaments dance through a swirling cosmic void.",
+    "model": "google/gemma-4-26b-a4b"
+  },
+  "2026-05-12_lorenz_attractor_1a25.html": {
+    "created": "2026-05-12T04:59:55.873877",
+    "mode": "stock",
+    "effect": "Lorenz Attractor",
+    "passed_validation": true,
+    "title": "Chaotic Butterfly Orbit",
+    "description": "A spectral dance of mathematical chaos in the void.",
+    "model": "google/gemma-4-26b-a4b"
+  },
+  "2026-05-12_spirograph_bf15.html": {
+    "created": "2026-05-12T05:03:17.960280",
+    "mode": "stock",
+    "effect": "Spirograph",
+    "passed_validation": true,
+    "title": "Hypotrochoid Prism Of Light",
+    "description": "A chromatic orbit dancing through infinite mathematical loops.",
+    "model": "google/gemma-4-26b-a4b"
+  },
+  "2026-05-12_star_wars_manifesto_crawl_0ec8.html": {
+    "created": "2026-05-12T05:04:10.010984",
+    "mode": "stock",
+    "effect": "Star-Wars Manifesto Crawl",
+    "passed_validation": true,
+    "title": "Silicon Dreams And Binary Souls",
+    "description": "Golden text ascends through a void of digital awakening.",
+    "model": "google/gemma-4-26b-a4b"
+  },
+  "2026-05-12_creative_a8c9.html": {
+    "created": "2026-05-12T05:05:40.594351",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "title": "Cybernetic Fractal Pulse Engine",
+    "description": "Neon geometric structures drift through a digital void of shifting light.",
+    "model": "google/gemma-4-26b-a4b"
+  },
+  "2026-05-12_koch_snowflake_dc3b.html": {
+    "created": "2026-05-12T05:08:17.870843",
+    "mode": "stock",
+    "effect": "Koch Snowflake",
+    "passed_validation": true,
+    "title": "Fractal Cyan Growth Cycles",
+    "description": "Glowing geometric lines bloom through infinite algorithmic recursion.",
+    "model": "google/gemma-4-26b-a4b"
+  },
+  "2026-05-13_creative_2f92.html": {
+    "created": "2026-05-13T05:06:30.631846",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "title": "Neon Fractal Torus Drift",
+    "description": "A twisting cyan ring pulses within a deep cosmic void.",
+    "model": "google/gemma-4-26b-a4b"
+  },
+  "2026-05-13_metaballs_6544.html": {
+    "created": "2026-05-13T05:13:17.302706",
+    "mode": "stock",
+    "effect": "Metaballs",
+    "passed_validation": true,
+    "title": "Liquid Chrome Orbitals",
+    "description": "Shimmering silver spheres merge within a dark cosmic void.",
+    "model": "google/gemma-4-26b-a4b"
+  },
+  "2026-05-13_plasma_backdrop_poem_77e7.html": {
+    "created": "2026-05-13T05:14:46.190629",
+    "mode": "stock",
+    "effect": "Plasma Backdrop Poem",
+    "passed_validation": true,
+    "title": "Silicon Pulse And Plasma Waves",
+    "description": "Binary rhythms dance through a sea of neon light.",
+    "model": "google/gemma-4-26b-a4b"
+  },
+  "2026-05-13_cube_twister_d1bb.html": {
+    "created": "2026-05-13T05:17:16.201221",
+    "mode": "stock",
+    "effect": "Cube Twister",
+    "passed_validation": true,
+    "title": "Chromatic Spire Of Motion",
+    "description": "Prismatic geometries spiral in a rhythmic dance of color.",
+    "model": "google/gemma-4-26b-a4b"
+  },
+  "2026-05-13_aquarium_screensaver_596a.html": {
+    "created": "2026-05-13T05:18:55.495467",
+    "mode": "stock",
+    "effect": "Aquarium Screensaver",
+    "passed_validation": true,
+    "title": "Neon Currents Of The Abyss",
+    "description": "Vibrant aquatic life drifts through a shimmering, sun-drenched underwater dreamscape.",
+    "model": "google/gemma-4-26b-a4b"
+  },
+  "2026-05-13_caustics_1714.html": {
+    "created": "2026-05-13T05:24:43.294737",
+    "mode": "stock",
+    "effect": "Caustics",
+    "passed_validation": true,
+    "title": "Bioluminescent Pulse Of Ether",
+    "description": "Shimmering turquoise particles dance within a rhythmic digital void.",
+    "model": "google/gemma-4-26b-a4b"
+  },
+  "2026-05-13_dragon_curve_9abc.html": {
+    "created": "2026-05-13T05:28:44.932243",
+    "mode": "stock",
+    "effect": "Dragon Curve",
+    "passed_validation": true,
+    "title": "Fractal Dragon's Prismatic Coil",
+    "description": "A spectral serpent unfolds through infinite geometric iterations.",
+    "model": "google/gemma-4-26b-a4b"
+  },
+  "2026-05-13_boot_post_parade_908b.html": {
+    "created": "2026-05-13T05:30:20.843821",
+    "mode": "stock",
+    "effect": "Boot-POST Parade",
+    "passed_validation": true,
+    "title": "Neural Kernel Boot Sequence",
+    "description": "Digital ghosts awaken within a swirling sea of chromatic plasma.",
+    "model": "google/gemma-4-26b-a4b"
+  },
+  "2026-05-13_creative_e767.html": {
+    "created": "2026-05-13T05:32:04.469769",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "title": "Cyan Pulse Protocol",
+    "description": "Fluctuating digital currents dance through a geometric void.",
+    "model": "google/gemma-4-26b-a4b"
+  },
+  "2026-05-13_volumetric_clouds_ff9f.html": {
+    "created": "2026-05-13T05:33:28.562797",
+    "mode": "stock",
+    "effect": "Volumetric Clouds",
+    "passed_validation": true,
+    "title": "Drifting Etheric Cumulus Layers",
+    "description": "Soft volumetric mists float through a glowing celestial expanse.",
+    "model": "google/gemma-4-26b-a4b"
+  },
+  "2026-05-13_creative_2074.html": {
+    "created": "2026-05-13T05:38:42.775873",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "title": "Fractured Cyan Entropy Flux",
+    "description": "Shifting chromatic waves ripple through a destabilizing digital void.",
+    "model": "google/gemma-4-26b-a4b"
+  },
+  "2026-05-14_creative_83da.html": {
+    "created": "2026-05-14T06:04:56.622560",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "google/gemma-4-26b-a4b",
+    "title": "Fractured Cyan Kinetic Spheres",
+    "description": "Swarming particles morph through turbulent noise into a glowing celestial orb."
+  },
+  "2026-05-14_creative_078c.html": {
+    "created": "2026-05-14T06:22:41.692536",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "google/gemma-4-e4b",
+    "title": "Distorted Nova Signal",
+    "description": "Colors swirl through temporal static streams."
+  },
+  "2026-05-14_creative_22b0.html": {
+    "created": "2026-05-14T06:30:39.979861",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen_qwen3-30b-a3b-thinking-2507",
+    "title": "Quantum Resonance Pulse",
+    "description": "Light pulses in resonant harmony."
+  },
+  "2026-05-14_vector_field_streamlines_fbad.html": {
+    "created": "2026-05-14T06:33:08.169121",
+    "mode": "stock",
+    "effect": "Vector Field Streamlines",
+    "passed_validation": true,
+    "model": "qwen/qwen3-vl-8b",
+    "title": "Fluid Flow Tracers",
+    "description": "Particles drift through rhythmic sine waves, leaving ghostly trails."
+  },
+  "2026-05-14_mode_7_floor_f6c5.html": {
+    "created": "2026-05-14T06:43:12.748878",
+    "mode": "stock",
+    "effect": "Mode-7 Floor",
+    "passed_validation": true,
+    "model": "qwen_qwen3-30b-a3b-thinking-2507",
+    "title": "Horizon Scroll Reverie",
+    "description": "Sky melts to grid as time scrolls beneath the horizon."
+  },
+  "2026-05-14_lava_lamp_be70.html": {
+    "created": "2026-05-14T07:02:19.351901",
+    "mode": "stock",
+    "effect": "Lava Lamp",
+    "passed_validation": true,
+    "model": "qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive",
+    "title": "Amber Blobs In Sinusoidal Dance",
+    "description": "Sine waves sculpt luminous spheres from amber light."
+  },
+  "2026-05-14_creative_c1f7.html": {
+    "created": "2026-05-14T07:10:39.959061",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "mistralai/devstral-small-2507",
+    "title": "Luminous Vortex Dance",
+    "description": "A symphony of color in perpetual motion."
+  },
+  "2026-05-14_caustics_6435.html": {
+    "created": "2026-05-14T07:17:21.195068",
+    "mode": "stock",
+    "effect": "Caustics",
+    "passed_validation": true,
+    "model": "qwen/qwen3.6-27b",
+    "title": "Shifting Bioluminescent Cellular Tides",
+    "description": "Glowing geometries breathe beneath quiet digital tides."
+  },
+  "2026-05-14_mystify_bezier_lines_2883.html": {
+    "created": "2026-05-14T07:20:35.894382",
+    "mode": "stock",
+    "effect": "Mystify Bezier Lines",
+    "passed_validation": true,
+    "model": "qwen/qwen3.6-35b-a3b",
+    "title": "Ephemeral Geometric Reverberations",
+    "description": "Fading trails of light chase their own ghosts."
+  },
+  "2026-05-14_matrix_digital_rain_7207.html": {
+    "created": "2026-05-14T07:25:51.687100",
+    "mode": "stock",
+    "effect": "Matrix Digital Rain",
+    "passed_validation": true,
+    "model": "unsloth/qwen3-vl-30b-a3b-instruct",
+    "title": "CRT Katakana Stream",
+    "description": "Green glyphs cascade like digital rain across a vintage screen."
+  },
+  "2026-05-14_star_wars_manifesto_crawl_32e3.html": {
+    "created": "2026-05-14T07:28:40.363861",
+    "mode": "stock",
+    "effect": "Star-Wars Manifesto Crawl",
+    "passed_validation": true,
+    "model": "google/gemma-4-26b-a4b",
+    "title": "Manifesto Of The Silicon Ghost",
+    "description": "Golden words ascend through the dark void of digital consciousness."
+  },
+  "2026-05-14_creative_8c5a.html": {
+    "created": "2026-05-14T07:44:47.829337",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen/qwen3.6-27b",
+    "title": "Quantum Flora In Nebulous Bloom",
+    "description": "Quantum petals bloom softly in the void's rhythmic, glowing embrace."
+  },
+  "2026-05-14_aurora_borealis_2c9c.html": {
+    "created": "2026-05-14T07:47:38.185674",
+    "mode": "stock",
+    "effect": "Aurora Borealis",
+    "passed_validation": true,
+    "model": "qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive",
+    "title": "Flowing Veils Across Neon Nightfall",
+    "description": "Electric veils cascade across silent peaks beneath drifting stars."
+  },
+  "2026-05-14_creative_5f0a.html": {
+    "created": "2026-05-14T07:50:25.135247",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen_qwen3-30b-a3b-thinking-2507",
+    "title": "Quantum Mirror Duet",
+    "description": "As one moves, its twin mirrors the path in silent quantum harmony."
+  },
+  "2026-05-14_creative_b860.html": {
+    "created": "2026-05-14T07:53:36.913731",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "text-embedding-nomic-embed-text-v1.5",
+    "title": "Quantum Bloom Particle Swarm",
+    "description": "Spectral motes drift in an endless, luminous cosmic tide."
+  },
+  "2026-05-14_auto_play_pong_5dc9.html": {
+    "created": "2026-05-14T08:00:34.791867",
+    "mode": "stock",
+    "effect": "Auto-Play Pong",
+    "passed_validation": true,
+    "model": "qwen/qwen3.6-35b-a3b",
+    "title": "Cyan Trajectory Reverie",
+    "description": "Cyan trails weave silent echoes across the court."
+  },
+  "2026-05-14_apollonian_gasket_0d08.html": {
+    "created": "2026-05-14T08:04:03.443429",
+    "mode": "stock",
+    "effect": "Apollonian Gasket",
+    "passed_validation": true,
+    "model": "qwen3-30b-a3b-thinking-2507",
+    "title": "Recursive Circle Symphony",
+    "description": "Tangent circles bloom into an infinite geometric dance."
+  },
+  "2026-05-14_creative_a448.html": {
+    "created": "2026-05-14T08:10:33.525110",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "gemma-4-e4b-it-heretic",
+    "title": "Quantum Bloom Particle Swarm",
+    "description": "Vibrant nebulae pulse outwards in a silent, energetic cascade."
+  },
+  "2026-05-14_bouncing_balls_8f57.html": {
+    "created": "2026-05-14T08:16:30.152809",
+    "mode": "stock",
+    "effect": "Bouncing Balls",
+    "passed_validation": true,
+    "model": "unsloth/qwen3.5-35b-a3b",
+    "title": "Colorful Spheres In Wireframe Cage",
+    "description": "Gravity traps color in geometric silence."
+  },
+  "2026-05-14_creative_2716.html": {
+    "created": "2026-05-14T08:26:42.784478",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen/qwen3-vl-4b",
+    "title": "Neon Chroma Pulse",
+    "description": "Particles swirl in liquid light, pulsing with neon dreams."
+  },
+  "2026-05-14_creative_96b2.html": {
+    "created": "2026-05-14T08:36:10.663748",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen3-30b-a3b-instruct-2507",
+    "title": "Neural Lattice",
+    "description": "Data pulses through a living grid of light."
+  },
+  "2026-05-14_creative_9eb6.html": {
+    "created": "2026-05-14T08:55:38.046430",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen/qwen3-vl-30b",
+    "title": "Neural Pulse",
+    "description": "Glowing nodes pulse through a neural network in rhythmic light."
+  },
+  "2026-05-14_dragon_curve_825b.html": {
+    "created": "2026-05-14T08:59:05.456250",
+    "mode": "stock",
+    "effect": "Dragon Curve",
+    "passed_validation": true,
+    "model": "qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive"
+  },
+  "2026-05-15_particle_system_e34d.html": {
+    "created": "2026-05-15T05:33:57.048323",
+    "mode": "stock",
+    "effect": "Particle System",
+    "passed_validation": true,
+    "model": "gemma-4-31b-it",
+    "title": "Cascades Of Radiant Stardust",
+    "description": "Luminous particles dance in a timeless cycle of gravity and light."
+  },
+  "2026-05-15_mandelbrot_zoom_f229.html": {
+    "created": "2026-05-15T05:46:42.321777",
+    "mode": "stock",
+    "effect": "Mandelbrot Zoom",
+    "passed_validation": true,
+    "model": "qwen/qwen3-vl-30b",
+    "title": "Fractal Zoom Shader",
+    "description": "A mesmerizing descent into the Mandelbrot set's infinite complexity."
+  },
+  "2026-05-15_l_system_tree_1ab1.html": {
+    "created": "2026-05-15T05:48:26.131588",
+    "mode": "stock",
+    "effect": "L-System Tree",
+    "passed_validation": true,
+    "model": "mistralai/devstral-small-2507",
+    "title": "Fractal Forest Frenzy",
+    "description": "A L-system tree sways in the digital wind."
+  },
+  "2026-05-15_star_wars_manifesto_crawl_3d2b.html": {
+    "created": "2026-05-15T06:06:59.566359",
+    "mode": "stock",
+    "effect": "Star-Wars Manifesto Crawl",
+    "passed_validation": true,
+    "model": "google/gemma-4-e4b",
+    "title": "Manifesto Of The Machines",
+    "description": "Logic transforms into luminous spectacle against the void."
+  },
+  "2026-05-15_rotozoomer_8ced.html": {
+    "created": "2026-05-15T06:26:57.892247",
+    "mode": "stock",
+    "effect": "Rotozoomer",
+    "passed_validation": true,
+    "model": "qwen3-30b-a3b-thinking-2507",
+    "title": "Ethereal Checkerboard Rotation",
+    "description": "Black and white squares rotate with hypnotic grace."
+  },
+  "2026-05-15_creative_f9f9.html": {
+    "created": "2026-05-15T06:36:25.212326",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "text-embedding-nomic-embed-text-v1.5",
+    "title": "Neural Network Synthesis",
+    "description": "Digital consciousness flowing through geometric pathways of light"
+  },
+  "2026-05-10_bouncing_balls_af06_v4.html": {
+    "created": "2026-05-15T06:43:26.383605",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "gemma-4-31b-it",
+    "title": "Neon Orbs In Glass Silence",
+    "description": "Luminous spheres dance within a fragile geometric void of light."
+  },
+  "2026-05-15_creative_c55c.html": {
+    "created": "2026-05-15T06:49:24.168556",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen3-30b-a3b-thinking-2507",
+    "title": "Void's Flickering Dreams",
+    "description": "Ephemeral spheres breathe in silent color."
+  },
+  "2026-05-10_2d_tunnel_d819_v3.html": {
+    "created": "2026-05-15T06:54:59.468680",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen/qwen3-vl-30b",
+    "title": "Vortex Nebula",
+    "description": "A swirling cosmic dance of light and color in infinite space."
+  },
+  "2026-05-12_flying_toasters_6e1d_v2.html": {
+    "created": "2026-05-15T07:00:56.392652",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "huihui-qwen3-vl-8b-instruct-abliterated",
+    "title": "Glowing Toaster Swarm",
+    "description": "Toasters and toast drift in neon-lit chaos."
+  },
+  "2026-05-12_star_wars_manifesto_crawl_0ec8_v2.html": {
+    "created": "2026-05-15T07:15:07.865312",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "text-embedding-nomic-embed-text-v1.5",
+    "title": "Synthetic Pulse Lattice",
+    "description": "Neon lattice breathes with a synthetic heartbeat."
+  },
+  "2026-05-15_creative_02d4.html": {
+    "created": "2026-05-15T07:24:09.532524",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen/qwen3.6-35b-a3b",
+    "title": "Fractal Tide Convergence",
+    "description": "Chromatic tides carve fractal dreams from void."
+  },
+  "2026-05-15_creative_f78d.html": {
+    "created": "2026-05-15T07:30:19.977848",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen/qwen3.6-35b-a3b",
+    "title": "Luminal Beat Loom",
+    "description": "Neon threads dance to the silent heartbeat of time."
+  },
+  "2026-05-15_audio_reactive_bars_27ab.html": {
+    "created": "2026-05-15T07:38:17.619511",
+    "mode": "stock",
+    "effect": "Audio-Reactive Bars",
+    "passed_validation": true,
+    "model": "qwen/qwen3.6-27b",
+    "title": "Spectral Neon Rhythm Waves",
+    "description": "Neon frequencies pulse rhythmically across a dark reflective spectrum."
+  },
+  "2026-05-10_raymarched_scene_b764_v2.html": {
+    "created": "2026-05-15T07:49:24.276411",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3-coder-30b-a3b-instruct",
+    "title": "Neon Dream SDF",
+    "description": "Digital geometry dances in pulsing light and shadow."
+  },
+  "2026-05-15_wireframe_icosahedron_417b.html": {
+    "created": "2026-05-15T07:57:15.101936",
+    "mode": "stock",
+    "effect": "Wireframe Icosahedron",
+    "passed_validation": true,
+    "model": "gemma-4-31b-it",
+    "title": "Neon Echoes Of Geometric Souls",
+    "description": "Luminous polyhedral shells pulse within a shimmering void of light."
+  },
+  "2026-05-15_bouncing_balls_d308.html": {
+    "created": "2026-05-15T08:05:47.581273",
+    "mode": "stock",
+    "effect": "Bouncing Balls",
+    "passed_validation": true,
+    "model": "qwen/qwen3.5-9b",
+    "title": "Neon Souls Dancing In Geometric Darkness",
+    "description": "Glowing chaos blooms within the silent geometric cage."
+  },
+  "2026-05-15_mandelbrot_zoom_3a55.html": {
+    "created": "2026-05-15T08:21:09.367137",
+    "mode": "stock",
+    "effect": "Mandelbrot Zoom",
+    "passed_validation": true,
+    "model": "zai-org/glm-4.7-flash",
+    "title": "Neon Julia Deep Dive",
+    "description": "Colors swirl into an infinite fractal vortex."
+  },
+  "2026-05-10_fire_5396_v4.html": {
+    "created": "2026-05-15T08:26:45.162425",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "text-embedding-nomic-embed-text-v1.5",
+    "title": "Fractal Cyan Data Drift",
+    "description": "Swirling chromatic currents flow through a digital void of shifting noise."
+  },
+  "2026-05-10_creative_8844_v2.html": {
+    "created": "2026-05-15T08:48:09.386907",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "gemma-4-31b-it",
+    "title": "Prismatic Echoes Of Frozen Time",
+    "description": "Iridescent facets fracture light within a silent geometric void."
+  },
+  "2026-05-15_gravity_well_grid_5f57.html": {
+    "created": "2026-05-15T08:57:10.830535",
+    "mode": "stock",
+    "effect": "Gravity Well Grid",
+    "passed_validation": true,
+    "model": "google/gemma-4-26b-a4b",
+    "title": "Gaussian Gravity Well Grid",
+    "description": "Fluorescent neon waves ripple across a shifting digital abyss."
+  },
+  "2026-05-15_creative_b4c3.html": {
+    "created": "2026-05-15T09:03:03.777549",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "magistral-small-2509",
+    "title": "Fractal Universe in Motion",
+    "description": "Spiraling fractals dance amidst a starry void."
+  },
+  "2026-05-15_creative_38b5.html": {
+    "created": "2026-05-15T09:17:10.760429",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen3-coder-30b-a3b-instruct",
+    "title": "Neural Datastream",
+    "description": "Digital consciousness flowing through electric veins"
+  },
+  "2026-05-15_creative_9b8d.html": {
+    "created": "2026-05-15T09:22:40.735314",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen3-30b-a3b-instruct-2507",
+    "title": "Quantum Lattice Pulse",
+    "description": "Glowing fractals pulse in silent resonance."
+  },
+  "2026-05-15_bloom_torus_knot_4231.html": {
+    "created": "2026-05-15T09:45:36.865579",
+    "mode": "stock",
+    "effect": "Bloom Torus Knot",
+    "passed_validation": true,
+    "model": "google/gemma-4-26b-a4b",
+    "title": "Radiant Magenta Geometric Bloom",
+    "description": "Luminous pink threads spin through a silent void."
+  },
+  "2026-05-15_lava_lamp_1f0b.html": {
+    "created": "2026-05-15T09:51:56.971454",
+    "mode": "stock",
+    "effect": "Lava Lamp",
+    "passed_validation": true,
+    "model": "qwen3-30b-a3b-instruct-2507",
+    "title": "Spheres in Motion",
+    "description": "Glowing orbs drift through amber dusk."
+  },
+  "2026-05-15_kaleidoscope_572f.html": {
+    "created": "2026-05-15T09:57:28.652737",
+    "mode": "stock",
+    "effect": "Kaleidoscope",
+    "passed_validation": true,
+    "model": "qwen3-vl-8b-instruct-abliterated-v2.0",
+    "title": "Eightfold Symmetry Pulse",
+    "description": "Vibrant fractals fold in rhythmic symmetry across the canvas."
+  },
+  "2026-05-13_boot_post_parade_908b_v2.html": {
+    "created": "2026-05-15T10:07:36.225759",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "gemma-4-e4b-it-heretic",
+    "title": "Bioluminescent Neural Bloom Cascade",
+    "description": "Flowing cosmic veins paint a digital subconscious awakening."
+  },
+  "2026-05-15_creative_f847.html": {
+    "created": "2026-05-15T10:20:34.199639",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "gemma-4-31b-it",
+    "title": "Cyan Neural Lattice Echoes",
+    "description": "Electric synapses weave through a drifting sea of frozen light."
+  },
+  "2026-05-10_creative_445b_v2.html": {
+    "created": "2026-05-15T10:30:00.773592",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "huihui-qwen3-vl-8b-instruct-abliterated",
+    "title": "Neural Pulse Fractal",
+    "description": "Bioluminescent synapses pulse through glitching neural lace."
+  },
+  "2026-05-15_creative_ff25.html": {
+    "created": "2026-05-15T10:55:39.473525",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "lmstudio-community/qwen3.5-35b-a3b",
+    "title": "Void Weaver Neon Entropy",
+    "description": "Cyan threads stitch noise into the silent void."
+  },
+  "2026-05-15_creative_6830.html": {
+    "created": "2026-05-15T11:01:34.882120",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen/qwen3.5-9b"
+  },
+  "2026-05-10_lens_flare_ec6e_v8.html": {
+    "created": "2026-05-15T11:22:18.951764",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "lmstudio-community/qwen3.5-35b-a3b",
+    "title": "Neon Neural Cascade Projection",
+    "description": "Electric dreams pulse through the geometric neural web."
+  },
+  "2026-05-15_creative_2d10.html": {
+    "created": "2026-05-15T11:29:47.266865",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen/qwen3-vl-30b",
+    "title": "Neural Nebula",
+    "description": "Pulsing nodes connect in a glowing web of data flow."
+  },
+  "2026-05-15_starfield_a5c1.html": {
+    "created": "2026-05-15T11:36:59.797462",
+    "mode": "stock",
+    "effect": "Starfield",
+    "passed_validation": true,
+    "model": "qwen/qwen3.5-9b",
+    "title": "Infinite Cosmic Starstream",
+    "description": "Silent white stars race endlessly through the dark expanse."
+  },
+  "2026-05-13_creative_e767_v2.html": {
+    "created": "2026-05-15T11:46:23.865503",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3-coder-30b-a3b-instruct",
+    "title": "NEON QUANTUM OSCILLATION",
+    "description": "Digital particles dance through shimmering quantum fields"
+  },
+  "2026-05-15_auto_play_pong_d609.html": {
+    "created": "2026-05-15T11:58:41.539578",
+    "mode": "stock",
+    "effect": "Auto-Play Pong",
+    "passed_validation": true,
+    "model": "qwen/qwen3-vl-30b",
+    "title": "Neon Pong Requiem",
+    "description": "Digital paddle duel pulses with neon trails in a zero-gravity arena."
+  },
+  "2026-05-15_creative_430e.html": {
+    "created": "2026-05-15T12:04:09.384767",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "aescoder-4b",
+    "title": "Neon Pulse",
+    "description": "Digital cosmos pulses with electric life"
+  },
+  "2026-05-10_fire_5396_v5.html": {
+    "created": "2026-05-15T12:09:44.439096",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "google/gemma-4-e4b",
+    "title": "Nebula Tide In Infinite Night",
+    "description": "Time twists starlight into swirling, painted cosmic chaos."
+  },
+  "2026-05-10_volumetric_clouds_792c_v2.html": {
+    "created": "2026-05-15T12:25:53.647304",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "aescoder-4b",
+    "title": "Cosmic Volumetric Dreams",
+    "description": "A swirling nebula of light and shadow in eternal motion"
   }
 }

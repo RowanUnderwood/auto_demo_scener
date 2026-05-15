@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Neural Bloom // The Digital Organism</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+        #ui { position: absolute; bottom: 20px; left: 20px; color: rgba(255, 255, 255, 0.5); font-family: monospace; pointer-events: none; user-select: none; }
+    </style>
+    <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.154.0/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.154.0/examples/jsm/"
+        }
+      }
+    </script>
+</head>
+<body>
+    <div id="ui">THE DIGITAL ORGANISM</div>
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+        // --- 1. Setup & Scene ---
+        const scene = new THREE.Scene();
+        // Fog to create depth fade-out
+        scene.fog = new THREE.FogExp2(0x050510, 0.02);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.z = 8;
+
+        const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        // Tone mapping is crucial for bloom realism
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.2;
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.autoRotate = true;
+        controls.autoRotateSpeed = 0.5;
+
+        // --- 2. Procedural Noise Texture (for the shell) ---
+        // Creating a texture programmatically to avoid external assets
+        function createNoiseTexture() {
+            const size = 512;
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, size, size);
+            
+            for (let i = 0; i < 40000; i++) {
+                ctx.fillStyle = Math.random() > 0.5 ? '#112' : '#1a3';
+                const x = Math.random() * size;
+                const y = Math.random() * size;
+                const w = Math.random() * 5 + 1;
+                const h = Math.random() * 5 + 1;
+                ctx.fillRect(x, y, w, h);
+            }
+            
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.wrapS = THREE.RepeatWrapping;
+            tex.wrapT = THREE.RepeatWrapping;
+            return tex;
+        }
+
+        const noiseTex = createNoiseTexture();
+
+        // --- 3. The Object: "The Organism" ---
+        
+        // Inner Wireframe Core (Animated Shader)
+        const coreGeometry = new THREE.IcosahedronGeometry(2, 15);
+        const coreMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uColor: { value: new THREE.Color(0x00ffff) }
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                varying vec3 vNormal;
+                void main() {
+                    vUv = uv;
+                    vNormal = normal;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float uTime;
+                uniform vec3 uColor;
+                varying vec2 vUv;
+                varying vec3 vNormal;
+
+                void main() {
+                    // Pulse based on time and position
+                    float dist = length(vNormal); 
+                    float pulse = sin(uTime * 2.0 + vNormal.x * 10.0) * 0.5 + 0.5;
+                    
+                    // Wireframe look using grid logic would be expensive here, so we use color mixing
+                    vec3 coreColor = uColor * (pulse * 1.5);
+                    
+                    // Add some noise to the core edges
+                    float noise = fract(vUv.x + vUv.y * 0.5 + uTime);
+                    coreColor += vec3(noise) * 0.2;
+
+                    gl_FragColor = vec4(coreColor, 1.0);
+                }
+            `,
+            transparent: true,
+            side: THREE.DoubleSide,
+            wireframe: true // Explicit wireframe for the shader to work easily without complex geometry
+        });
+
+        const innerCore = new THREE.Mesh(coreGeometry, coreMaterial);
+        scene.add(innerCore);
+
+
+        // Outer Organic Shell (Standard Material)
+        const shellGeometry = new THREE.IcosahedronGeometry(2.8, 30);
+        
+        // Create a fake normal map for the shader material to interpret as bumpy surface
+        const fakeNormalMapCanvas = document.createElement('canvas');
+        fakeNormalMapCanvas.width = 256;
+        fakeNormalMapCanvas.height = 256;
+        const fCtx = fakeNormalMapCanvas.getContext('2d');
+        // Draw concentric circles to simulate organic rings
+        for(let i=0; i<10; i++) {
+            fCtx.beginPath();
+            fCtx.arc(i*25, 128, (i%3+1)*60 + Math.sin(i)*20, 0, Math.PI * 2);
+            fCtx.strokeStyle = (i%2 === 0) ? '#ffffff' : '#000000';
+            fCtx.lineWidth = 5;
+            fCtx.stroke();
+        }
+        const fakeNormalTex = new THREE.CanvasTexture(fakeNormalMapCanvas);
+
+        const shellMaterial = new THREE.MeshStandardMaterial({
+            color: 0x111111,
+            roughness: 0.2,
+            metalness: 0.8,
+            emissive: 0x0044aa,
+            emissiveIntensity: 0.5,
+            normalMap: fakeNormalTex,
+            bumpScale: 0.1,
+        });
+
+        const outerShell = new THREE.Mesh(shellGeometry, shellMaterial);
+        scene.add(outerShell);
+
+        // Floating Particles (Background Stars)
+        const starsGeo = new THREE.BufferGeometry();
+        const starCount = 2000;
+        const posArray = new Float32Array(starCount * 3);
+        for(let i=0; i<starCount * 3; i++) {
+            posArray[i] = (Math.random() - 0.5) * 60;
+        }
+        starsGeo.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+        const starsMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.05, transparent: true, opacity: 0.8 });
+        const starSystem = new THREE.Points(starsGeo, starsMat);
+        scene.add(starSystem);
+
+
+        // --- 4. Lighting ---
+        const ambientLight = new THREE.AmbientLight(0x222222);
+        scene.add(ambientLight);
+
+        const pointLight1 = new THREE.PointLight(0xff0055, 500, 50);
+        const pointLight2 = new THREE.PointLight(0x00aaff, 500, 50);
+
+        scene.add(pointLight1);
+        scene.add(pointLight2);
+
+
+        // --- 5. Post-Processing (The Magic) ---
+        const composer = new EffectComposer(renderer);
+        
+        const renderPass = new RenderPass(scene, camera);
+        composer.addPass(renderPass);
+
+        // Tuning the Bloom for that "Demoscene" look
+        const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
+        bloomPass.strength = 1.6; // High intensity glow
+        bloomPass.radius = 0.5;   // Soft spread
+        bloomPass.threshold = 0.1; // Lower threshold to make more things glow
+        
+        composer.addPass(bloomPass);
+
+
+        // --- 6. Animation Loop ---
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const time = clock.getElapsedTime();
+            const delta = clock.getDelta();
+
+            // Update Shader Uniforms
+            innerCore.material.uniforms.uTime.value = time;
+
+            // Animate Lights (Orbit around the object)
+            pointLight1.position.x = Math.sin(time * 0.7) * 5;
+            pointLight1.position.z = Math.cos(time * 0.7) * 5;
+            pointLight2.position.x = Math.cos(time * 0.3) * 8;
+            pointLight2.position.z = Math.sin(time * 0.3) * 8;
+
+            // Slow morph of the outer shell (Simulated via slight scale change if we used a MorphTarget, but here just subtle rotation offset relative to inner)
+            
+            starSystem.rotation.y -= 0.001;
+
+            controls.update();
+            
+            // Render
+            composer.render();
+        }
+
+        animate();
+
+        // Handle Resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>

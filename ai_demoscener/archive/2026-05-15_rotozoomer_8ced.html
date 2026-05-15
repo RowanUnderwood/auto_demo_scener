@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Procedural Checker Shader</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
+        camera.position.z = 5;
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const material = new THREE.ShaderMaterial({
+            uniforms: { time: { value: 0 } },
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float time;
+                varying vec2 vUv;
+
+                void main() {
+                    vec2 p = vUv * 2.0 - 1.0; // Center UV at (0,0)
+                    
+                    float angle = time * 0.3;
+                    float scale = 1.5 + sin(time) * 0.7;
+                    
+                    // Rotation matrix
+                    float c = cos(angle);
+                    float s = sin(angle);
+                    vec2 p_rotated = vec2(p.x * c - p.y * s, p.x * s + p.y * c);
+                    vec2 p_scaled = p_rotated * scale;
+                    
+                    // Procedural checkerboard: floor(x) + floor(y) mod 2
+                    float check = mod(floor(p_scaled.x) + floor(p_scaled.y), 2.0);
+                    
+                    // Mix between black and white (contrasting colors)
+                    vec4 color1 = vec4(0.0, 0.0, 0.0, 1.0); // Black
+                    vec4 color2 = vec4(1.0, 1.0, 1.0, 1.0); // White
+                    gl_FragColor = mix(color1, color2, check);
+                }
+            `
+        });
+        
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        window.addEventListener('resize', () => {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            camera.left = -window.innerWidth / 2;
+            camera.right = window.innerWidth / 2;
+            camera.top = window.innerHeight / 2;
+            camera.bottom = -window.innerHeight / 2;
+            camera.updateProjectionMatrix();
+        });
+
+        function animate() {
+            requestAnimationFrame(animate);
+            material.uniforms.time.value += 0.01;
+            renderer.render(scene, camera);
+        }
+        
+        animate();
+    </script>
+</body>
+</html>

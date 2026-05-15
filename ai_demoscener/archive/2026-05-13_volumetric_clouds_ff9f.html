@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FBM Volumetric Clouds</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+    </style>
+</head>
+<body>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        const vertexShader = `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `;
+
+        const fragmentShader = `
+            uniform float uTime;
+            uniform vec2 uResolution;
+            uniform vec3 uSunPos;
+            varying vec2 vUv;
+
+            // Hash function for noise
+            float hash(vec3 p) {
+                p = fract(p * 0.3183099 + .1);
+                p *= 17.0;
+                return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+            }
+
+            // Value noise implementation
+            float valueNoise(vec3 p) {
+                vec3 i = floor(p);
+                vec3 f = fract(p);
+                f = f * f * (3.0 - 2.0 * f);
+
+                return mix(mix(mix(hash(i + vec3(0,0,0)), hash(i + vec3(1,0,0)), f.x),
+                               mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
+                           mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x),
+                               mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x), f.y), f.z);
+            }
+
+            // 4-octave FBM
+            float fbm(vec3 p) {
+                float v = 0.0;
+                float amp = 0.5;
+                for (int i = 0; i < 4; i++) {
+                    v += amp * valueNoise(p);
+                    p *= 2.1;
+                    amp *= 0.5;
+                }
+                return v;
+            }
+
+            float map(vec3 p) {
+                // Drift clouds over time
+                vec3 drift = vec3(uTime * 0.1, 0.0, uTime * 0.05);
+                float noise = fbm(p * 0.4 + drift);
+                // Create a cloud layer between y=2 and y=6
+                float heightMask = smoothstep(2.0, 3.5, p.y) * smoothstep(6.0, 4.0, p.y);
+                return smoothstep(0.4, 0.7, noise) * heightMask;
+            }
+
+            void main() {
+                vec2 uv = (vUv - 0.5) * vec2(uResolution.x / uResolution.y, 1.0);
+                
+                // Camera Setup
+                vec3 ro = vec3(0.0, 4.0, 10.0); // Ray origin
+                vec3 rd = normalize(vec3(uv, -1.5)); // Ray direction
+                
+                // Sky Gradient
+                vec3 skyColorHorizon = vec3(0.4, 0.6, 0.9);
+                vec3 skyColorZenith = vec3(0.1, 0.2, 0.5);
+                float viewDotY = max(rd.y, 0.0); // Simplified horizon logic
+                vec3 skyColor = mix(skyColorHorizon, skyColorZenith, clamp(rd.y * 0.5 + 0.5, 0.0, 1.0));
+                
+                // Add Sun Glow
+                float sunGlow = pow(max(dot(rd, normalize(uSunPos)), 0.0), 32.0);
+                skyColor += vec3(1.0, 0.8, 0.5) * sunGlow;
+
+                // Raymarching
+                vec4 col = vec4(skyColor, 1.0);
+                float T = 1.0; // Transmittance
+                vec3 cloudCol = vec3(0.0);
+                
+                int steps = 64;
+                float stepSize = 0.25;
+                vec3 p = ro;
+
+                for (int i = 0; i < 64; i++) {
+                    p += rd * stepSize;
+                    // Optimization: skip if we go too high or low relative to cloud layer
+                    if(p.y < 1.5 || p.y > 7.0) continue;
+
+                    float den = map(p);
+
+                    if (den > 0.01) {
+                        // Self-shadowing: sample towards sun
+                        float shadowDen = 0.0;
+                        vec3 sunDir = normalize(uSunPos);
+                        float shadowStepSize = 0.3;
+                        for(int j=0; j<4; j++) {
+                            shadowDen += map(p + sunDir * float(j) * shadowStepSize);
+                        }
+                        float shadow = exp(-shadowDen * 1.5);
+
+                        // Lighting calculation
+                        vec3 ambient = vec3(0.7, 0.8, 1.0);
+                        vec3 diffuse = vec3(1.0, 0.95, 0.9) * shadow;
+                        vec3 currentCloudCol = mix(ambient, diffuse, shadow);
+
+                        // Integrate density
+                        float absorption = den * stepSize;
+                        cloudCol += T * currentCloudCol * absorption;
+                        T *= exp(-absorption * 2.0);
+                    }
+
+                    if (T < 0.01) break;
+                }
+
+                gl_FragColor = vec4(mix(skyColor, cloudCol, 1.0 - T), 1.0);
+            }
+        `;
+
+        function init() {
+            const scene = new THREE.Scene();
+            const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+            const renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            const geometry = new THREE.PlaneGeometry(2, 2);
+            const uniforms = {
+                uTime: { value: 0 },
+                uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+                uSunPos: { value: new THREE.Vector3(10.0, 5.0, -10.0) }
+            };
+
+            const material = new THREE.ShaderMaterial({
+                uniforms,
+                vertexShader,
+                fragmentShader
+            });
+
+            const mesh = new THREE.Mesh(geometry, material);
+            scene.add(mesh);
+
+            function animate(time) {
+                uniforms.uTime.value = time * 0.001;
+                renderer.render(scene, camera);
+                requestAnimationFrame(animate);
+            }
+
+            window.addEventListener('resize', () => {
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        init();
+    </script>
+</body>
+</html>

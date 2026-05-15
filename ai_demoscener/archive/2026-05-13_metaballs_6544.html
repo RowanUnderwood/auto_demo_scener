@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mercury Raymarching</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+</script>
+<script type="module">
+    import * as THREE from 'three';
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    const geometry = new THREE.PlaneGeometry(2, 2);
+    const uniforms = {
+        u_time: { value: 0 },
+        u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+    };
+
+    const material = new THREE.ShaderMaterial({
+        uniforms: uniforms,
+        vertexShader: `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `,
+        fragmentShader: `
+            uniform float u_time;
+            uniform vec2 u_resolution;
+            varying vec2 vUv;
+
+            #define MAX_STEPS 64
+            #define SURF_DIST 0.001
+            #define MAX_DIST 20.0
+            #define K 8.0
+
+            float smin(float a, float b, float k) {
+                float a_k = -k * a;
+                float b_k = -k * b;
+                return -(log(exp(a_k) + exp(b_k))) / k;
+            }
+
+            float sdSphere(vec3 p, float s) {
+                return length(p) - s;
+            }
+
+            float map(vec3 p) {
+                // Sphere 1
+                vec3 c1 = vec3(sin(u_time * 0.7), cos(u_time * 0.5), sin(u_time * 0.3)) * 1.2;
+                float s1 = sdSphere(p - c1, 0.8);
+
+                // Sphere 2
+                vec3 c2 = vec3(cos(u_time * 0.4), sin(u_time * 0.9), cos(u_time * 0.6)) * 1.5;
+                float s2 = sdSphere(p - c2, 0.7);
+
+                // Sphere 3
+                vec3 c3 = vec3(sin(u_time * 1.1), sin(u_time * 0.4), cos(u_time * 1.2)) * 1.0;
+                float s3 = sdSphere(p - c3, 0.9);
+
+                // Sphere 4
+                vec3 c4 = vec3(-cos(u_time * 0.6), -sin(u_time * 0.7), -sin(u_time * 0.5)) * 1.3;
+                float s4 = sdSphere(p - c4, 0.6);
+
+                float res = smin(s1, s2, K);
+                res = smin(res, s3, K);
+                res = smin(res, s4, K);
+                return res;
+            }
+
+            vec3 getNormal(vec3 p) {
+                vec2 e = vec2(0.001, 0.0);
+                float d = map(p);
+                vec3 n = d - vec3(
+                    map(p - e.xyy),
+                    map(p - e.yxy),
+                    map(p - e.yyx)
+                );
+                return normalize(n);
+            }
+
+            void main() {
+                vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / min(u_resolution.y, u_resolution.x);
+                
+                vec3 ro = vec3(0.0, 0.0, 5.0); // Ray origin
+                vec3 rd = normalize(vec3(uv, -1.5)); // Ray direction
+
+                float dO = 0.0;
+                float dS;
+                int steps = 0;
+
+                for(int i = 0; i < MAX_STEPS; i++) {
+                    vec3 p = ro + rd * dO;
+                    dS = map(p);
+                    dO += dS;
+                    steps = i;
+                    if(dO > MAX_DIST || abs(dS) < SURF_DIST) break;
+                }
+
+                vec3 color = vec3(0.02, 0.02, 0.05); // Dark background
+
+                if(dO < MAX_DIST) {
+                    vec3 p = ro + rd * dO;
+                    vec3 n = getNormal(p);
+                    vec3 viewDir = normalize(ro - p);
+                    
+                    // Lighting
+                    vec3 lightDir = normalize(vec3(1.0, 1.5, 2.0));
+                    float diff = max(dot(n, lightDir), 0.0);
+                    
+                    // Specular (Chrome-like)
+                    vec3 reflectDir = reflect(-lightDir, n);
+                    float spec = pow(max(dot(viewDir, reflectDir), 0.0), 64.0);
+
+                    // Colors
+                    vec3 baseColor = vec3(0.7, 0.75, 0.82); // Silvery blue-grey
+                    vec3 specColor = vec3(1.0, 1.0, 1.0);  // Sharp white
+                    vec3 rimColor = vec3(0.4, 0.2, 0.6);   // Purple rim
+
+                    // Rim lighting (Fresnel)
+                    float fresnel = pow(1.0 - max(dot(n, viewDir), 0.0), 4.0);
+                    
+                    // Combine components
+                    vec3 ambient = baseColor * 0.2;
+                    vec3 diffuse = baseColor * diff;
+                    vec3 specular = specColor * spec;
+                    vec3 rim = rimColor * fresnel * (1.0 - diff); // Faint on dark side
+
+                    color = ambient + diffuse + specular + rim;
+                    
+                    // Simple Fog/Depth
+                    color *= exp(-0.05 * dO);
+                }
+
+                gl_FragColor = vec4(color, 1.0);
+            }
+        `,
+    });
+
+    material.transparent = false;
+    const mesh = new THREE.Mesh(geometry, material);
+    scene.add(mesh);
+
+    window.addEventListener('resize', () => {
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        uniforms.u_resolution.value.set(window.innerWidth, window.innerHeight);
+    });
+
+    function animate(time) {
+        uniforms.u_time.value = time * 0.001;
+        renderer.render(scene, camera);
+        requestAnimationFrame(animate);
+    }
+
+    requestAnimationFrame(animate);
+</script>
+</body>
+</html>

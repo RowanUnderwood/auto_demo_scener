@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SNES Mode 7</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+<script>
+    const scene = new THREE.Scene();
+    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    const geometry = new THREE.PlaneGeometry(2, 2);
+    const material = new THREE.ShaderMaterial({
+        uniforms: {
+            time: { value: 0 }
+        },
+        vertexShader: `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `,
+        fragmentShader: `
+            uniform float time;
+            varying vec2 vUv;
+            
+            void main() {
+                const float horizonY = 0.3;
+                
+                if (vUv.y < horizonY) {
+                    float t = 1.0 - vUv.y / horizonY;
+                    vec3 skyColor = mix(vec3(1.0, 0.8, 0.6), vec3(0.25, 0.1, 0.5), t);
+                    gl_FragColor = vec4(skyColor, 1.0);
+                } else {
+                    float scrollOffset = 0.5 * time;
+                    float scale = 10.0 * vUv.y;
+                    
+                    float x = (vUv.x + scrollOffset) * scale;
+                    float y = vUv.y * scale;
+                    
+                    vec3 color = mod(floor(x), 2.0) == mod(floor(y), 2.0) 
+                        ? vec3(1.0, 0.5, 0.5) // bright red
+                        : vec3(1.0);            // white
+                    
+                    gl_FragColor = vec4(color, 1.0);
+                }
+            }
+        `
+    });
+
+    const mesh = new THREE.Mesh(geometry, material);
+    scene.add(mesh);
+
+    camera.position.z = 1;
+
+    function animate() {
+        requestAnimationFrame(animate);
+        material.uniforms.time.value += 0.01;
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        renderer.setSize(width, height);
+        camera.left = -width / height;
+        camera.right = width / height;
+        camera.updateProjectionMatrix();
+    });
+
+    animate();
+</script>
+</body>
+</html>

@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fractal Zoom Shader</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background-color: #000;
+    }
+    canvas {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+  <script>
+    // Initialize Three.js
+    const scene = new THREE.Scene();
+    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
+    camera.position.z = 1;
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // Create a full-screen quad
+    const geometry = new THREE.PlaneGeometry(2, 2);
+    
+    // Fragment shader for Mandelbrot set
+    const fragmentShader = `
+      uniform float time;
+      uniform vec2 center;
+      uniform float scale;
+      uniform vec2 resolution;
+      
+      vec3 colorPalette(float t) {
+        // Smooth iteration color palette using sin
+        float r = sin(t * 0.1 + 0.0) * 0.5 + 0.5;
+        float g = sin(t * 0.1 + 2.0) * 0.5 + 0.5;
+        float b = sin(t * 0.1 + 4.0) * 0.5 + 0.5;
+        return vec3(r, g, b);
+      }
+      
+      void main() {
+        vec2 uv = gl_FragCoord.xy / resolution.xy;
+        uv = uv * 2.0 - 1.0;
+        
+        // Map UV to complex plane
+        vec2 c = vec2(uv.x, uv.y) * scale + center;
+        
+        vec2 z = vec2(0.0, 0.0);
+        int iterations = 0;
+        float magnitude = 0.0;
+        
+        // Mandelbrot iteration: z = z*z + c
+        for (int i = 0; i < 200; i++) {
+          float x = z.x * z.x - z.y * z.y + c.x;
+          float y = 2.0 * z.x * z.y + c.y;
+          z = vec2(x, y);
+          
+          magnitude = z.x * z.x + z.y * z.y;
+          if (magnitude > 4.0) {
+            break;
+          }
+          iterations = i;
+        }
+        
+        // Smooth coloring
+        float smoothIter = float(iterations) + 1.0 - log(log(magnitude)) / log(2.0);
+        smoothIter = smoothIter / 200.0;
+        
+        // Color based on smooth iteration count
+        vec3 color = colorPalette(smoothIter * 100.0);
+        
+        gl_FragColor = vec4(color, 1.0);
+      }
+    `;
+
+    const vertexShader = `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = vec4(position, 1.0);
+      }
+    `;
+
+    // Create the material with the shader
+    const material = new THREE.ShaderMaterial({
+      uniforms: {
+        time: { value: 0.0 },
+        center: { value: new THREE.Vector2(-0.745, 0.1) },
+        scale: { value: 1.0 },
+        resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+      },
+      vertexShader: vertexShader,
+      fragmentShader: fragmentShader
+    });
+
+    // Create the mesh
+    const mesh = new THREE.Mesh(geometry, material);
+    scene.add(mesh);
+
+    // Handle window resize
+    window.addEventListener('resize', () => {
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      material.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+    });
+
+    // Animation loop
+    const clock = new THREE.Clock();
+    function animate() {
+      requestAnimationFrame(animate);
+      
+      // Update time uniform
+      const time = clock.getElapsedTime();
+      material.uniforms.time.value = time;
+      
+      // Slow zoom: scale = exp(-time * 0.3)
+      const scale = Math.exp(-time * 0.3);
+      material.uniforms.scale.value = scale;
+      
+      renderer.render(scene, camera);
+    }
+
+    animate();
+  </script>
+</body>
+</html>

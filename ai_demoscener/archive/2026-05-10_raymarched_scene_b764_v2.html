@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SDF Smooth Union - Neon Dream</title>
+    <style>
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            background: #000; 
+        }
+        canvas { 
+            display: block; 
+            width: 100vw; 
+            height: 100vh; 
+        }
+    </style>
+</head>
+<body>
+<script type="importmap">
+{
+    "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+    }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const scene = new THREE.Scene();
+const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+const geometry = new THREE.PlaneGeometry(2, 2);
+const uniforms = {
+    u_time: { value: 0 },
+    u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+};
+
+const material = new THREE.ShaderMaterial({
+    uniforms,
+    vertexShader: `
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position = vec4(position, 1.0);
+        }
+    `,
+    fragmentShader: `
+        uniform float u_time;
+        uniform vec2 u_resolution;
+        varying vec2 vUv;
+
+        float smin(float a, float b, float k) {
+            float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+            return mix(b, a, h) - k * h * (1.0 - h);
+        }
+
+        float sdSphere(vec3 p, float s) {
+            return length(p) - s;
+        }
+
+        float sdBox(vec3 p, vec3 b) {
+            vec3 q = abs(p) - b;
+            return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
+        }
+
+        float map(vec3 p) {
+            // Repetition with time-based offset
+            vec3 q = mod(p + sin(u_time * 0.3) * 2.0, 4.0) - 2.0;
+            
+            float sphere = sdSphere(q, 1.0 + sin(u_time * 0.5 + p.x * 0.5) * 0.3);
+            float box = sdBox(q, vec3(0.8 + cos(u_time * 0.4 + p.z * 0.3) * 0.2));
+            
+            return smin(sphere, box, 0.7 + sin(u_time * 0.2) * 0.2);
+        }
+
+        vec3 getNormal(vec3 p) {
+            const float h = 0.001;
+            const vec2 k = vec2(1, -1);
+            return normalize(
+                k.xyy * map(p + k.xyy * h) + 
+                k.yyx * map(p + k.yyx * h) + 
+                k.yxy * map(p + k.yxy * h) + 
+                k.xxx * map(p + k.xxx * h)
+            );
+        }
+
+        void main() {
+            vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / min(u_resolution.y, u_resolution.x);
+            
+            // Camera setup with dynamic movement
+            float time = u_time * 0.3;
+            vec3 ro = vec3(4.0 * sin(time), 2.0 + sin(time * 0.7) * 1.0, 4.0 * cos(time));
+            vec3 lookAt = vec3(sin(time * 0.5) * 2.0, 0.0, cos(time * 0.5) * 2.0);
+            vec3 f = normalize(lookAt - ro);
+            vec3 r = normalize(cross(vec3(0.0, 1.0, 0.0), f));
+            vec3 u = cross(f, r);
+            vec3 rd = normalize(f + uv.x * r + uv.y * u);
+
+            // Raymarching
+            float t = 0.0;
+            float d;
+            int i;
+            bool hit = false;
+            for(i = 0; i < 100; i++) {
+                d = map(ro + rd * t);
+                if (d < 0.001) {
+                    hit = true;
+                    break;
+                }
+                t += d * 0.5;
+                if (t > 30.0) break;
+            }
+
+            vec3 color = vec3(0.02, 0.01, 0.05); // Dark background
+
+            if (hit) {
+                vec3 p = ro + rd * t;
+                vec3 n = getNormal(p);
+                
+                // Dynamic lighting with multiple light sources
+                vec3 light1 = normalize(vec3(1.0, 2.0, 1.0));
+                vec3 light2 = normalize(vec3(-1.0, 1.0, -1.0));
+                vec3 light3 = normalize(vec3(0.0, -1.0, 0.0));
+                
+                float diff1 = max(dot(n, light1), 0.0);
+                float diff2 = max(dot(n, light2), 0.0);
+                float diff3 = max(dot(n, light3), 0.0);
+                
+                // Multi-colored glow effect
+                vec3 baseColor = vec3(0.0, 0.8, 1.0) * (0.5 + 0.5 * n.x) +
+                                vec3(1.0, 0.0, 0.8) * (0.5 + 0.5 * n.y) +
+                                vec3(0.0, 1.0, 0.5) * (0.5 + 0.5 * n.z);
+                
+                vec3 lighting = baseColor * (diff1 * 0.7 + diff2 * 0.5 + diff3 * 0.3) +
+                               vec3(0.1, 0.05, 0.2); // Ambient glow
+                
+                // Add pulsing effect
+                float pulse = sin(u_time * 3.0) * 0.5 + 0.5;
+                lighting *= (0.8 + pulse * 0.4);
+                
+                // Add neon-like emission
+                vec3 emission = vec3(0.0, 0.3, 0.6) * (1.0 - exp(-t * 0.2));
+                
+                color = mix(lighting, emission, 0.5);
+            } else {
+                // Starry background with subtle animation
+                float stars = 0.0;
+                for(int i = 0; i < 10; i++) {
+                    vec2 pos = vec2(sin(u_time * 0.1 + float(i) * 0.5), cos(u_time * 0.1 + float(i) * 0.3));
+                    stars += smoothstep(0.0, 1.0, 1.0 - length(uv - pos * 0.3));
+                }
+                color = mix(color, vec3(0.1, 0.05, 0.2), 0.3 + stars * 0.1);
+            }
+
+            // Add vignette effect
+            float vignette = 1.0 - length(uv) * 0.5;
+            color *= vignette;
+
+            gl_FragColor = vec4(color, 1.0);
+        }
+    `
+});
+
+scene.add(new THREE.Mesh(geometry, material));
+
+function animate(time) {
+    uniforms.u_time.value = time * 0.001;
+    renderer.render(scene, camera);
+    requestAnimationFrame(animate);
+}
+
+window.addEventListener('resize', () => {
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    uniforms.u_resolution.value.set(window.innerWidth, window.innerHeight);
+});
+
+requestAnimationFrame(animate);
+</script>
+</body>
+</html>

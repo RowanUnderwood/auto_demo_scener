@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Twisted Cube Stack</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // Scene setup
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x111111); // Set background to see the canvas clearly
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(20, 10, 30);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        // Lights (Required for MeshStandardMaterial)
+        const ambientLight = new THREE.AmbientLight(0xffffff, 1);
+        scene.add(ambientLight);
+
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 2);
+        directionalLight.position.set(5, 10, 7.5);
+        scene.add(directionalLight);
+
+        // Cube Stack
+        const cubes = [];
+        const geometry = new THREE.BoxGeometry(1, 1, 1);
+        const count = 40;
+
+        for (let i = 0; i < count; i++) {
+            // Use MeshStandardMaterial with varying colors for better visibility and aesthetic
+            const material = new THREE.MeshStandardMaterial({ 
+                color: new THREE.Color().setHSL(i / count, 0.7, 0.5) 
+            });
+            const cube = new THREE.Mesh(geometry, material);
+            
+            // Center the stack vertically around y = 0
+            cube.position.y = i - (count / 2);
+            
+            scene.add(cube);
+            cubes.push(cube);
+        }
+
+        const clock = new THREE.Clock();
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            const time = clock.getElapsedTime();
+
+            for (let i = 0; i < cubes.length; i++) {
+                // Rotation logic: angle = time + i * offset
+                cubes[i].rotation.y = time * 0.5 + (i * 0.1);
+                cubes[i].rotation.x = Math.sin(time * 0.2 + i * 0.1) * 0.2;
+            }
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // Handle Resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

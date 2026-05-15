@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voronoi Drift</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+    </style>
+</head>
+<body>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float uTime;
+                uniform vec2 uResolution;
+                varying vec2 vUv;
+
+                // Deterministic pseudo-random for seeds
+                vec3 hash33(vec3 p) {
+                    p = fract(p * vec3(.1031, .1030, .0973));
+                    p += dot(p, p.yxz + 33.33);
+                    return fract((p.xxy + p.yzz) * p.zyx);
+                }
+
+                void main() {
+                    vec2 uv = vUv;
+                    
+                    // To make motion look organic, we pre-calculate 32 points
+                    // We use a loop to find the two nearest neighbors
+                    float minDist1 = 100.0;
+                    float minDist2 = 100.0;
+
+                    for(int i = 0; i < 32; i++) {
+                        float fi = float(i);
+                        // Seed generation for point orbits
+                        vec3 seed = vec3(fi, 13.37, 42.42);
+                        vec3 r1 = hash33(seed);
+                        vec3 r2 = hash33(seed + 1.0);
+
+                        // Orbits: different radii, speeds, and centers
+                        float radius = r1.x * 0.8 + 0.2;
+                        float speed = r1.y * 0.4 + 0.2;
+                        vec2 center = vec2(r2.x * 2.0 - 1.0, r2.y * 2.0 - 1.0);
+                        
+                        // Complex movement: combination of circular motion and slight wobble
+                        float angle = uTime * speed + fi;
+                        vec2 offset = vec2(cos(angle), sin(angle)) * radius;
+                        
+                        // Add some secondary drift (wobble)
+                        offset += vec2(sin(uTime * 0.5 + r1.z * 6.28), cos(uTime * 0.7 + r2.x * 6.28)) * 0.1;
+
+                        vec2 p = center + offset;
+                        
+                        // Map point to UV space (standardizing scale)
+                        // We use a larger range for the points so they can move off-screen
+                        float d = distance(uv, p);
+
+                        if(d < minDist1) {
+                            minDist2 = minDist1;
+                            minDist1 = d;
+                        } else if(d < minDist2) {
+                            minDist2 = d;
+                        }
+                    }
+
+                    // Edge distance: F2 - F1
+                    float edge = minDist2 - minDist1;
+
+                    // Smoothing the edge value for better color mapping
+                    // High values near edges, low in centers
+                    edge = smoothstep(0.0, 0.15, edge);
+
+                    // Palette construction
+                    // Center (edge ~ 0): Deep Indigo
+                    // Mid-Edge: Bright Cyan
+                    // Seams (very sharp transitions if we used a threshold, but here edge is the gradient)
+                    // We want blinding white on the "seam" where minDist2 - minDist1 is very small? 
+                    // Wait, F2-F1 is zero exactly at the boundary.
+                    // Let's refine: distance to boundary = (d2-d1)/2 is not right.
+                    // The value 'edge' is highest in the middle of a cell and drops to 0 at the edge.
+                    // To get "blinding white on seams", we need an inverse or threshold logic.
+                    
+                    // Re-evaluating: F2 - F1 is actually large in centers and small near boundaries.
+                    // Let's use 'edge' as a distance to boundary metric. 
+                    // Actually, edge = minDist2 - minDist1 is zero on the Voronoi edge.
+                    // So we map: 0 (seam) -> White, High (center) -> Indigo/Cyan.
+                    
+                    float seam = 1.0 - smoothstep(0.0, 0.05, edge); // Sharpness of white line
+                    
+                    vec3 indigo = vec3(0.05, 0.0, 0.2);
+                    vec3 cyan = vec3(0.0, 1.0, 1.0);
+                    vec3 white = vec3(1.0, 1.0, 1.0);
+
+                    // Mix: Indigo (center) -> Cyan (midway) -> White (seam)
+                    // We'll use 'edge' to drive the interpolation
+                    // edge is large in center, small at edge.
+                    vec3 color = mix(cyan, indigo, smoothstep(0.01, 0.2, edge));
+                    color = mix(color, white, seam);
+
+                    gl_FragColor = vec4(color, 1.0);
+                }
+            `
+        });
+
+        scene.add(new THREE.Mesh(geometry, material));
+
+        function animate(time) {
+            material.uniforms.uTime.value = time * 0.001;
+            renderer.render(scene, camera);
+            requestAnimationFrame(animate);
+        }
+
+        window.addEventListener('resize', () => {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            material.uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+        });
+
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>

@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Quantum Bloom</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000011; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        let scene, camera, renderer, particles, geometry, material;
+        const NUM_PARTICLES = 5000;
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            // Setup Camera position
+            camera.position.z = 50;
+
+            // Particle System Setup (Inspired by complex particle/bloom effects)
+            geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(NUM_PARTICLES * 3);
+            const colors = new Float32Array(NUM_PARTICLES * 3);
+
+            for (let i = 0; i < NUM_PARTICLES; i++) {
+                // Distribute particles in a spherical cloud initially
+                positions[i * 3] = (Math.random() - 0.5) * 100;
+                positions[i * 3 + 1] = (Math.random() - 0.5) * 100;
+                positions[i * 3 + 2] = (Math.random() - 0.5) * 100;
+
+                // Assign initial colors (subtle spectral gradient)
+                const colorHue = Math.random();
+                colors[i * 3] = (Math.sin(colorHue * Math.PI * 2 + 0) * 0.5 + 0.5) * 0.8; // R component variation
+                colors[i * 3 + 1] = (Math.cos(colorHue * Math.PI * 2 + 2) * 0.5 + 0.5) * 0.8; // G component variation
+                colors[i * 3 + 2] = (Math.sin(colorHue * Math.PI * 2 + 4) * 0.5 + 0.5) * 0.8; // B component variation
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+            // Shader Material for dynamic glow/bloom effect (simulating 'Bloom' or complex light interaction)
+            material = new THREE.PointsMaterial({
+                size: 0.5,
+                vertexColors: true,
+                blending: THREE.AdditiveBlending, // Crucial for bloom-like additive glow
+                transparent: true,
+                depthWrite: false,
+                sizeAttenuation: true
+            });
+
+            particles = new THREE.Points(geometry, material);
+            scene.add(particles);
+
+            // Ambient Light to ensure visibility of colors even when not directly illuminated by the points themselves
+            const ambientLight = new THREE.AmbientLight(0x111133, 2);
+            scene.add(ambientLight);
+
+            window.addEventListener('resize', onWindowResize, false);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const positions = particles.geometry.attributes.position.array;
+            let time = Date.now() * 0.001;
+
+            // --- Quantum Motion Simulation (Inspired by complex movement/flow) ---
+            for (let i = 0; i < NUM_PARTICLES; i++) {
+                const i3 = i * 3;
+                
+                // Rotation around a central point, combined with noise displacement for organic "bloom" feel
+                positions[i3] += Math.sin(time * 1.5 + i) * 0.01; // Subtle drift in X
+                positions[i3 + 1] -= Math.cos(time * 1.2 - i * 0.1) * 0.015; // Subtle drift in Y
+                positions[i3 + 2] += Math.sin(time * 1.8 + i * 0.05) * 0.01; // Subtle drift in Z
+
+                // Boundary check and slow drift back to center (simulating collapse/re-ignition)
+                const x = positions[i3];
+                const y = positions[i3+1];
+                const z = positions[i3+2];
+                const distSq = x*x + y*y + z*z;
+
+                if (distSq > 3000) { // If particle flies too far
+                    positions[i3] = (Math.random() - 0.5) * 1;
+                    positions[i3+1] = (Math.random() - 0.5) * 1;
+                    positions[i3+2] = (Math.random() - 0.5) * 1;
+                }
+            }
+
+            particles.geometry.attributes.position.needsUpdate = true;
+
+            // Camera rotation for dynamic viewing experience
+            camera.position.x = Math.sin(time * 0.1) * 70;
+            camera.position.y = Math.cos(time * 0.08) * 30;
+            camera.lookAt(new THREE.Vector3(0, 0, 0));
+
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        init();
+        animate();
+    </script>
+</body>
+</html>

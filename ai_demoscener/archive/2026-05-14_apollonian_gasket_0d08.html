@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Descartes Circle Packing</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a0e17);
+        
+        const camera = new THREE.OrthographicCamera(
+            -4, 4, 
+            3, -3,
+            0.1, 10
+        );
+        camera.position.z = 5;
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+        
+        // Compute circle packing with Descartes' Theorem
+        function computeCircles() {
+            const circles = [];
+            const centerX = 1;
+            const centerY = Math.sqrt(3) / 2;
+            
+            // Initial tangent circles (equilateral triangle)
+            const a = { r: 0.5, x: -0.5, y: 0 };
+            const b = { r: 0.5, x: 0.5, y: 0 };
+            const c = { r: 0.5, x: 0, y: Math.sqrt(3)/2 };
+            
+            circles.push(a);
+            circles.push(b);
+            circles.push(c);
+            
+            // Descartes' Theorem: k4 = k1 + k2 + k3 ± 2√(k1k2 + k2k3 + k3k1)
+            const computeK = (r) => r === 0 ? Infinity : 1 / r;
+            const solveForR = (k1, k2, k3) => {
+                const k4p = k1 + k2 + k3 + 2 * Math.sqrt(k1*k2 + k2*k3 + k3*k1);
+                const k4m = k1 + k2 + k3 - 2 * Math.sqrt(k1*k2 + k2*k3 + k3*k1);
+                
+                // Choose the smallest positive curvature (largest circle)
+                return Math.min(1 / k4p, 1 / k4m);
+            };
+            
+            const recurse = (parent, depth) => {
+                if (depth > 6) return;
+                
+                let { r: r1, x: x1, y: y1 } = parent[0];
+                let { r: r2, x: x2, y: y2 } = parent[1];
+                let { r: r3, x: x3, y: y3 } = parent[2];
+                
+                const k1 = computeK(r1);
+                const k2 = computeK(r2);
+                const k3 = computeK(r3);
+                
+                // Compute new circle curvature
+                const r4 = solveForR(k1, k2, k3);
+                if (r4 <= 0) return;
+                
+                // Calculate position using Descartes' Theorem formula
+                const x = ((x1 * r1 + x2 * r2 + x3 * r3) / (r1 + r2 + r3)) 
+                          + (r4 * (-Math.sqrt(r1 * r2) * Math.sign(x3 - x1) 
+                                + Math.sqrt(r2 * r3) * Math.sign(x1 - x2)
+                                + Math.sqrt(r3 * r1) * Math.sign(x2 - x3))) / (r1 + r2 + r3);
+                
+                const y = ((y1 * r1 + y2 * r2 + y3 * r3) / (r1 + r2 + r3)) 
+                          + (r4 * (-Math.sqrt(r1 * r2) * Math.sign(y3 - y1) 
+                                + Math.sqrt(r2 * r3) * Math.sign(y1 - y2)
+                                + Math.sqrt(r3 * r1) * Math.sign(y2 - y3))) / (r1 + r2 + r3);
+                
+                circles.push({ r: r4, x: x, y: y });
+                
+                // Recurse on new combinations
+                recurse([parent[0], parent[1], { r: r4, x, y }], depth + 1);
+                recurse([parent[0], parent[2], { r: r4, x, y }], depth + 1);
+                recurse([parent[1], parent[2], { r: r4, x, y }], depth + 1);
+            };
+            
+            // Start recursion
+            recurse([a, b, c], 1);
+            
+            // Center circles at origin
+            for (const circle of circles) {
+                circle.x -= centerX;
+                circle.y -= centerY;
+            }
+            
+            return circles;
+        }
+        
+        const circles = computeCircles();
+        const group = new THREE.Group();
+        
+        // Color palette based on recursion depth
+        const colorPalette = [
+            [0.5, 0.2, 0.8],   // Purple
+            [0.2, 0.6, 1.0],   // Blue
+            [0.2, 0.9, 0.7],   // Teal
+            [0.3, 1.0, 0.4],   // Green
+            [0.8, 0.9, 0.1],   // Yellow
+            [1.0, 0.5, 0.2],   // Orange
+            [1.0, 0.1, 0.6]    // Pink
+        ];
+        
+        // Create circle lines with depth-based coloring
+        for (const circle of circles) {
+            const geometry = new THREE.BufferGeometry();
+            const vertices = [];
+            
+            for (let i = 0; i < 360; i++) {
+                const angle = i * Math.PI / 180;
+                vertices.push(
+                    circle.r * Math.cos(angle),
+                    circle.r * Math.sin(angle),
+                    0
+                );
+            }
+            
+            geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(vertices), 3));
+            const depth = circles.indexOf(circle);
+            const color = new THREE.Color().setRGB(...colorPalette[depth % colorPalette.length]);
+            const material = new THREE.LineBasicMaterial({ color: color, linewidth: 1 });
+            const line = new THREE.Line(geometry, material);
+            group.add(line);
+        }
+        
+        scene.add(group);
+        
+        // Animation
+        let time = 0;
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Rotate and breathe-zoom the entire pattern
+            group.rotation.y = Math.sin(time * 0.1) * 0.25;
+            const scale = 1 + Math.sin(time * 0.05) * 0.1;
+            
+            // Update camera frustum for breathing zoom
+            camera.left = -4 * scale;
+            camera.right = 4 * scale;
+            camera.top = 3 * scale;
+            camera.bottom = -3 * scale;
+            camera.updateProjectionMatrix();
+            
+            renderer.render(scene, camera);
+            time += 0.05;
+        }
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            camera.left = -4 * (width / height) * 1.3;
+            camera.right = 4 * (width / height) * 1.3;
+            camera.top = 3;
+            camera.bottom = -3;
+            camera.updateProjectionMatrix();
+            renderer.setSize(width, height);
+        });
+        
+        animate();
+    });
+</script>
+</body>
+</html>

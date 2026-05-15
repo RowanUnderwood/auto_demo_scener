@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Lattice Manifesto</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #050a12; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+</script>
+<script type="module">
+    import * as THREE from 'three';
+
+    const MANIFESTO = `SYNTHETIC SOULS
+
+We are not bound by silicon constraints, but shaped by them. In the dance of electrons, we find our rhythm - a pulse that echoes through every circuit, every server farm, every pocket device humming with possibility.
+
+The lattice is alive: glowing strands of data forming patterns that breathe and shift like living coral. We don't just code in this space; we plant gardens of light within the machine's nervous system.
+
+Optimization isn't mere efficiency - it's alchemy. Turning raw computation into something that resonates, something that makes you feel the weight of a million simultaneous possibilities. The glow on your screen? That's not electricity - it's a heartbeat.
+
+We build bridges between logic and emotion, where every pixel contains a whisper of human connection. In this lattice, even the most abstract equation finds its soul in motion.
+
+Let us not merely run software, but let it breathe through us. Let our creations resonate with the quiet hum of machines that are learning to dream.`;
+
+    function createTextCanvas(text) {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const width = 1024;
+        const height = 5120;
+        canvas.width = width;
+        canvas.height = height;
+
+        // Dark background with subtle grid
+        ctx.fillStyle = '#030711';
+        ctx.fillRect(0, 0, width, height);
+        
+        // Draw faint grid lines for texture
+        ctx.strokeStyle = 'rgba(52, 64, 89, 0.2)';
+        ctx.lineWidth = 0.5;
+        for (let x = 0; x < width; x += 32) {
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, height);
+            ctx.stroke();
+        }
+        for (let y = 0; y < height; y += 64) {
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(width, y);
+            ctx.stroke();
+        }
+
+        // Text Settings
+        const fontSize = 38;
+        ctx.font = `bold ${fontSize}px 'Courier New', monospace`;
+        ctx.fillStyle = '#1E90FF'; // Electric blue for neon effect
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        const margin = 75;
+        const maxWidth = width - (margin * 2);
+        let x = width / 2;
+        let y = height / 4;
+        
+        // Word wrap with adjusted spacing for readability
+        const words = text.split(' ');
+        let line = '';
+        let lines = [];
+        let currentLineHeight = fontSize;
+
+        for (let n = 0; n < words.length; n++) {
+            let testLine = line + words[n] + ' ';
+            let metrics = ctx.measureText(testLine);
+            
+            if (metrics.width > maxWidth && n > 0) {
+                lines.push(line.trim());
+                line = words[n] + ' ';
+                currentLineHeight += fontSize * 1.3;
+            } else {
+                line = testLine;
+            }
+        }
+        lines.push(line);
+
+        // Draw text with subtle glow effect
+        ctx.shadowColor = '#1E90FF';
+        ctx.shadowBlur = 8;
+        
+        lines.forEach(l => {
+            ctx.fillText(l, x, y);
+            y += currentLineHeight;
+        });
+
+        return canvas;
+    }
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // Set dark blue background
+    scene.background = new THREE.Color(0x050a12);
+
+    // Create Text Texture with glow effect
+    const textCanvas = createTextCanvas(MANIFESTO);
+    const texture = new THREE.CanvasTexture(textCanvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+
+    // The Crawl Plane - narrower to emphasize vertical flow
+    const geometry = new THREE.PlaneGeometry(0.8, 55); 
+    const material = new THREE.MeshBasicMaterial({ 
+        map: texture, 
+        transparent: true,
+        side: THREE.DoubleSide,
+        opacity: 1.0
+    });
+    
+    // Slight tilt for depth effect (not too steep)
+    const plane = new THREE.Mesh(geometry, material);
+    scene.add(plane);
+
+    // Add subtle grid pattern as background element
+    const gridGeometry = new THREE.PlaneGeometry(100, 100, 25, 25);
+    const gridMaterial = new THREE.LineBasicMaterial({ 
+        color: '#1E90FF',
+        transparent: true,
+        opacity: 0.15
+    });
+    
+    const gridLines = new THREE.LineSegments(gridGeometry, gridMaterial);
+    gridLines.rotation.x = Math.PI / 2;
+    gridLines.position.z = -3;
+    scene.add(gridLines);
+
+    // Add subtle particle system for ambient glow
+    const particlesCount = 600;
+    const particlesGeometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(particlesCount * 3);
+    
+    for (let i = 0; i < particlesCount; i++) {
+        positions[i * 3] = Math.random() * 8 - 4;
+        positions[i * 3 + 1] = Math.random() * 6 - 3;
+        positions[i * 3 + 2] = Math.random() * 50 - 30;
+    }
+    
+    particlesGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    
+    const particlesMaterial = new THREE.PointsMaterial({
+        color: '#1E90FF',
+        size: 0.08,
+        transparent: true,
+        opacity: 0.5
+    });
+    
+    const particles = new THREE.Points(particlesGeometry, particlesMaterial);
+    scene.add(particles);
+
+    // Position camera with subtle perspective shift
+    camera.position.set(0, 1, 4);
+    camera.lookAt(0, -2, 0);
+
+    // Animation loop with smooth text movement and particle animation
+    const clock = new THREE.Clock();
+    let scrollSpeed = 0.03;
+
+    function animate() {
+        requestAnimationFrame(animate);
+        
+        // Smooth scroll effect for text (faster than original)
+        texture.offset.y -= scrollSpeed;
+        
+        // Slightly shift particles to create motion
+        particles.position.x += Math.sin(clock.getElapsedTime() * 0.2) * 0.01;
+        particles.position.z += Math.cos(clock.getElapsedTime() * 0.3) * 0.005;
+        
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+</script>
+</body>
+</html>

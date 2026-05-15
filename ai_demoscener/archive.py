@@ -127,7 +127,7 @@ def pick_random(cfg: dict) -> Path | None:
 
 
 def pick_for_update(cfg: dict, max_input_tokens: int) -> Path | None:
-    max_chars = max_input_tokens * 4
+    max_chars = max(4096, max_input_tokens) * 4
     candidates = [f for f in list_files(cfg) if f.stat().st_size <= max_chars]
     return random.choice(candidates) if candidates else None
 

@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Quantum Lattice Pulse</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background-color: #000;
+    }
+    canvas {
+      display: block;
+    }
+    #info {
+      position: absolute;
+      top: 10px;
+      width: 100%;
+      text-align: center;
+      color: rgba(255, 255, 255, 0.7);
+      font-family: 'Courier New', monospace;
+      pointer-events: none;
+      text-shadow: 0 0 5px #000;
+    }
+  </style>
+</head>
+<body>
+  <div id="info">QUANTUM LATTICE PULSE | Interactive Fractal Resonance</div>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+  <script>
+    // Scene setup
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    document.body.appendChild(renderer.domElement);
+
+    // Lighting
+    const ambientLight = new THREE.AmbientLight(0x404040);
+    scene.add(ambientLight);
+    
+    const pointLight = new THREE.PointLight(0xffffff, 1.5, 300);
+    pointLight.position.set(20, 20, 20);
+    scene.add(pointLight);
+
+    // Camera position
+    camera.position.z = 80;
+
+    // Quantum lattice parameters
+    const latticeSize = 60;
+    const resolution = 15; // Grid density
+    const pulseIntensity = { value: 0.3 };
+    
+    // Create a custom shader material for the lattice grid
+    const vertexShader = `
+      varying vec3 vPosition;
+      varying vec3 vNormal;
+
+      void main() {
+        vPosition = position;
+        vNormal = normal;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `;
+
+    const fragmentShader = `
+      uniform float time;
+      uniform float pulseIntensity;
+      varying vec3 vPosition;
+      varying vec3 vNormal;
+
+      // Noise function
+      float hash(vec2 p) {
+        return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+      }
+
+      // Cellular noise for organic lattice structure
+      float cellularNoise(vec3 p) {
+        vec3 i = floor(p);
+        vec3 f = fract(p);
+        
+        float minDist = 1.0;
+        for (int x = -1; x <= 1; ++x) {
+          for (int y = -1; y <= 1; ++y) {
+            for (int z = -1; z <= 1; ++z) {
+              vec3 offset = vec3(float(x), float(y), float(z));
+              vec3 pos = i + offset;
+              float dist = length(pos - p);
+              minDist = min(minDist, dist * (0.5 + 0.5 * sin(time * 0.2 + dot(offset, vec3(1.0)))));
+            }
+          }
+        }
+        return minDist;
+      }
+
+      // Pulse wave effect
+      float pulseWave(vec3 p) {
+        float r = length(p);
+        float w = (sin(r * 0.1 - time * 1.2) + sin(time * 0.7)) * 0.5;
+        return smoothstep(0.0, 1.0, w * pulseIntensity);
+      }
+
+      void main() {
+        // Base lattice grid
+        vec3 pos = vPosition * 1.8;
+        
+        float cellNoise = cellularNoise(pos + time * 0.12) * 2.0 - 1.0;
+        float wave = pulseWave(pos);
+
+        // Color modulation based on noise and pulse
+        vec3 color = mix(
+          vec3(0.0, 0.8, 1.0), // Cyan-blue base
+          vec3(1.0, 0.2, 0.6), // Magenta-violet accent
+          (cellNoise + 1.0) * 0.5
+        );
+
+        // Add pulsing glow
+        float pulse = wave * (0.7 + 0.3 * sin(time * 2.0));
+        
+        // Final color with depth and glow
+        vec3 finalColor = mix(
+          color,
+          vec3(1.0, 1.0, 1.0),
+          pow(pulse, 4.0) * (1.0 - length(vPosition) / latticeSize)
+        );
+
+        gl_FragColor = vec4(finalColor, 1.0);
+      }
+    `;
+
+    const material = new THREE.ShaderMaterial({
+      uniforms: {
+        time: { value: 0 },
+        pulseIntensity: { value: 0.3 }
+      },
+      vertexShader,
+      fragmentShader,
+      wireframe: true
+    });
+
+    // Create lattice grid mesh with points instead of lines for a quantum feel
+    const geometry = new THREE.BufferGeometry();
+    const positions = [];
+    
+    for (let x = -latticeSize; x <= latticeSize; x += resolution) {
+      for (let y = -latticeSize; y <= latticeSize; y += resolution) {
+        for (let z = -latticeSize; z <= latticeSize; z += resolution) {
+          positions.push(x, y, z);
+        }
+      }
+    }
+
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    
+    const points = new THREE.Points(geometry, material);
+    scene.add(points);
+
+    // Add subtle floating particles for quantum effect
+    const particleCount = 1000;
+    const particleGeometry = new THREE.BufferGeometry();
+    const particlePositions = [];
+    const particleSizes = [];
+
+    for (let i = 0; i < particleCount; i++) {
+      const x = Math.random() * 40 - 20;
+      const y = Math.random() * 40 - 20;
+      const z = Math.random() * 40 - 20;
+
+      particlePositions.push(x, y, z);
+      particleSizes.push(Math.random() * 1.5 + 0.5);
+    }
+
+    particleGeometry.setAttribute('position', new THREE.Float32BufferAttribute(particlePositions, 3));
+    particleGeometry.setAttribute('size', new THREE.Float32BufferAttribute(particleSizes, 1));
+
+    const particleMaterial = new THREE.PointsMaterial({
+      color: 0x00ffff,
+      size: 1.5,
+      transparent: true,
+      opacity: 0.6,
+      blending: THREE.AdditiveBlending
+    });
+
+    const particles = new THREE.Points(particleGeometry, particleMaterial);
+    scene.add(particles);
+
+    // Mouse interaction for pulse modulation
+    let mouseX = 0;
+    let mouseY = 0;
+
+    window.addEventListener('mousemove', (e) => {
+      mouseX = (e.clientX - window.innerWidth / 2) * 0.01;
+      mouseY = (e.clientY - window.innerHeight / 2) * 0.01;
+      
+      // Modulate pulse intensity with mouse
+      const distFromCenter = Math.sqrt(mouseX*mouseX + mouseY*mouseY);
+      pulseIntensity.value = 0.3 + Math.min(0.7, distFromCenter * 5.0);
+    });
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // Animation loop
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      const time = clock.getElapsedTime();
+      
+      material.uniforms.time.value = time;
+      material.uniforms.pulseIntensity.value = pulseIntensity.value;
+
+      // Slowly rotate the lattice
+      points.rotation.x += 0.001 + Math.sin(time * 0.5) * 0.002;
+      points.rotation.y += 0.003 + Math.cos(time * 0.4) * 0.001;
+
+      // Animate particles with subtle floating
+      const positions = particleGeometry.attributes.position.array;
+      for (let i = 0; i < positions.length; i += 3) {
+        positions[i+1] += Math.sin(time + i) * 0.02;
+      }
+      particleGeometry.attributes.position.needsUpdate = true;
+
+      // Slight camera shake based on time
+      camera.position.x = 80 + Math.sin(time * 0.5) * 0.3;
+      camera.position.y = Math.cos(time * 0.7) * 0.2;
+
+      renderer.render(scene, camera);
+    }
+
+    animate();
+  </script>
+</body>
+</html>

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lorenz Attractor RK4</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="module">
+    import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.module.min.js';
+
+    // Lorenz Parameters
+    const sigma = 10.0;
+    const rho = 28.0;
+    const beta = 8.0 / 3.0;
+    const dt = 0.005;
+    const stepsPerFrame = 100;
+    const maxPoints = 8000;
+
+    // State initialization
+    let state = new THREE.Vector3(0.1, 0.0, 0.0);
+    let history = [];
+
+    // Scene setup
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x000000);
+    
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 0, 60);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // Geometry setup
+    const geometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(maxPoints * 3);
+    const colors = new Float32Array(maxPoints * 3);
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+    const material = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.8 });
+    const line = new THREE.Line(geometry, material);
+    scene.add(line);
+
+    // RK4 Integration
+    function getDerivatives(p) {
+        return new THREE.Vector3(
+            sigma * (p.y - p.x),
+            p.x * (rho - p.z) - p.y,
+            p.x * p.y - beta * p.z
+        );
+    }
+
+    function rk4Step(currState, stepDt) {
+        const k1 = getDerivatives(currState);
+        
+        const s2 = currState.clone().addScaledVector(k1, stepDt / 2);
+        const k2 = getDerivatives(s2);
+        
+        const s3 = currState.clone().addScaledVector(k2, stepDt / 2);
+        const k3 = getDerivatives(s3);
+        
+        const s4 = currState.clone().addScaledVector(k3, stepDt);
+        const k4 = getDerivatives(s4);
+
+        // state += (dt/6) * (k1 + 2k2 + 2k3 + k4)
+        const nextState = currState.clone();
+        nextState.addScaledVector(k1, stepDt / 6);
+        nextState.addScaledVector(k2, stepDt / 3);
+        nextState.addScaledVector(k3, stepDt / 3);
+        nextState.addScaledVector(k4, stepDt / 6);
+        return nextState;
+    }
+
+    const colorObj = new THREE.Color();
+
+    function animate(time) {
+        requestAnimationFrame(animate);
+
+        // Physics steps
+        for (let i = 0; i < stepsPerFrame; i++) {
+            state = rk4Step(state, dt);
+            history.push(state.clone());
+            if (history.length > maxPoints) {
+                history.shift();
+            }
+        }
+
+        // Update BufferAttributes
+        const posAttr = geometry.attributes.position;
+        const colAttr = geometry.attributes.color;
+        const len = history.length;
+
+        for (let i = 0; i < len; i++) {
+            const p = history[i];
+            posAttr.setXYZ(i, p.x, p.y, p.z);
+
+            // Color along the path using HSL
+            // Hue shifts slightly over time for a flowing effect
+            const hue = (i / maxPoints + time * 0.0001) % 1.0;
+            colorObj.setHSL(hue, 0.8, 0.5);
+            colAttr.setXYZ(i, colorObj.r, colorObj.g, colorObj.b);
+        }
+
+        posAttr.needsUpdate = true;
+        colAttr.needsUpdate = true;
+        geometry.setDrawRange(0, len);
+
+        // Slow Camera Orbit
+        const t = time * 0.0002;
+        camera.position.x = Math.sin(t) * 60;
+        camera.position.z = Math.cos(t) * 60;
+        camera.lookAt(0, 0, 0);
+
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate(0);
+</script>
+</body>
+</html>

@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SDF Blob Merge</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { overflow: hidden; background: #000; }
+canvas { display: block; width: 100vw; height: 100vh; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script type="importmap">
+{
+    "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.163.0/build/three.module.js"
+    }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+const scene = new THREE.Scene();
+const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+const vertexShader = `
+    varying vec2 vUv;
+    void main() {
+        vUv = uv;
+        gl_Position = vec4(position, 1.0);
+    }
+`;
+
+const fragmentShader = `
+    precision highp float;
+    varying vec2 vUv;
+    
+    uniform float uTime;
+    uniform vec2 uResolution;
+    
+    // Smooth minimum of two values with blending factor k
+    float smin(float a, float b, float k) {
+        float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+        return mix(b, a, h) - k * h * (1.0 - h);
+    }
+    
+    // SDF for sphere at center with radius r
+    float sdSphere(vec3 p, vec3 center, float r) {
+        return length(p - center) - r;
+    }
+    
+    // Scene SDF: 6 spheres on sine paths with phase offsets k=8
+    vec2 map(vec3 p) {
+        float t = uTime * 0.4;
+        
+        vec3 centers[6];
+        for (int i = 0; i < 6; i++) {
+            // Phase offset: divide the circle into 8 equal phases, use first 6
+            float phase = float(i) / 8.0 * 6.2831853;
+            
+            // Arrange spheres in a ring pattern
+            float angle = float(i) / 6.0 * 6.2831853 + 0.785398;
+            float radius = 2.2;
+            vec3 basePos = vec3(
+                cos(angle) * radius,
+                0.0,
+                sin(angle) * radius
+            );
+            
+            // Vertical sine displacement per sphere with phase offsets k=8
+            centers[i] = basePos + vec3(0.0, sin(t + phase) * 1.4, 0.0);
+        }
+        
+        float d = sdSphere(p, centers[0], 1.25);
+        for (int i = 1; i < 6; i++) {
+            d = smin(d, sdSphere(p, centers[i], 1.25), 0.6);
+        }
+        
+        return vec2(d, 0.0);
+    }
+    
+    // Compute surface normal via finite differences
+    vec3 calcNormal(vec3 p) {
+        const float eps = 0.001;
+        vec2 h = vec2(eps, 0.0);
+        return normalize(vec3(
+            map(p + h.xyy).x - map(p - h.xyy).x,
+            map(p + h.yxy).x - map(p - h.yxy).x,
+            map(p + h.yyx).x - map(p - h.yyx).x
+        ));
+    }
+    
+    // Soft shadow from point light below
+    float softShadow(vec3 ro, vec3 rd, float mint, float maxt, float k) {
+        float res = 1.0;
+        float t = mint;
+        for (int i = 0; i < 64; i++) {
+            float h = map(ro + rd * t).x;
+            if (h < 0.001) return 0.0;
+            res = min(res, k * h / t);
+            t += clamp(h, 0.02, 0.2);
+            if (t > maxt || res < 0.004) break;
+        }
+        return clamp(res, 0.0, 1.0);
+    }
+    
+    // Ambient occlusion approximation
+    float calcAO(vec3 p, vec3 n) {
+        float ao = 0.0;
+        float scale = 1.0;
+        for (int i = 1; i <= 5; i++) {
+            float dist = 0.08 * float(i);
+            float sampledDist = map(p + n * dist).x;
+            ao -= (dist - sampledDist) * scale;
+            scale *= 0.5;
+        }
+        return clamp(1.0 - 2.0 * ao, 0.0, 1.0);
+    }
+    
+    void main() {
+        vec2 uv = (gl_FragCoord.xy - 0.5 * uResolution) / uResolution.y;
+        
+        // Camera setup
+        float camDist = 8.5;
+        vec3 ro = vec3(0.0, 1.5, camDist);
+        vec3 target = vec3(0.0, 0.0, 0.0);
+        
+        vec3 fwd = normalize(target - ro);
+        vec3 right = normalize(cross(vec3(0.0, 1.0, 0.0), fwd));
+        vec3 up = cross(fwd, right);
+        
+        vec3 rd = normalize(fwd * 2.5 + right * uv.x + up * uv.y);
+        
+        // Background gradient: dark red to amber based on screen Y (mapped via ray direction)
+        float bgT = clamp(-rd.y * 0.5 + 0.4, 0.0, 1.0);
+        vec3 bgColor = mix(
+            vec3(0.25, 0.0, 0.0),   // dark red at bottom
+            vec3(0.85, 0.45, 0.05),  // amber at top
+            bgT * bgT * (3.0 - 2.0 * bgT)
+        );
+        
+        // Raymarching
+        float t = 0.0;
+        int steps = 128;
+        bool hit = false;
+        
+        for (int i = 0; i < 128; i++) {
+            vec3 p = ro + rd * t;
+            float dist = map(p).x;
+            if (dist < 0.0005) {
+                hit = true;
+                steps = i;
+                break;
+            }
+            if (t > 20.0) break;
+            t += dist;
+        }
+        
+        vec3 finalColor = bgColor;
+        
+        if (hit) {
+            vec3 pHit = ro + rd * t;
+            vec3 normal = calcNormal(pHit);
+            
+            // Warm point light from below
+            vec3 lightPos = vec3(0.0, -6.0, 2.0);
+            vec3 lightDir = normalize(lightPos - pHit);
+            float distToLight = length(lightPos - pHit);
+            
+            // Soft shadow
+            float shadow = softShadow(pHit + normal * 0.01, lightDir, 0.05, distToLight, 16.0);
+            
+            // Diffuse shading
+            float diff = max(dot(normal, lightDir), 0.0);
+            
+            // Specular (Blinn-Phong)
+            vec3 viewDir = normalize(ro - pHit);
+            vec3 halfDir = normalize(lightDir + viewDir);
+            float spec = pow(max(dot(normal, halfDir), 0.0), 32.0);
+            
+            // Fresnel rim glow
+            float fresnel = pow(1.0 - max(dot(normal, -viewDir), 0.0), 4.0);
+            
+            // Ambient occlusion
+            float ao = calcAO(pHit, normal);
+            
+            // Warm light color
+            vec3 lightColor = vec3(1.5, 0.7, 0.2) * shadow;
+            
+            // Material colors - warm tones
+            vec3 matDiffuse = vec3(0.6, 0.25, 0.1);
+            vec3 matSpecular = vec3(0.9, 0.5, 0.2);
+            
+            // Combine lighting
+            vec3 ambient = vec3(0.08, 0.02, 0.01) * ao;
+            vec3 diffuse = lightColor * matDiffuse * diff * ao;
+            vec3 specular = lightColor * matSpecular * spec * shadow;
+            
+            // Rim light from ambient warm fill
+            vec3 rimLight = vec3(0.4, 0.15, 0.05) * fresnel * ao;
+            
+            finalColor = ambient + diffuse + specular + rimLight;
+        }
+        
+        // Tone mapping and gamma correction
+        finalColor = pow(finalColor, vec3(0.4545));
+        
+        gl_FragColor = vec4(finalColor, 1.0);
+    }
+`;
+
+const uniforms = {
+    uTime: { value: 0 },
+    uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+};
+
+const material = new THREE.ShaderMaterial({
+    vertexShader,
+    fragmentShader,
+    uniforms,
+});
+
+const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material);
+scene.add(quad);
+
+function animate(time) {
+    requestAnimationFrame(animate);
+    uniforms.uTime.value = time * 0.001;
+    renderer.render(scene, camera);
+}
+
+requestAnimationFrame((t) => {
+    uniforms.uTime.value = t * 0.001;
+    requestAnimationFrame(animate);
+});
+
+window.addEventListener('resize', () => {
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>

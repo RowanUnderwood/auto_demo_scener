@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Event Horizon Synthesis</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+    let scene, camera, renderer, mesh, clock;
+
+    // Custom Shader Code (Simulating Volumetric Grid Distortion and Chromatic Trails)
+    const vertexShader = `
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `;
+
+    const fragmentShader = `
+        uniform float u_time;
+        varying vec2 vUv;
+        
+        // Simple hash function for pseudo-random noise
+        float random(vec2 st) {
+            return fract(sin(dot(st.xy, vec2(12.9898, 78.233))) * 43758.5453);
+        }
+
+        // Smooth interpolation of noise for flow effect (Perlin-like)
+        float noise(vec2 st) {
+            vec2 i = floor(st);
+            vec2 f = fract(st);
+            
+            // Smootherstep function
+            vec2 u = f * f * (3.0 - 2.0 * f);
+
+            float a = random(i);
+            float b = random(i + vec2(1.0, 0.0));
+            float c = random(i + vec2(0.0, 1.0));
+            float d = random(i + vec2(1.0, 1.0));
+            
+            return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+        }
+
+        void main() {
+            vec2 st = vUv;
+            float distortion_scale = 15.0;
+            float time_offset = u_time * 0.3;
+            
+            // Base noise calculation for flow field
+            float n1 = noise(st * 4.0 + time_offset);
+            float n2 = noise(st * 8.0 - time_offset * 0.5);
+
+            // Calculate distortion vector based on noise and time
+            vec2 offset = vec2(n1 - n2, (n1 + n2) / 2.0) * distortion_scale;
+
+            // Apply the distortion to the UV coordinates
+            vec2 distorted_uv = st + offset * 0.05;
+            
+            float final_noise = noise(distorted_uv * 6.0 + u_time * 0.8);
+            
+            // Color calculation (Chromatic Trails/Energy)
+            vec3 color1 = vec3(0.1, 0.8, 1.0) * sin(u_time * 0.5 + final_noise * 2.0); // Blue/Cyan trail
+            vec3 color2 = vec3(1.0, 0.1, 0.7) * cos(u_time * 0.8 - final_noise * 1.5); // Magenta/Red core
+
+            // Mix based on noise intensity (pulsing effect)
+            float intensity = abs(sin(u_time * 3.0)) + final_noise;
+            vec3 final_color = mix(color1, color2, intensity);
+            
+            gl_FragColor = vec4(final_color, 1.0);
+        }
+    `;
+
+    function init() {
+        // Setup Renderer and Scene
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        scene = new THREE.Scene();
+        camera = new THREE.Camera(); // Orthographic camera is better for screen-space quad rendering
+
+        // Setup Shader Material
+        const uniforms = {
+            u_time: { value: 0.0 }
+        };
+
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const material = new THREE.ShaderMaterial({
+            uniforms: uniforms,
+            vertexShader: vertexShader,
+            fragmentShader: fragmentShader
+        });
+
+        mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        // Clock for time tracking
+        clock = new THREE.Clock();
+
+        window.addEventListener('resize', onWindowResize, false);
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+
+        const elapsed = clock.getElapsedTime();
+        if (mesh && mesh.material.uniforms) {
+            mesh.material.uniforms.u_time.value = elapsed;
+        }
+
+        renderer.render(scene, camera);
+    }
+
+    function onWindowResize() {
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    init();
+    animate();
+</script>
+</body>
+</html>

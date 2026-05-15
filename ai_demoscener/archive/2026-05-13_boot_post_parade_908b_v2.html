@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEURAL BLOOM</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #1a052e; } /* Deep Purple/Violet Background */
+        canvas { position: absolute; top: 0; left: 0; }
+        #ui { pointer-events: none; }
+    </style>
+</head>
+<body>
+    <canvas id="bg"></canvas>
+    <canvas id="ui"></canvas>
+
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        // --- SHADER SETUP (Organic Flow / Nebula Aesthetic) ---
+        const bgCanvas = document.getElementById('bg');
+        const uiCanvas = document.getElementById('ui');
+        const uiCtx = uiCanvas.getContext('2d');
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer({ canvas: bgCanvas });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+
+        // Shifted aesthetic from sharp plasma to flowing, bioluminescent nebula/blooms
+        const bloomShader = {
+            uniforms: {
+                u_time: { value: 0 },
+                u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float u_time;
+                uniform vec2 u_resolution;
+                varying vec2 vUv;
+
+                void main() {
+                    // Normalized coordinates centered at (0, 0)
+                    vec2 p = vUv * 2.0 - 1.0;
+                    p.x *= u_resolution.x / u_resolution.y; // Aspect correction
+
+                    float t = u_time * 0.15; // Slower time scale for organic feel
+                    vec3 color = vec3(0.0);
+
+                    // Use sine waves mixed with distance/angle functions to create 'blobs' or 'veins'
+                    for(int i = 0; i < 6; i++) {
+                        float frequency = float(i) * 1.5 + 0.5;
+                        float phaseShift = (float(i) * 1.2);
+
+                        // Calculate influence based on distance from center and time
+                        float r_influence = sin((dot(p, p) * frequency) + t * (frequency * 0.3) + phaseShift);
+                        
+                        // Color mixing: use higher frequencies for brighter, more saturated colors
+                        vec3 colorComponent;
+                        if (i % 2 == 0) {
+                            colorComponent = vec3(0.8, 0.4, 1.0); // Purple/Pink tones
+                        } else {
+                            colorComponent = vec3(0.1, 0.7, 0.9); // Cyan/Blue tones
+                        }
+
+                        // Add influence scaled by frequency and time to create movement
+                        float intensity = abs(r_influence) * (frequency * 0.1 + 0.2);
+                        color += colorComponent * intensity;
+                    }
+
+                    // Final look: slightly desaturated, glowing effect
+                    color *= 0.4; 
+                    gl_FragColor = vec4(color, 1.0);
+                }
+            `
+        };
+
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const material = new THREE.ShaderMaterial(bloomShader);
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        // --- TYPEWRITER LOGIC (Ethereal / Bio-Digital Theme) ---
+        const messages = [
+            "NEURAL_ROOT ACCESSING...",
+            "BIOMASS SYNC COMPLETE.",
+            "FLUID MEMORY STREAM ESTABLISHED.",
+            "INITIATING AESTHETIC RESONANCE.",
+            "PROCESSING DREAM ARCHIVES...",
+            "VIBRATIONAL FREQUENCY: 432HZ",
+            "MORPHOGENESIS PROTOCOL ACTIVE.",
+            "INTEGRATING CHROMATIC DATA...",
+            "SYNAPTIC NETWORKS ACTIVATED.",
+            "PERCEIVING LIMINALITY.",
+            "EXTERNAL SIGNAL DETECTED: (beauty)",
+            "TRANSDUCING EMOTIONAL INPUT...",
+            "BLOOM SEQUENCE INITIATED.",
+            "FLOWERING REALITY FRAGMENT...",
+            "DEEP-STATE CALIBRATION COMPLETE.",
+            "SUBSTRATE RESONANCE NOMINAL.",
+            "INITIATING PHASIC OVERLAY...",
+            "AESTHETIC FIELD STABILIZED.",
+            "WELCOME TO THE BLOOM.",
+            "FLOWING... (Loading more consciousness...)"
+        ];
+
+        let currentLineIdx = 0;
+        let currentCharIdx = 0;
+        let displayedLines = [];
+        let lastCharTime = 0;
+        const charDelay = 45; // Slightly slower, more deliberate typing
+        let cursorVisible = true;
+        let cursorTimer = 0;
+
+        function resize() {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            renderer.setSize(w, h);
+            uiCanvas.width = w;
+            uiCanvas.height = h;
+            material.uniforms.u_resolution.value.set(w, h);
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        function updateTypewriter(now) {
+            if (currentLineIdx < messages.length) {
+                const targetLine = messages[currentLineIdx];
+                
+                // Typing speed control
+                if (now - lastCharTime > charDelay && currentCharIdx <= targetLine.length) {
+                    if (currentCharIdx < targetLine.length) {
+                        if (!displayedLines[currentLineIdx]) displayedLines[currentLineIdx] = "";
+                        displayedLines[currentLineIdx] += targetLine[currentCharIdx];
+                        currentCharIdx++;
+                    } else {
+                        // Line finished, move to next
+                        currentLineIdx++;
+                        currentCharIdx = 0;
+                    }
+                    lastCharTime = now;
+                }
+            }
+
+            // Cursor blink logic (slower pulse)
+            cursorTimer += 16.6; 
+            if (cursorTimer > 750) { // Slower blink
+                cursorVisible = !cursorVisible;
+                cursorTimer = 0;
+            }
+        }
+
+        function drawUI() {
+            uiCtx.clearRect(0, 0, uiCanvas.width, uiCanvas.height);
+            // Aesthetic shift: softer, bioluminescent font style simulation
+            uiCtx.font = '24px "Georgia", serif'; // More flowing/organic font
+            // Color shift: Soft cyan/light violet for an ethereal glow on dark purple background
+            uiCtx.fillStyle = '#B3E0FF'; 
+            uiCtx.textBaseline = 'top';
+
+            const padding = 30;
+            const lineHeight = 32; // Increased line height for elegance
+
+            displayedLines.forEach((line, i) => {
+                uiCtx.fillText(line, padding, padding + (i * lineHeight));
+            });
+
+            // Drawing the cursor simulation
+            if (currentLineIdx < messages.length || displayedLines.length > 0) {
+                const currentText = currentLineIdx < messages.length ? 
+                    messages[currentLineIdx].substring(0, currentCharIdx) : "";
+                
+                const totalLinesDrawn = displayedLines.length;
+
+                if (currentLineIdx < messages.length || cursorVisible) {
+                     // Draw the line of text that is currently being built/displayed
+                     uiCtx.fillText(currentText + (cursorVisible ? '•' : ""), padding, padding + ((totalLinesDrawn) * lineHeight));
+                }
+            }
+        }
+
+        function animate(now) {
+            requestAnimationFrame(animate);
+            
+            // Bloom shader update
+            material.uniforms.u_time.value = now * 0.001;
+            renderer.render(scene, camera);
+
+            // Text update and UI rendering
+            updateTypewriter(now);
+            drawUI();
+        }
+
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>

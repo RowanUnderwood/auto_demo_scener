@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Mystify</title>
+<style>
+* { margin: 0; padding: 0; overflow: hidden; }
+body { background: #000; }
+canvas { display: block; }
+</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const W = window.innerWidth;
+const H = window.innerHeight;
+const WALL_PAD = 60;
+const NUM_SNAPSHOTS = 30;
+const POLY_POINTS = 4;
+
+const scene = new THREE.Scene();
+const camera = new THREE.OrthographicCamera(W / 2, -W / 2, H / 2, -H / 2, 1, 1000);
+camera.position.z = 10;
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(W, H);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+function hslToRgb(h, s, l) {
+  h = ((h % 360) + 360) % 360;
+  s /= 100; l /= 100;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+  const m = l - c / 2;
+  let r, g, b;
+  if (h < 60) { r = c; g = x; b = 0; }
+  else if (h < 120) { r = x; g = c; b = 0; }
+  else if (h < 180) { r = 0; g = c; b = x; }
+  else if (h < 240) { r = 0; g = x; b = c; }
+  else if (h < 300) { r = x; g = 0; b = c; }
+  else { r = c; g = 0; b = x; }
+  return [r + m, g + m, b + m];
+}
+
+class Polygon {
+  constructor(baseHue) {
+    this.baseHue = baseHue;
+    this.vertices = [];
+    for (let i = 0; i < POLY_POINTS; i++) {
+      this.vertices.push({
+        x: WALL_PAD + Math.random() * (W - 2 * WALL_PAD),
+        y: WALL_PAD + Math.random() * (H - 2 * WALL_PAD),
+        vx: (Math.random() - 0.5) * 6,
+        vy: (Math.random() - 0.5) * 6
+      });
+    }
+    this.snapshots = [];
+  }
+
+  update() {
+    const left = WALL_PAD, right = W - WALL_PAD;
+    const top = WALL_PAD, bottom = H - WALL_PAD;
+
+    for (const v of this.vertices) {
+      v.x += v.vx;
+      v.y += v.vy;
+      if (v.x < left) { v.x = left; v.vx = Math.abs(v.vx); }
+      if (v.x > right) { v.x = right; v.vx = -Math.abs(v.vx); }
+      if (v.y < top) { v.y = top; v.vy = Math.abs(v.vy); }
+      if (v.y > bottom) { v.y = bottom; v.vy = -Math.abs(v.vy); }
+    }
+
+    this.snapshots.unshift(this.vertices.map(v => ({ x: v.x, y: v.y })));
+    if (this.snapshots.length > NUM_SNAPSHOTS) {
+      this.snapshots.length = NUM_SNAPSHOTS;
+    }
+  }
+
+  render(time) {
+    const group = new THREE.Group();
+
+    for (let i = 0; i < this.snapshots.length; i++) {
+      const snap = this.snapshots[i];
+      const age = i / NUM_SNAPSHOTS;
+      const opacity = 1.0 - Math.pow(age, 0.6);
+      const hue = (this.baseHue + time * 40 + age * 120) % 360;
+      const [r, g, b] = hslToRgb(hue, 100, 55);
+
+      const positions = new Float32Array(POLY_POINTS * 2);
+      for (let j = 0; j < POLY_POINTS; j++) {
+        positions[j * 2] = snap[j].x;
+        positions[j * 2 + 1] = snap[j].y;
+      }
+
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(positions, 2));
+
+      const mat = new THREE.LineBasicMaterial({
+        color: new THREE.Color(r, g, b),
+        blending: THREE.AdditiveBlending,
+        transparent: true,
+        opacity: opacity * 0.85
+      });
+
+      const line = new THREE.Line(geo, mat);
+      line.closePath = true;
+      group.add(line);
+    }
+
+    return group;
+  }
+}
+
+const polygons = [
+  new Polygon(200),
+  new Polygon(30)
+];
+
+const polyGroups = polygons.map(() => new THREE.Group());
+polyGroups.forEach(g => scene.add(g));
+
+let time = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+  time += 0.016;
+
+  polygons.forEach((p, i) => {
+    p.update();
+    polyGroups[i].children.forEach(c => {
+      if (c.geometry) c.geometry.dispose();
+      if (c.material) c.material.dispose();
+    });
+    polyGroups[i].clear();
+    const group = p.render(time);
+    group.children.forEach(child => polyGroups[i].add(child));
+  });
+
+  renderer.render(scene, camera);
+}
+
+animate();
+
+window.addEventListener('resize', () => {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  renderer.setSize(w, h);
+  camera.left = w / 2;
+  camera.right = -w / 2;
+  camera.top = h / 2;
+  camera.bottom = -h / 2;
+  camera.updateProjectionMatrix();
+});
+</script>
+</body>
+</html>

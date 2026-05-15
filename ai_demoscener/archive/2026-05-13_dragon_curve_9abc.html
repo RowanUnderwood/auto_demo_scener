@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Heighway Dragon L-System</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script src="https://unpkg.com/three@0.136.0/build/three.min.js"></script>
+<script>
+// 1. Generate L-System String (Heighway Dragon)
+let s = "FX";
+const iterations = 14;
+for (let i = 0; i < iterations; i++) {
+    let nextS = "";
+    for (let j = 0; j < s.length; j++) {
+        const c = s[j];
+        if (c === 'X') nextS += "X+YF+";
+        else if (c === 'Y') nextS += "-FX-Y";
+        else nextS += c;
+    }
+    s = nextS;
+}
+
+// 2. Convert String to Turtle Geometry
+const positions = [];
+let x = 0, y = 0, angle = 0;
+positions.push(x, y, 0); // Start point
+
+for (let i = 0; i < s.length; i++) {
+    const char = s[i];
+    if (char === 'F') {
+        x += Math.cos(angle);
+        y += Math.sin(angle);
+        positions.push(x, y, 0);
+    } else if (char === '+') {
+        angle += Math.PI / 2;
+    } else if (char === '-') {
+        angle -= Math.PI / 2;
+    }
+}
+
+// 3. Setup Three.js Scene
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+camera.position.z = 20;
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+// 4. Prepare Geometry and Colors
+const numPoints = positions.length / 3;
+const colors = new Float32Array(positions.length);
+for (let i = 0; i < numPoints; i++) {
+    const color = new THREE.Color();
+    color.setHSL(i / numPoints, 1.0, 0.5);
+    colors[i * 3] = color.r;
+    colors[i * 3 + 1] = color.g;
+    colors[i * 3 + 2] = color.b;
+}
+
+const geometry = new THREE.BufferGeometry();
+geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+// Center and Scale Geometry
+geometry.computeBoundingBox();
+const center = new THREE.Vector3();
+geometry.boundingBox.getCenter(center);
+
+const posAttr = geometry.attributes.position;
+for (let i = 0; i < posAttr.count; i++) {
+    posAttr.setXYZ(i, posAttr.getX(i) - center.x, posAttr.getY(i) - center.y, posAttr.getZ(i) - center.z);
+}
+posAttr.needsUpdate = true;
+geometry.computeBoundingBox(); // Recalculate after centering
+
+const size = geometry.boundingBox.getSize(new THREE.Vector3());
+const maxDim = Math.max(size.x, size.y);
+const scaleFactor = 15 / maxDim;
+
+const material = new THREE.LineBasicMaterial({ 
+    vertexColors: true, 
+    transparent: true, 
+    opacity: 1.0
+});
+
+const line = new THREE.Line(geometry, material);
+line.scale.set(scaleFactor, scaleFactor, scaleFactor);
+scene.add(line);
+
+// 5. Animation Logic
+let startTime = performance.now();
+const totalDuration = 12000; 
+const drawTime = 10000;
+
+function animate() {
+    const now = performance.now();
+    let elapsed = (now - startTime) % totalDuration;
+
+    if (elapsed < drawTime) {
+        // Phase: Progressive Drawing
+        const progress = elapsed / drawTime;
+        const count = Math.floor(progress * numPoints);
+        line.geometry.setDrawRange(0, count);
+        material.opacity = 1.0;
+    } else {
+        // Phase: Fading
+        const fadeProgress = (elapsed - drawTime) / (totalDuration - drawTime);
+        line.geometry.setDrawRange(0, numPoints);
+        material.opacity = 1.0 - fadeProgress;
+    }
+
+    // Gentle continuous rotation
+    line.rotation.z += 0.005;
+    line.rotation.y += 0.002;
+
+    renderer.render(scene, camera);
+    requestAnimationFrame(animate);
+}
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+animate();
+</script>
+</body>
+</html>
