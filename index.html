@@ -226,6 +226,17 @@ body {
 
 /* ── Error state ──────────────────────────────────────────────────────────── */
 #effectName.error { color: var(--fg-dim); font-size: 1.2em; }
+
+/* ── Music button ─────────────────────────────────────────────────────────── */
+#musicBtn {
+  cursor: pointer;
+  color: var(--fg-dim);
+  user-select: none;
+  white-space: nowrap;
+  transition: color 0.3s;
+}
+#musicBtn:hover { color: var(--fg); }
+#musicBtn.playing { color: var(--accent); text-shadow: var(--glow); }
 </style>
 </head>
 <body>
@@ -255,10 +266,12 @@ body {
       <span id="statusText">INITIALISING</span>
       <span id="statsLine"></span>
       <span id="keyHints">← prev &nbsp;·&nbsp; → / space next</span>
+      <span id="musicBtn" title="Toggle music">♪ MUSIC</span>
     </div>
   </div>
 
   <div id="progressBar"><div id="progressFill"></div></div>
+  <audio id="bgMusic" preload="auto"></audio>
 
 </div>
 <script>
@@ -421,6 +434,80 @@ window.addEventListener('message', (ev) => {
 demoFrame.addEventListener('load', () => {
   if (demoFrame.src !== 'about:blank') window.focus();
 });
+
+// ── Background music ──────────────────────────────────────────────────────────
+const TRACKS = [
+  'Cinder Server.mp3',
+  'Cinder Server (1).mp3',
+  'Cobalt Footnotes.mp3',
+  'Cobalt Footnotes (1).mp3',
+  'Copper Synapse.mp3',
+  'Copper Synapse (1).mp3',
+  'Stacklight Syntax.mp3',
+  'Stacklight Syntax (1).mp3',
+];
+
+const bgMusic  = document.getElementById('bgMusic');
+const musicBtn = document.getElementById('musicBtn');
+let lastTrackIdx = -1;
+let musicStarted = false;
+bgMusic.volume = 0.5;
+
+function pickTrack() {
+  let i;
+  do { i = Math.floor(Math.random() * TRACKS.length); }
+  while (i === lastTrackIdx && TRACKS.length > 1);
+  lastTrackIdx = i;
+  return TRACKS[i];
+}
+
+function trackName(f) {
+  return f.replace(/\.mp3$/i, '').replace(/\s*\(\d+\)$/, '');
+}
+
+function playNext() {
+  const track = pickTrack();
+  bgMusic.src = ARCHIVE_BASE + encodeURIComponent(track);
+  bgMusic.play().catch(() => {});
+}
+
+function startMusic() {
+  if (musicStarted) return;
+  musicStarted = true;
+  playNext();
+}
+
+bgMusic.addEventListener('ended', playNext);
+
+bgMusic.addEventListener('play', () => {
+  musicBtn.textContent = '♫ ' + trackName(TRACKS[lastTrackIdx]);
+  musicBtn.classList.add('playing');
+});
+
+bgMusic.addEventListener('pause', () => {
+  if (!bgMusic.ended) {
+    musicBtn.textContent = '♪ MUTED';
+    musicBtn.classList.remove('playing');
+  }
+});
+
+musicBtn.addEventListener('click', () => {
+  if (!musicStarted) { startMusic(); return; }
+  bgMusic.paused ? bgMusic.play().catch(() => {}) : bgMusic.pause();
+});
+
+// Start on first keyboard gesture (covers autoplay block)
+document.addEventListener('keydown', function onFirstKey() {
+  startMusic();
+  document.removeEventListener('keydown', onFirstKey, true);
+}, true);
+
+// Try immediate autoplay; if blocked, button stays as "♪ MUSIC" invite
+{
+  const track = pickTrack();
+  bgMusic.src = ARCHIVE_BASE + encodeURIComponent(track);
+  bgMusic.play().then(() => { musicStarted = true; }).catch(() => {});
+}
 
 init();
 </script>
