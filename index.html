@@ -229,14 +229,23 @@ body {
 
 /* ── Music button ─────────────────────────────────────────────────────────── */
 #musicBtn {
+  position: absolute;
+  bottom: 8px;
+  right: 12px;
+  z-index: 4;
+  font-family: 'Courier New', 'Lucida Console', monospace;
+  font-size: 0.75em;
   cursor: pointer;
   color: var(--fg-dim);
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  padding: 0.15em 0.5em;
   user-select: none;
   white-space: nowrap;
   transition: color 0.3s;
 }
 #musicBtn:hover { color: var(--fg); }
-#musicBtn.playing { color: var(--accent); text-shadow: var(--glow); }
+#musicBtn.playing { color: var(--accent); text-shadow: var(--glow); border-color: var(--accent); }
 </style>
 </head>
 <body>
@@ -266,11 +275,11 @@ body {
       <span id="statusText">INITIALISING</span>
       <span id="statsLine"></span>
       <span id="keyHints">← prev &nbsp;·&nbsp; → / space next</span>
-      <span id="musicBtn" title="Toggle music">♪ MUSIC</span>
     </div>
   </div>
 
   <div id="progressBar"><div id="progressFill"></div></div>
+  <span id="musicBtn" title="Toggle music">♪ MUSIC</span>
   <audio id="bgMusic" preload="auto"></audio>
 
 </div>
