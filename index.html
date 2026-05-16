@@ -106,13 +106,6 @@ body {
   font-size: 0.9em;
 }
 
-#countChip {
-  font-size: 0.75em;
-  color: var(--accent);
-  border: 1px solid var(--accent);
-  padding: 0.1em 0.5em;
-  border-radius: 2px;
-}
 
 /* ── Main content ─────────────────────────────────────────────────────────── */
 #main {
@@ -259,7 +252,6 @@ body {
       <div class="win-btn"></div>
       <div class="win-btn"></div>
       <div id="titleText">DEMOWRITER&nbsp;1.0 — ARCHIVE</div>
-      <div id="countChip">— / —</div>
     </div>
 
     <div id="main">
@@ -298,7 +290,6 @@ const demoDesc    = document.getElementById('demoDesc');
 const modelLabel  = document.getElementById('modelLabel');
 const fileLabel   = document.getElementById('fileLabel');
 const statsLine   = document.getElementById('statsLine');
-const countChip   = document.getElementById('countChip');
 const statusText  = document.getElementById('statusText');
 const progressBar = document.getElementById('progressBar');
 const progressFill= document.getElementById('progressFill');
@@ -363,7 +354,6 @@ function showDemo(i) {
   demoDesc.textContent   = meta.description || '';
   modelLabel.textContent = meta.model ? 'by ' + meta.model : '';
   fileLabel.textContent  = filename;
-  countChip.textContent  = `${idx + 1} / ${entries.length}`;
   statusText.textContent = 'LOADING…';
 
   // Stats line from prompt_stats.json
@@ -415,7 +405,6 @@ function showError(title, detail) {
   effectName.className = 'error';
   effectName.textContent = title;
   fileLabel.textContent  = detail || '';
-  countChip.textContent  = '— / —';
   statusText.textContent = 'HALTED';
 }
 
