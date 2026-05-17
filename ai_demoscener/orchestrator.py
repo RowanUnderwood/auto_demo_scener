@@ -179,7 +179,7 @@ class Orchestrator:
         model = lm_cfg["model"]
         if lm_cfg.get("surprise_me"):
             try:
-                available = lm_client.list_models(lm_cfg["base_url"])
+                available = lm_client.list_models(lm_cfg["base_url"], exclude_embedding=True)
                 if available:
                     model = random.choice(available)
                     self._broadcast({"type": "model_selected", "model": model})

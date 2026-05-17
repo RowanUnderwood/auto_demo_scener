@@ -10,16 +10,23 @@ class LMClientError(Exception):
     pass
 
 
+_EMBEDDING_PATTERNS = ("embed", "nomic", "bge-", "e5-", "rerank")
+
+
 class LengthFinishError(LMClientError):
     pass
 
 
-def list_models(base_url: str, timeout: int = 10) -> list[str]:
+def list_models(base_url: str, timeout: int = 10,
+                exclude_embedding: bool = False) -> list[str]:
     try:
         r = requests.get(f"{base_url}/v1/models", timeout=timeout)
         r.raise_for_status()
-        data = r.json()
-        return [m["id"] for m in data.get("data", [])]
+        ids = [m["id"] for m in r.json().get("data", [])]
+        if exclude_embedding:
+            ids = [m for m in ids
+                   if not any(p in m.lower() for p in _EMBEDDING_PATTERNS)]
+        return ids
     except Exception as e:
         raise LMClientError(f"Failed to list models: {e}") from e
 

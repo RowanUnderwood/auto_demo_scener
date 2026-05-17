@@ -1408,7 +1408,7 @@
     "mode": "creative",
     "effect": "creative",
     "passed_validation": true,
-    "model": "text-embedding-nomic-embed-text-v1.5",
+    "model": "unknown",
     "title": "Quantum Bloom Particle Swarm",
     "description": "Spectral motes drift in an endless, luminous cosmic tide."
   },
@@ -1532,7 +1532,7 @@
     "mode": "creative",
     "effect": "creative",
     "passed_validation": true,
-    "model": "text-embedding-nomic-embed-text-v1.5",
+    "model": "unknown",
     "title": "Neural Network Synthesis",
     "description": "Digital consciousness flowing through geometric pathways of light"
   },
@@ -1577,7 +1577,7 @@
     "mode": "update",
     "effect": "update",
     "passed_validation": true,
-    "model": "text-embedding-nomic-embed-text-v1.5",
+    "model": "unknown",
     "title": "Synthetic Pulse Lattice",
     "description": "Neon lattice breathes with a synthetic heartbeat."
   },
@@ -1649,7 +1649,7 @@
     "mode": "update",
     "effect": "update",
     "passed_validation": true,
-    "model": "text-embedding-nomic-embed-text-v1.5",
+    "model": "unknown",
     "title": "Fractal Cyan Data Drift",
     "description": "Swirling chromatic currents flow through a digital void of shifting noise."
   },
@@ -1839,5 +1839,384 @@
     "model": "aescoder-4b",
     "title": "Cosmic Volumetric Dreams",
     "description": "A swirling nebula of light and shadow in eternal motion"
+  },
+  "2026-05-17_creative_175d.html": {
+    "created": "2026-05-17T03:59:21.677639",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "huihui-qwen3-vl-8b-instruct-abliterated",
+    "title": "Quantum Fractal Bloom",
+    "description": "Ethereal branches pulse with cosmic particle trails."
+  },
+  "2026-05-17_creative_1eea.html": {
+    "created": "2026-05-17T04:04:16.375234",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen/qwen3-vl-4b",
+    "title": "Quantum Particle Dance",
+    "description": "Particles swirl in quantum chaos, glowing with ephemeral grace."
+  },
+  "2026-05-17_boids_flocking_b712.html": {
+    "created": "2026-05-17T04:08:27.964421",
+    "mode": "stock",
+    "effect": "Boids Flocking",
+    "passed_validation": true,
+    "model": "qwen/qwen3.6-35b-a3b",
+    "title": "Swarming Cones Navigate The Wireframe Void",
+    "description": "Silent flocks weave through the geometric dark."
+  },
+  "2026-05-17_auto_play_breakout_810d.html": {
+    "created": "2026-05-17T04:12:51.721608",
+    "mode": "stock",
+    "effect": "Auto-Play Breakout",
+    "passed_validation": true,
+    "model": "google/gemma-4-26b-a4b",
+    "title": "Prismatic Kinetic Echoes",
+    "description": "A rhythmic dance of light striking geometric color fields."
+  },
+  "2026-05-17_reaction_diffusion_01c3.html": {
+    "created": "2026-05-17T04:16:07.219169",
+    "mode": "stock",
+    "effect": "Reaction-Diffusion",
+    "passed_validation": true,
+    "model": "magistral-small-2509",
+    "title": "Gray-Scott Dance",
+    "description": "Fluid patterns swirl in a mesmerizing, ever-changing symphony of light."
+  },
+  "2026-05-17_creative_cde3.html": {
+    "created": "2026-05-17T04:18:39.000970",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "liquid/lfm2-24b-a2b",
+    "title": "Stellar Drift",
+    "description": "Cosmic whispers dance through digital void"
+  },
+  "2026-05-17_creative_3d0d.html": {
+    "created": "2026-05-17T04:19:43.460112",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "unsloth/qwen3-vl-30b-a3b-instruct",
+    "title": "Neural Bloom",
+    "description": "Bioluminescent particles pulse and connect like synapses in a digital brain."
+  },
+  "2026-05-17_creative_ca71.html": {
+    "created": "2026-05-17T04:24:37.537191",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen3-coder-30b-a3b-instruct"
+  },
+  "2026-05-10_creative_8844_v3.html": {
+    "created": "2026-05-17T04:25:32.829873",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "gemma-4-e4b-it-heretic",
+    "title": "Luminescent Bio-Flux Nebula Bloom",
+    "description": "Organic light pulses within a deep cosmic bloom."
+  },
+  "2026-05-17_retrowave_sunset_ef6d.html": {
+    "created": "2026-05-17T04:26:50.783308",
+    "mode": "stock",
+    "effect": "Retrowave Sunset",
+    "passed_validation": true,
+    "model": "qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive",
+    "title": "Neon Horizon Drift",
+    "description": "Chasing neon dreams across infinite digital plains."
+  },
+  "2026-05-17_creative_1414.html": {
+    "created": "2026-05-17T04:27:35.411538",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen/qwen3-vl-4b",
+    "title": "Neon Cathedral Glow",
+    "description": "Glowing orbs drift through neon cathedral's hush."
+  },
+  "2026-05-17_creative_a33c.html": {
+    "created": "2026-05-17T04:30:35.027608",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen_qwen3-30b-a3b-thinking-2507",
+    "title": "Fleeting Quantum Connections",
+    "description": "Shimmering particles weave ephemeral threads across the void."
+  },
+  "2026-05-17_matrix_rain_whispers_5956.html": {
+    "created": "2026-05-17T04:42:06.007537",
+    "mode": "stock",
+    "effect": "Matrix Rain Whispers",
+    "passed_validation": true,
+    "model": "lmstudio-community/qwen3.5-35b-a3b",
+    "title": "Kernel Dreams In Hexadecimal",
+    "description": "Binary light weaves dreams in static silence."
+  },
+  "2026-05-17_creative_4f84.html": {
+    "created": "2026-05-17T04:49:34.217667",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "huihui-qwen3-vl-8b-instruct-abliterated",
+    "title": "Fractal Core Quantum Pulse",
+    "description": "Shimmering rings orbit a glowing heart of quantum chaos."
+  },
+  "2026-05-12_mode_7_floor_9d9d_v2.html": {
+    "created": "2026-05-17T04:50:55.217638",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "unsloth/qwen3.5-35b-a3b",
+    "title": "Synthwave Neon Grid Horizon",
+    "description": "Neon grids drift into a synthetic sunset glow."
+  },
+  "2026-05-17_galaxy_spiral_fa69.html": {
+    "created": "2026-05-17T04:52:21.560755",
+    "mode": "stock",
+    "effect": "Galaxy Spiral",
+    "passed_validation": true,
+    "model": "lmstudio-community/qwen3.5-35b-a3b",
+    "title": "Cosmic Spiral Nebula Pulse",
+    "description": "Light spirals outward from a glowing heart."
+  },
+  "2026-05-17_3d_pipes_screensaver_3821.html": {
+    "created": "2026-05-17T04:54:02.699324",
+    "mode": "stock",
+    "effect": "3D Pipes Screensaver",
+    "passed_validation": true,
+    "model": "qwen/qwen3.6-35b-a3b",
+    "title": "Chromatic Tube Convergence",
+    "description": "Luminous tendrils weave through the silent dark."
+  },
+  "2026-05-17_sine_wave_news_crawl_fa4e.html": {
+    "created": "2026-05-17T04:55:52.002789",
+    "mode": "stock",
+    "effect": "Sine-Wave News Crawl",
+    "passed_validation": true,
+    "model": "magistral-small-2509",
+    "title": "Neon BBS Scrolltext",
+    "description": "Green text flows, echoing the past in digital whispers."
+  },
+  "2026-05-17_tesseract_projection_f8b1.html": {
+    "created": "2026-05-17T05:01:13.261549",
+    "mode": "stock",
+    "effect": "Tesseract Projection",
+    "passed_validation": true,
+    "model": "qwen_qwen3-30b-a3b-thinking-2507",
+    "title": "Tesseract In Four Dimensions",
+    "description": "Spectral edges dance across four-dimensional void."
+  },
+  "2026-05-17_wormhole_5953.html": {
+    "created": "2026-05-17T05:09:49.608783",
+    "mode": "stock",
+    "effect": "Wormhole",
+    "passed_validation": true,
+    "model": "qwen/qwen3.5-9b",
+    "title": "Electric Neon Tunnel Vision",
+    "description": "Light spirals endlessly into a dark digital void."
+  },
+  "2026-05-10_wireframe_icosahedron_3215_v2.html": {
+    "created": "2026-05-17T05:13:34.502607",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "huihui-qwen3-vl-8b-instruct-abliterated",
+    "title": "Glowing Wireframe Icosahedron",
+    "description": "Floating geometric light pulses through digital space."
+  },
+  "2026-05-10_bouncing_balls_af06_v5.html": {
+    "created": "2026-05-17T05:22:33.136757",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "gemma-4-31b-it",
+    "title": "Neon Orbs In Glass Void",
+    "description": "Luminous spheres dance within a silent crystalline sanctuary of light."
+  },
+  "2026-05-17_apollonian_gasket_47d7.html": {
+    "created": "2026-05-17T05:25:01.791693",
+    "mode": "stock",
+    "effect": "Apollonian Gasket",
+    "passed_validation": true,
+    "model": "qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive"
+  },
+  "2026-05-10_creative_af9f_v2.html": {
+    "created": "2026-05-17T05:27:36.389238",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "unsloth/qwen3.5-35b-a3b",
+    "title": "Synapse Flux Organic Reconstruction",
+    "description": "Synapse flux reconstructs organic neural silence."
+  },
+  "2026-05-10_starfield_0fb3_v3.html": {
+    "created": "2026-05-17T05:34:09.465037",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3-30b-a3b-thinking-2507",
+    "title": "Abyssal Light Spirals",
+    "description": "Glowing currents weave silent patterns in the deep sea's embrace."
+  },
+  "2026-05-14_matrix_digital_rain_7207_v2.html": {
+    "created": "2026-05-17T05:36:08.636058",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "magistral-small-2509",
+    "title": "Neon Grid Matrix Pulse",
+    "description": "A grid of colored cubes dances in a neon matrix."
+  },
+  "2026-05-15_creative_430e_v2.html": {
+    "created": "2026-05-17T05:40:38.846151",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3-30b-a3b-thinking-2507",
+    "title": "Bloom Of Shifting Sizes",
+    "description": "Particles grow and shrink in silent cosmic harmony."
+  },
+  "2026-05-17_creative_a3b3.html": {
+    "created": "2026-05-17T05:41:21.433224",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen3-30b-a3b-instruct-2507",
+    "title": "Quantum Lattice",
+    "description": "Particles breathe in silent waves of light."
+  },
+  "2026-05-17_plasma_backdrop_poem_ea60.html": {
+    "created": "2026-05-17T05:43:15.422987",
+    "mode": "stock",
+    "effect": "Plasma Backdrop Poem",
+    "passed_validation": true,
+    "model": "qwen3-30b-a3b-thinking-2507",
+    "title": "Digital Nebula Poetry",
+    "description": "Math blooms in code's quiet hum."
+  },
+  "2026-05-17_creative_f462.html": {
+    "created": "2026-05-17T05:49:36.795365",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen/qwen3.6-35b-a3b",
+    "title": "Temporal Threads Unravel",
+    "description": "Glowing threads weave time into a luminous dance."
+  },
+  "2026-05-17_plasma_ca7b.html": {
+    "created": "2026-05-17T05:55:13.407104",
+    "mode": "stock",
+    "effect": "Plasma",
+    "passed_validation": true,
+    "model": "huihui-qwen3-vl-8b-instruct-abliterated",
+    "title": "Spectral Pulse Visions",
+    "description": "Achromatic waves bloom through fractured light."
+  },
+  "2026-05-17_star_wars_manifesto_crawl_2c98.html": {
+    "created": "2026-05-17T05:57:01.832269",
+    "mode": "stock",
+    "effect": "Star-Wars Manifesto Crawl",
+    "passed_validation": true,
+    "model": "nvidia-nemotron-nano-9b-v2",
+    "title": "Digital Alchemy",
+    "description": "Scrolling binary poetry dances with fading light in a cosmic code cathedral."
+  },
+  "2026-05-17_sierpinski_tetrahedron_dac4.html": {
+    "created": "2026-05-17T06:10:25.064468",
+    "mode": "stock",
+    "effect": "Sierpinski Tetrahedron",
+    "passed_validation": true,
+    "model": "qwen3-coder-30b-a3b-instruct"
+  },
+  "2026-05-17_creative_ea60.html": {
+    "created": "2026-05-17T06:16:08.939550",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen3-30b-a3b-thinking-2507",
+    "title": "Quantum Foam Drift",
+    "description": "Particles drift like quantum foam in dark void."
+  },
+  "2026-05-17_mystify_bezier_lines_eefa.html": {
+    "created": "2026-05-17T06:17:05.690340",
+    "mode": "stock",
+    "effect": "Mystify Bezier Lines",
+    "passed_validation": true,
+    "model": "qwen3-coder-30b-a3b-instruct"
+  },
+  "2026-05-10_creative_9693_v2.html": {
+    "created": "2026-05-17T06:30:49.143861",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "magistral-small-2509",
+    "title": "Crystal Dream Dimensions Fluid",
+    "description": "Shimmering crystals dance to the rhythm of unseen sound."
+  },
+  "2026-05-17_creative_02aa.html": {
+    "created": "2026-05-17T06:31:31.801932",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen/qwen3-vl-8b",
+    "title": "Neon Grid Pulse",
+    "description": "A pulsing grid of glowing lines dances with floating particles."
+  },
+  "2026-05-17_creative_2d2a.html": {
+    "created": "2026-05-17T06:32:48.395511",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "google/gemma-4-26b-a4b",
+    "title": "Fractal Neural Void Oscillation",
+    "description": "Digital shadows dance through a glitching knot of cyan light."
+  },
+  "2026-05-10_copper_bars_44a0_v2.html": {
+    "created": "2026-05-17T06:36:48.692485",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen/qwen3-vl-8b",
+    "title": "Neon Pulse Bars",
+    "description": "Vertical bars glow in neon hues, pulsing rhythmically across the screen."
+  },
+  "2026-05-15_creative_f78d_v2.html": {
+    "created": "2026-05-17T06:37:36.750662",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen/qwen3-vl-4b",
+    "title": "Chrono Weave",
+    "description": "Bleeding light through time's fractured ribbon."
+  },
+  "2026-05-14_creative_83da_v2.html": {
+    "created": "2026-05-17T06:38:41.931305",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "google/gemma-4-26b-a4b",
+    "title": "Neon Vortex Drift",
+    "description": "Electric particles swirl through a shifting cosmic void of light."
+  },
+  "2026-05-17_kaleidoscope_3a7f.html": {
+    "created": "2026-05-17T06:54:25.946145",
+    "mode": "stock",
+    "effect": "Kaleidoscope",
+    "passed_validation": true,
+    "model": "google/gemma-4-e4b",
+    "title": "Folded Polar Geometric Bloom",
+    "description": "Woven patterns unfold from a folded cosmic spiral."
+  },
+  "2026-05-17_water_ripple_f041.html": {
+    "created": "2026-05-17T07:05:30.063896",
+    "mode": "stock",
+    "effect": "Water Ripple",
+    "passed_validation": true,
+    "model": "unknown",
+    "title": "Cerulean Wave Ripples",
+    "description": "Liquid glass shimmers under moonlit currents."
   }
 }
