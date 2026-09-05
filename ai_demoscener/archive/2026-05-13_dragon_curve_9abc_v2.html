@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dragon — Bioluminescent</title>
+    <style>
+        * { margin: 0; padding: 0; }
+        body { overflow: hidden; background: #020a12; }
+        canvas { display: block; }
+        #label {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            letter-spacing: 4px;
+            color: rgba(100, 200, 255, 0.3);
+            text-transform: uppercase;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+<div id="label">heighway dragon · gen 15</div>
+<script src="https://unpkg.com/three@0.136.0/build/three.min.js"></script>
+<script>
+// --- L-System Generation ---
+let s = "FX";
+const iterations = 15;
+for (let i = 0; i < iterations; i++) {
+    let next = "";
+    for (let j = 0; j < s.length; j++) {
+        const c = s[j];
+        if (c === 'X') next += "X+YF+";
+        else if (c === 'Y') next += "-FX-Y";
+        else next += c;
+    }
+    s = next;
+}
+
+// --- Turtle Geometry ---
+const pts = [];
+let px = 0, py = 0, angle = 0;
+pts.push(px, py);
+for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === 'F') {
+        px += Math.cos(angle);
+        py += Math.sin(angle);
+        pts.push(px, py);
+    } else if (ch === '+') angle += Math.PI / 2;
+    else if (ch === '-') angle -= Math.PI / 2;
+}
+
+const numPts = pts.length / 2;
+
+// Center
+let cx = 0, cy = 0;
+for (let i = 0; i < numPts; i++) { cx += pts[i*2]; cy += pts[i*2+1]; }
+cx /= numPts; cy /= numPts;
+
+let maxR = 0;
+for (let i = 0; i < numPts; i++) {
+    const dx = pts[i*2] - cx, dy = pts[i*2+1] - cy;
+    const r = Math.sqrt(dx*dx + dy*dy);
+    if (r > maxR) maxR = r;
+}
+const scale = 14 / maxR;
+
+// Build position buffer
+const positions = new Float32Array(numPts * 3);
+const progressArr = new Float32Array(numPts);
+for (let i = 0; i < numPts; i++) {
+    positions[i*3]   = (pts[i*2]   - cx) * scale;
+    positions[i*3+1] = (pts[i*2+1] - cy) * scale;
+    positions[i*3+2] = 0;
+    progressArr[i] = i / (numPts - 1);
+}
+
+// --- Scene ---
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x020a12, 0.012);
+const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 300);
+camera.position.set(0, 0, 38);
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setClearColor(0x020a12);
+document.body.appendChild(renderer.domElement);
+
+// --- Dragon Line Shader ---
+const lineUniforms = {
+    uTime: { value: 0 },
+    uReveal: { value: 0 },
+    uColorA: { value: new THREE.Color(0x0a3d5c) },
+    uColorB: { value: new THREE.Color(0x00e5ff) },
+    uColorC: { value: new THREE.Color(0xff00aa) },
+};
+
+const lineVert = `
+    attribute float aProgress;
+    uniform float uTime;
+    uniform float uReveal;
+    varying float vProgress;
+    varying float vFade;
+    void main() {
+        vProgress = aProgress;
+        vFade = step(aProgress, uReveal);
+        float wave = sin(aProgress * 20.0 + uTime * 0.8) * 0.3;
+        float wave2 = cos(aProgress * 33.0 - uTime * 0.5) * 0.15;
+        vec3 p = position;
+        p.z += wave + wave2;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+    }
+`;
+
+const lineFrag = `
+    uniform float uTime;
+    uniform float uReveal;
+    uniform vec3 uColorA;
+    uniform vec3 uColorB;
+    uniform vec3 uColorC;
+    varying float vProgress;
+    varying float vFade;
+    void main() {
+        if (vFade < 0.5) discard;
+        float flow = fract(vProgress * 3.0 - uTime * 0.15);
+        float t1 = smoothstep(0.0, 0.5, flow);
+        float t2 = smoothstep(0.5, 1.0, flow);
+        vec3 col = mix(uColorA, uColorB, t1);
+        col = mix(col, uColorC, t2 * 0.3);
+        float edge = smoothstep(uReveal, uReveal - 0.05, vProgress);
+        col *= 0.4 + 0.6 * edge;
+        float pulse = 0.85 + 0.15 * sin(uTime * 2.0 + vProgress * 10.0);
+        gl_FragColor = vec4(col * pulse, 0.9);
+    }
+`;
+
+const lineGeo = new THREE.BufferGeometry();
+lineGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+lineGeo.setAttribute('aProgress', new THREE.BufferAttribute(progressArr, 1));
+const lineMat = new THREE.ShaderMaterial({
+    uniforms: lineUniforms,
+    vertexShader: lineVert,
+    fragmentShader: lineFrag,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+});
+const dragonLine = new THREE.Line(lineGeo, lineMat);
+scene.add(dragonLine);
+
+// --- Glow Points ---
+const ptVert = `
+    attribute float aProgress;
+    uniform float uTime;
+    uniform float uReveal;
+    uniform float uPixelRatio;
+    varying float vAlpha;
+    void main() {
+        vAlpha = step(aProgress, uReveal);
+        float wave = sin(aProgress * 20.0 + uTime * 0.8) * 0.3;
+        float wave2 = cos(aProgress * 33.0 - uTime * 0.5) * 0.15;
+        vec3 p = position;
+        p.z += wave + wave2;
+        vec4 mv = modelViewMatrix * vec4(p, 1.0);
+        gl_PointSize = (2.5 + 2.0 * sin(aProgress * 50.0 + uTime)) * uPixelRatio * (1.0 / -mv.z) * 30.0;
+        gl_Position = projectionMatrix * mv;
+    }
+`;
+const ptFrag = `
+    uniform vec3 uColorB;
+    uniform vec3 uColorC;
+    uniform float uTime;
+    varying float vAlpha;
+    void main() {
+        if (vAlpha < 0.5) discard;
+        vec2 uv = gl_PointCoord - 0.5;
+        float d = length(uv);
+        float glow = smoothstep(0.5, 0.0, d);
+        glow *= glow;
+        vec3 col = mix(uColorB, uColorC, 0.3 + 0.2 * sin(uTime + gl_PointCoord.x * 6.28));
+        gl_FragColor = vec4(col, glow * 0.6);
+    }
+`;
+const ptMat = new THREE.ShaderMaterial({
+    uniforms: {
+        uTime: lineUniforms.uTime,
+        uReveal: lineUniforms.uReveal,
+        uColorB: lineUniforms.uColorB,
+        uColorC: lineUniforms.uColorC,
+        uPixelRatio: { value: Math.min(devicePixelRatio, 2) },
+    },
+    vertexShader: ptVert,
+    fragmentShader: ptFrag,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+});
+const glowPts = new THREE.Points(lineGeo, ptMat);
+scene.add(glowPts);
+
+// --- Background Starfield ---
+const starCount = 600;
+const starPos = new Float32Array(starCount * 3);
+const starSize = new Float32Array(starCount);
+for (let i = 0; i < starCount; i++) {
+    starPos[i*3]   = (Math.random() - 0.5) * 120;
+    starPos[i*3+1] = (Math.random() - 0.5) * 120;
+    starPos[i*3+2] = (Math.random() - 0.5) * 120 - 20;
+    starSize[i] = Math.random() * 2 + 0.5;
+}
+const starGeo = new THREE.BufferGeometry();
+starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+starGeo.setAttribute('aSize', new THREE.BufferAttribute(starSize, 1));
+const starMat = new THREE.ShaderMaterial({
+    uniforms: { uTime: lineUniforms.uTime, uPixelRatio: { value: Math.min(devicePixelRatio,2) } },
+    vertexShader: `
+        attribute float aSize;
+        uniform float uTime;
+        uniform float uPixelRatio;
+        varying float vA;
+        void main() {
+            vA = 0.3 + 0.7 * sin(uTime * 0.5 + position.x * 0.1 + position.y * 0.2);
+            vec4 mv = modelViewMatrix * vec4(position, 1.0);
+            gl_PointSize = aSize * uPixelRatio * (1.0 / -mv.z) * 20.0;
+            gl_Position = projectionMatrix * mv;
+        }
+    `,
+    fragmentShader: `
+        varying float vA;
+        void main() {
+            vec2 uv = gl_PointCoord - 0.5;
+            float d = length(uv);
+            float a = smoothstep(0.5, 0.0, d) * vA * 0.4;
+            gl_FragColor = vec4(0.4, 0.7, 1.0, a);
+        }
+    `,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+});
+const stars = new THREE.Points(starGeo, starMat);
+scene.add(stars);
+
+// --- Animation ---
+const startTime = performance.now();
+const drawDuration = 9000;
+const holdDuration = 4000;
+const totalCycle = drawDuration + holdDuration;
+
+function animate() {
+    requestAnimationFrame(animate);
+    const now = performance.now();
+    const elapsed = (now - startTime) % totalCycle;
+    lineUniforms.uTime.value = (now - startTime) * 0.001;
+
+    if (elapsed < drawDuration) {
+        const t = elapsed / drawDuration;
+        lineUniforms.uReveal.value = t * t * (3 - 2 * t); // smoothstep
+    } else {
+        lineUniforms.uReveal.value = 1.0;
+    }
+
+    // Gentle orbit
+    const orbitAngle = (now - startTime) * 0.0001;
+    dragonLine.rotation.y = Math.sin(orbitAngle) * 0.4;
+    dragonLine.rotation.x = Math.cos(orbitAngle * 0.7) * 0.15;
+    dragonLine.rotation.z = Math.sin(orbitAngle * 0.3) * 0.1;
+    glowPts.rotation.copy(dragonLine.rotation);
+
+    // Breathing scale
+    const breathe = 1.0 + 0.015 * Math.sin(lineUniforms.uTime.value * 0.8);
+    dragonLine.scale.setScalar(breathe);
+    glowPts.scale.setScalar(breathe);
+
+    stars.rotation.y += 0.0002;
+
+    renderer.render(scene, camera);
+}
+animate();
+
+window.addEventListener('resize', () => {
+    camera.aspect = innerWidth / innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

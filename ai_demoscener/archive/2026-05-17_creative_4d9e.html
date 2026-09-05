@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Neural Network Synapse</title>
+    <style>
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            background: #000;
+        }
+        canvas { 
+            display: block; 
+        }
+    </style>
+</head>
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Scene setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 30;
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+        
+        // Create neural network nodes
+        const nodes = [];
+        const connections = [];
+        const nodeCount = 150;
+        const connectionCount = 300;
+        
+        // Create nodes
+        const nodeGeometry = new THREE.SphereGeometry(0.2, 8, 8);
+        const nodeMaterial = new THREE.MeshPhongMaterial({ 
+            color: 0x00ffff,
+            emissive: 0x006666,
+            shininess: 100
+        });
+        
+        for (let i = 0; i < nodeCount; i++) {
+            const node = new THREE.Mesh(nodeGeometry, nodeMaterial);
+            node.position.set(
+                (Math.random() - 0.5) * 40,
+                (Math.random() - 0.5) * 40,
+                (Math.random() - 0.5) * 40
+            );
+            node.userData = {
+                velocity: new THREE.Vector3(
+                    (Math.random() - 0.5) * 0.02,
+                    (Math.random() - 0.5) * 0.02,
+                    (Math.random() - 0.5) * 0.02
+                ),
+                pulse: Math.random(),
+                pulseSpeed: Math.random() * 0.05 + 0.01
+            };
+            scene.add(node);
+            nodes.push(node);
+        }
+        
+        // Create connections
+        const connectionMaterial = new THREE.LineBasicMaterial({ 
+            color: 0x00ffaa,
+            transparent: true,
+            opacity: 0.3
+        });
+        
+        for (let i = 0; i < connectionCount; i++) {
+            const startNode = nodes[Math.floor(Math.random() * nodeCount)];
+            const endNode = nodes[Math.floor(Math.random() * nodeCount)];
+            
+            if (startNode !== endNode) {
+                const points = [
+                    startNode.position.clone(),
+                    endNode.position.clone()
+                ];
+                
+                const geometry = new THREE.BufferGeometry().setFromPoints(points);
+                const line = new THREE.Line(geometry, connectionMaterial);
+                scene.add(line);
+                connections.push({
+                    line: line,
+                    start: startNode,
+                    end: endNode
+                });
+            }
+        }
+        
+        // Add lighting
+        const ambientLight = new THREE.AmbientLight(0x333333);
+        scene.add(ambientLight);
+        
+        const pointLight = new THREE.PointLight(0x00ffff, 1, 100);
+        pointLight.position.set(10, 10, 10);
+        scene.add(pointLight);
+        
+        // Add particle background
+        const particleCount = 2000;
+        const particles = new THREE.BufferGeometry();
+        const posArray = new Float32Array(particleCount * 3);
+        
+        for (let i = 0; i < particleCount * 3; i += 3) {
+            posArray[i] = (Math.random() - 0.5) * 100;
+            posArray[i + 1] = (Math.random() - 0.5) * 100;
+            posArray[i + 2] = (Math.random() - 0.5) * 100;
+        }
+        
+        particles.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+        const particleMaterial = new THREE.PointsMaterial({
+            color: 0x0088ff,
+            size: 0.1,
+            transparent: true,
+            opacity: 0.5
+        });
+        
+        const particleSystem = new THREE.Points(particles, particleMaterial);
+        scene.add(particleSystem);
+        
+        // Animation loop
+        const clock = new THREE.Clock();
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            const time = clock.getElapsedTime();
+            
+            // Animate nodes
+            nodes.forEach(node => {
+                // Pulsing effect
+                node.material.emissive.setHex(0x006666 + Math.sin(time * node.userData.pulseSpeed) * 0x003333);
+                
+                // Movement
+                node.position.add(node.userData.velocity);
+                
+                // Boundary check
+                if (Math.abs(node.position.x) > 40) node.userData.velocity.x *= -1;
+                if (Math.abs(node.position.y) > 40) node.userData.velocity.y *= -1;
+                if (Math.abs(node.position.z) > 40) node.userData.velocity.z *= -1;
+                
+                // Gentle rotation
+                node.rotation.x += 0.001;
+                node.rotation.y += 0.002;
+            });
+            
+            // Update connections
+            connections.forEach(conn => {
+                const geometry = conn.line.geometry;
+                const positions = geometry.attributes.position.array;
+                
+                positions[0] = conn.start.position.x;
+                positions[1] = conn.start.position.y;
+                positions[2] = conn.start.position.z;
+                
+                positions[3] = conn.end.position.x;
+                positions[4] = conn.end.position.y;
+                positions[5] = conn.end.position.z;
+                
+                geometry.attributes.position.needsUpdate = true;
+            });
+            
+            // Rotate camera slowly
+            camera.position.x = Math.sin(time * 0.1) * 30;
+            camera.position.y = Math.cos(time * 0.1) * 10;
+            camera.lookAt(scene.position);
+            
+            // Particle system rotation
+            particleSystem.rotation.x = time * 0.05;
+            particleSystem.rotation.y = time * 0.03;
+            
+            renderer.render(scene, camera);
+        }
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        
+        animate();
+    </script>
+</body>
+</html>

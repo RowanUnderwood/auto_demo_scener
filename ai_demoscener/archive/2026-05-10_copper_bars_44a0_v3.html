@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Pulse Bars</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000000; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+    </style>
+</head>
+<body>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const uniforms = {
+            u_time: { value: 0 },
+            u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+            u_intensity: { value: 1.5 },
+            u_frequency: { value: 3.0 }
+        };
+
+        const material = new THREE.ShaderMaterial({
+            uniforms,
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float u_time;
+                uniform vec2 u_resolution;
+                uniform float u_intensity;
+                uniform float u_frequency;
+                varying vec2 vUv;
+
+                vec3 getNeonPalette(float t) {
+                    // Neon gradient: deep purple -> electric blue -> neon green
+                    vec3 purple = vec3(0.3, 0.0, 0.5);
+                    vec3 blue = vec3(0.0, 0.4, 1.0);
+                    vec3 green = vec3(0.0, 1.0, 0.0);
+
+                    float phase = 0.314; // PI / 10 approx
+                    float normalizedT = fract(t * 0.5);
+                    
+                    if (normalizedT < 0.33) {
+                        return mix(purple, blue, normalizedT * 3.0);
+                    } else if (normalizedT < 0.66) {
+                        return mix(blue, green, (normalizedT - 0.33) * 3.0);
+                    } else {
+                        return mix(green, purple, (normalizedT - 0.66) * 3.0);
+                    }
+                }
+
+                void main() {
+                    vec3 finalColor = vec3(0.0);
+                    
+                    // Add pulsing glow effect with faster frequency
+                    float pulse = 0.5 + 0.5 * sin(u_time * 1.2 + 0.1 * u_frequency);
+                    float pulseStrength = smoothstep(0.4, 0.6, pulse);
+                    
+                    // Create 8 wider vertical bars with more complex positioning
+                    for (int i = 0; i < 8; i++) {
+                        float fi = float(i);
+                        float barOffset = 0.12; // Wider bars
+                        float barY = sin(u_time + fi * 0.785) * 0.3 + 0.5; // 2pi/8 per bar
+                        float dist = abs(vUv.y - barY);
+                        float barStrength = smoothstep(barOffset, 0.0, dist);
+                        
+                        if (barStrength > 0.0) {
+                            vec3 barColor = getNeonPalette(fi / 7.0);
+                            barColor *= pulseStrength;
+                            finalColor += barStrength * barColor;
+                        }
+                    }
+                    
+                    // Add dynamic horizontal wave pattern
+                    float wave = sin(u_time * 0.4 + vUv.x * 5.0) * 0.2;
+                    float xGradient = 0.3 + 0.7 * (0.5 + wave);
+                    finalColor *= xGradient;
+                    
+                    // Add radial glow effect from center
+                    vec2 center = vec2(0.5, 0.5);
+                    float distFromCenter = length(vUv - center);
+                    float glow = 1.0 - smoothstep(0.6, 0.8, distFromCenter);
+                    finalColor *= glow;
+                    
+                    // Add a subtle flicker effect
+                    float flicker = 0.9 + 0.1 * sin(u_time * 5.0 + vUv.x * 3.0 + vUv.y * 2.0);
+                    finalColor *= flicker;
+                    
+                    // Apply intensity
+                    finalColor *= u_intensity;
+                    
+                    gl_FragColor = vec4(finalColor, 1.0);
+                }
+            `
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        function animate(time) {
+            uniforms.u_time.value = time * 0.001;
+            uniforms.u_frequency.value = 3.0 + 0.8 * Math.sin(time * 0.003);
+            renderer.render(scene, camera);
+            requestAnimationFrame(animate);
+        }
+
+        window.addEventListener('resize', () => {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            uniforms.u_resolution.value.set(window.innerWidth, window.innerHeight);
+        });
+
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>

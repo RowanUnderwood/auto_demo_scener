@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>POST</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #000; overflow: hidden; height: 100%; }
+  #gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #txt {
+    position: fixed; inset: 0; width: 100%; height: 100%;
+    display: block; pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<canvas id="txt"></canvas>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ---------- Plasma background ----------
+const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('gl'), antialias: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+const scene = new THREE.Scene();
+const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+const plasmaMat = new THREE.ShaderMaterial({
+  uniforms: { uTime: { value: 0 }, uRes: { value: new THREE.Vector2(1, 1) } },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = vec4(position.xy, 0.0, 1.0);
+    }
+  `,
+  fragmentShader: `
+    precision mediump float;
+    uniform float uTime;
+    uniform vec2 uRes;
+    varying vec2 vUv;
+
+    void main() {
+      vec2 uv = vUv;
+      float t = uTime * 0.15;
+      float a = sin(uv.x * 6.0 + t);
+      a += sin(uv.y * 4.0 - t * 1.3);
+      a += sin((uv.x + uv.y) * 5.0 + t * 0.7);
+      a += sin(length(uv - 0.5) * 8.0 - t);
+      a *= 0.25;
+
+      vec3 col = vec3(
+        0.05 + 0.06 * (0.5 + 0.5 * sin(a * 3.14159)),
+        0.05 + 0.10 * (0.5 + 0.5 * sin(a * 3.14159 + 2.094)),
+        0.08 + 0.14 * (0.5 + 0.5 * sin(a * 3.14159 + 4.188))
+      );
+      // subtle scanline shimmer
+      col *= 0.92 + 0.08 * sin(uv.y * 800.0);
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `
+});
+
+scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), plasmaMat));
+
+function resize() {
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w, h, false);
+  plasmaMat.uniforms.uRes.value.set(w, h);
+
+  const tc = document.getElementById('txt');
+  tc.width = w * window.devicePixelRatio;
+  tc.height = h * window.devicePixelRatio;
+  tc.style.width = w + 'px';
+  tc.style.height = h + 'px';
+  redraw();
+}
+window.addEventListener('resize', resize);
+
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => {
+  plasmaMat.uniforms.uTime.value = clock.getElapsedTime();
+  renderer.render(scene, camera);
+});
+
+// ---------- Typewriter overlay ----------
+const LINES = [
+  "BIOS v9.04 RETRO SYSTEMS INC. (C) 1986-1999",
+  "CPU: 486DX2-66 TURBO ENABLED",
+  "FPU: CO-PRO PRESENT",
+  "MEMORY TEST: 64K OK",
+  "MEMORY TEST: 65536 OK",
+  "EXTENDED MEMORY: 7,825,352 K OK",
+  "DEFRAGMENTING SOUL... DONE",
+  "INITIALIZING IRQ HANDLERS",
+  "IRQ 0: PIT OK",
+  "IRQ 1: KEYBOARD OK",
+  "IRQ 2: CASCADING OK",
+  "IRQ 3: SERIAL PORT OK (NO TURTLE DETECTED)",
+  "IRQ 7: PRINTER OK (PHANTOM PAPER FEED)",
+  "IRQ 13: REAL-TIME CLOCK OK (LOCAL TIME UNRELIABLE)",
+  "MOUNTING /dev/whispers",
+  "CALIBRATING DREAM BUFFER",
+  "DREAM BUFFER: 100% SURREAL",
+  "INJECTING VIBES... OK",
+  "VIBES LEVEL: MAXIMUM (1337)",
+  "LOADING CHAOS.DRV",
+  "CHAOS.DRV: 3 ERRORS IGNORED AS STYLE",
+  "SYNCING MOON PHASE",
+  "MOON PHASE: WAXING (GOOD FOR GLITCHES)",
+  "SPINNING UP IMAGINATION TURBINE",
+  "TURBINE RPM: 666 (NOMINAL)",
+  "DEFRAGGING UNIVERSE (PASS 2 OF 1)",
+  "LOADING NOSTALGIA.SYS",
+  "NOSTALGIA.SYS: 100% PURE, ZERO ADDITIVES",
+  "CHECKING FOR GHOSTS IN THE MACHINE",
+  "GHOSTS: 1 DETECTED - WAVING AT YOU",
+  "ARMING PARANOIA MODULES",
+  "PARANOIA: LEVEL 7 OF 10 (SAFE)",
+  "POLISHING PIXELS",
+  "PIXELS: SHINY",
+  "COMPRESSING MEANINGLESSNESS",
+  "MEANINGLESSNESS: 0% - FULLY COMPRESSED",
+  "WARMING UP CRT PHOSPHORS",
+  "PHOSPHOR TEMP: COZY",
+  "FINAL DIAGNOSTIC: DOES THIS FEEL ALRIGHT?"
+];
+const END_LINE = "READY.";
+const CHAR_MS = 30;
+const LINE_PAUSE = 120;
+
+const txt = document.getElementById('txt');
+const ctx = txt.getContext('2d');
+const DPR = () => window.devicePixelRatio;
+const FONT = "14px 'Courier New', monospace";
+
+let lineIdx = 0;
+let charIdx = 0;
+let state = 'typing'; // typing | pause | done
+let lastCursorOn = true;
+let cursorTimer = 0;
+
+const printed = []; // fully printed lines
+let currentLine = "";
+
+function textHeight() {
+  return 22;
+}
+
+function drawText() {
+  const w = txt.width / DPR();
+  const h = txt.height / DPR();
+  ctx.setTransform(DPR(), 0, 0, DPR(), 0, 0);
+  ctx.fillStyle = "#0000";
+  ctx.clearRect(0, 0, w, h);
+
+  ctx.font = FONT;
+  ctx.textBaseline = "top";
+
+  let y = 12;
+  const color = "#d8ffd8";
+  for (let i = 0; i < printed.length; i++) {
+    ctx.fillStyle = color;
+    ctx.fillText(printed[i], 12, y);
+    y += textHeight();
+  }
+
+  if (state !== 'done') {
+    ctx.fillStyle = color;
+    ctx.fillText(currentLine, 12, y);
+  } else {
+    // READY. + blinking cursor
+    ctx.fillStyle = color;
+    const cursor = lastCursorOn ? "\u2588" : " ";
+    ctx.fillText(END_LINE + cursor, 12, y);
+  }
+
+  if (state !== 'done' && lastCursorOn) {
+    const tw = ctx.measureText(currentLine).width;
+    ctx.fillStyle = "#9fff9f";
+    ctx.fillRect(12 + tw + 1, y + 1, 8, 14);
+  }
+}
+
+function redraw() { drawText(); }
+
+function tick() {
+  if (state === 'typing') {
+    const line = lineIdx < LINES.length ? LINES[lineIdx] : END_LINE;
+    if (charIdx < line.length) {
+      currentLine += line[charIdx++];
+      lastCursorOn = true;
+      setTimeout(tick, CHAR_MS + Math.random() * 14);
+    } else {
+      printed.push(line);
+      currentLine = "";
+      lineIdx++;
+      state = 'pause';
+      setTimeout(tick, lineIdx < LINES.length + 1 ? LINE_PAUSE : 400);
+    }
+  } else if (state === 'pause') {
+    state = 'typing';
+    tick();
+  } else if (state === 'done') {
+    cursorTimer += 33;
+    if (cursorTimer > 500) {
+      cursorTimer = 0;
+      lastCursorOn = !lastCursorOn;
+    }
+    requestAnimationFrame(tick);
+  }
+  drawText();
+}
+
+resize();
+setTimeout(tick, 600);
+</script>
+</body>
+</html>

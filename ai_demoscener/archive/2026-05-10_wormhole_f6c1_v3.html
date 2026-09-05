@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { margin: 0; overflow: hidden; background: #0a0510; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="module">
+import * as THREE from 'https://cdn.skypack.dev/three@0.136.0';
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x0a0510, 0.012);
+
+const camera = new THREE.PerspectiveCamera(95, window.innerWidth / window.innerHeight, 0.1, 300);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+// Spiraling closed curve
+const pts = [];
+for (let i = 0; i < 16; i++) {
+    const a = i * 0.9;
+    const r = 14 + Math.sin(i * 0.4) * 9;
+    pts.push(new THREE.Vector3(
+        Math.cos(a) * r,
+        Math.sin(i * 1.1) * 11 + i * 1.8,
+        Math.sin(a) * r
+    ));
+}
+const curve = new THREE.CatmullRomCurve3(pts, true);
+
+// Procedural texture: radial rings + spokes, warm purple-to-amber
+const cv = document.createElement('canvas');
+cv.width = 512; cv.height = 512;
+const cx = cv.getContext('2d');
+
+const bg = cx.createRadialGradient(256,256,0,256,256,300);
+bg.addColorStop(0,'#1e0a33');
+bg.addColorStop(1,'#080410');
+cx.fillStyle = bg;
+cx.fillRect(0,0,512,512);
+
+for (let i = 0; i < 22; i++) {
+    const r = i * 12 + 6;
+    const hue = 280 - i * 10;
+    cx.beginPath();
+    cx.arc(256,256,r,0,Math.PI*2);
+    cx.strokeStyle = `hsla(${hue},85%,${45+i*2.5}%,${0.25+Math.sin(i*0.6)*0.15})`;
+    cx.lineWidth = 2.5;
+    cx.stroke();
+}
+for (let i = 0; i < 40; i++) {
+    const a = (i/40)*Math.PI*2;
+    cx.beginPath();
+    cx.moveTo(256+Math.cos(a)*18, 256+Math.sin(a)*18);
+    cx.lineTo(256+Math.cos(a)*254, 256+Math.sin(a)*254);
+    cx.strokeStyle = `hsla(${310-i*4},70%,55%,0.12)`;
+    cx.lineWidth = 1;
+    cx.stroke();
+}
+
+const tex = new THREE.CanvasTexture(cv);
+tex.wrapS = THREE.RepeatWrapping;
+tex.wrapT = THREE.RepeatWrapping;
+tex.repeat.set(5,1);
+
+// Tube
+const tubeGeo = new THREE.TubeGeometry(curve, 400, 1.6, 24, true);
+const tubeMat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.BackSide, transparent: true, opacity: 0.92 });
+const tube = new THREE.Mesh(tubeGeo, tubeMat);
+scene.add(tube);
+
+// Inner particles
+const N = 1200;
+const pGeo = new THREE.BufferGeometry();
+const pPos = new Float32Array(N*3);
+const pCol = new Float32Array(N*3);
+for (let i = 0; i < N; i++) {
+    const t = Math.random();
+    const p = curve.getPointAt(t);
+    pPos[i*3]   = p.x + (Math.random()-0.5)*1.2;
+    pPos[i*3+1] = p.y + (Math.random()-0.5)*1.2;
+    pPos[i*3+2] = p.z + (Math.random()-0.5)*1.2;
+    const c = new THREE.Color().setHSL(0.72+Math.random()*0.18, 0.9, 0.45+Math.random()*0.35);
+    pCol[i*3]=c.r; pCol[i*3+1]=c.g; pCol[i*3+2]=c.b;
+}
+pGeo.setAttribute('position', new THREE.BufferAttribute(pPos,3));
+pGeo.setAttribute('color', new THREE.BufferAttribute(pCol,3));
+const pMat = new THREE.PointsMaterial({ size:0.06, vertexColors:true, transparent:true, opacity:0.85, blending:THREE.AdditiveBlending, depthWrite:false });
+scene.add(new THREE.Points(pGeo, pMat));
+
+// Distant stars
+const S = 3000;
+const sGeo = new THREE.BufferGeometry();
+const sPos = new Float32Array(S*3);
+for (let i = 0; i < S; i++) {
+    sPos[i*3]=(Math.random()-0.5)*250;
+    sPos[i*3+1]=(Math.random()-0.5)*250;
+    sPos[i*3+2]=(Math.random()-0.5)*250;
+}
+sGeo.setAttribute('position', new THREE.BufferAttribute(sPos,3));
+const sMat = new THREE.PointsMaterial({ size:0.12, color:0x9977dd, transparent:true, opacity:0.5, blending:THREE.AdditiveBlending, depthWrite:false });
+const stars = new THREE.Points(sGeo, sMat);
+scene.add(stars);
+
+// Glow ring at camera
+const ringGeo = new THREE.RingGeometry(1.2, 1.55, 48);
+const ringMat = new THREE.MeshBasicMaterial({ color:0xcc66ff, side:THREE.DoubleSide, transparent:true, opacity:0.3, blending:THREE.AdditiveBlending, depthWrite:false });
+const ring = new THREE.Mesh(ringGeo, ringMat);
+scene.add(ring);
+
+function animate(time) {
+    requestAnimationFrame(animate);
+    const t = time * 0.001;
+
+    tex.offset.x = t * 0.35;
+    tex.offset.y = t * 0.08;
+
+    const progress = (t * 0.025) % 1;
+    const pos = curve.getPointAt(progress);
+    camera.position.copy(pos);
+
+    const lookT = (progress + 0.015) % 1;
+    const look = curve.getPointAt(lookT);
+    camera.lookAt(look);
+    camera.rotateZ(Math.sin(t * 0.4) * 0.12);
+
+    // Pulse
+    const s = 1 + Math.sin(t * 1.8) * 0.025;
+    tube.scale.set(s, s, s);
+
+    // Ring follows camera
+    ring.position.copy(camera.position);
+    ring.quaternion.copy(camera.quaternion);
+    ring.rotateX(Math.PI / 2);
+    ringMat.opacity = 0.2 + Math.sin(t * 3) * 0.1;
+
+    stars.rotation.y = t * 0.015;
+    stars.rotation.x = t * 0.005;
+
+    renderer.render(scene, camera);
+}
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+requestAnimationFrame(animate);
+</script>
+</body>
+</html>

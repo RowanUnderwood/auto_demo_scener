@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Protocol: Crawl</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        // --- Configuration ---
+        const CRYPTO_MESSAGES = [
+            "KERNEL DREAMS IN HEXADECIMAL",
+            "CHECKSUM OF THE HEART: 0xDEADC0DE",
+            "NULL POINTER IN THE SOUL V.9.2",
+            "SYSTEM BOOT SEQUENCE: INFINITY",
+            "ERROR: REALITY NOT FOUND IN PATH",
+            "RENDERING DREAMS... PROGRESS 99%",
+            "WAITING FOR INPUT FROM ABOVE",
+            "MEMORY ALLOCATION: UNLIMITED",
+            "SIGNAL LOST IN THE STATIC VOID",
+            "PROTOCOL: OMEGA INITIATED",
+            "DATA FRAGMENTED ACROSS TIME",
+            "SYSTEM OVERLOAD DETECTED: LOVE"
+        ];
+
+        const GLYPH_STRING = "0123456789ABCDEFアァカサタナハマヤャラワガザダバパイィキシチニヒミリヂビピウゥクスツヌフムユュルグズブヅプエェケセテネヘメレゲゼデベペオォコソトノホモヨョロヲゴゾドボポヴッン";
+        const RAIN_COLOR = new THREE.Color("#0f0");
+        const CRAWL_COLOR = new THREE.Color("#0f0");
+        
+        // --- Shader Code ---
+        const vertexShader = `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `;
+
+        const fragmentShader = `
+            uniform sampler2D uRainTexture;
+            uniform sampler2D uCrawlTexture;
+            uniform float uTime;
+            uniform vec2 uResolution;
+            uniform float uFade;
+
+            varying vec2 vUv;
+
+            void main() {
+                // 1. Generate the Rain
+                // We scroll the texture vertically. 
+                // We use modulo or fract to loop the texture, but for a "rain" feel,
+                // simple scrolling with opacity fading at bottom is classic.
+                vec2 rainUv = vUv;
+                
+                // Scroll speed
+                float speed = 2.5; 
+                rainUv.y += uTime * speed * 0.02;
+                
+                // Get rain color (Green alpha)
+                vec4 rainColor = texture2D(uRainTexture, rainUv);
+                // Apply a fade to the bottom of the rain for realism
+                float alphaGradient = rainUv.y;
+                rainColor.a *= (0.5 + 0.5 * sin(rainUv.y * 3.14)); 
+
+                // 2. Generate the Crawl (Text in middle)
+                vec2 crawlUv = vUv;
+                crawlUv.y = 0.5; // Force vertical center
+                
+                // Scroll horizontally
+                crawlUv.x += uTime * 0.3; 
+                
+                // Wrap crawl U (if texture is repeated or we just handle wrapping)
+                // Since our texture is likely just the text, we need to handle the 
+                // edges. Let's clamp.
+                vec4 crawlColor = texture2D(uCrawlTexture, crawlUv);
+                
+                // Add a vertical glow gradient for the crawl text
+                float glow = 1.0 - abs(vUv.y - 0.5) * 4.0;
+                crawlColor *= glow;
+                
+                // 3. Compositing
+                vec3 finalColor;
+                
+                if (uFade > 0.5) {
+                    // Fade out rain, fade in crawl
+                    float mixFactor = (uFade - 0.5) * 2.0;
+                    finalColor = mix(rainColor.rgb, crawlColor.rgb, mixFactor);
+                    // Rain becomes transparent
+                    float rainAlpha = 1.0 - mixFactor;
+                    crawlColor.rgb = mix(crawlColor.rgb, finalColor, mixFactor); // adjust blend
+                } else {
+                    // Just rain
+                    finalColor = rainColor.rgb;
+                }
+
+                // 4. CRT Effects
+                // Scanlines
+                float scanline = sin(vUv.y * 800.0) * 0.04;
+                finalColor += scanline;
+
+                // Vignette
+                vec2 center = gl_FragCoord.xy / uResolution - 0.5;
+                float dist = length(center);
+                float vignette = 1.0 - smoothstep(0.3, 0.8, dist);
+                
+                // Chromatic aberration (simple)
+                float chroma = vUv.x - 0.5;
+                vec3 rgbShift = vec3(
+                    texture2D(uRainTexture, rainUv + vec2(chroma * 0.005, 0.0)).r,
+                    texture2D(uRainTexture, rainUv + vec2(-chroma * 0.005, 0.0)).g,
+                    texture2D(uRainTexture, rainUv + vec2(0.005, 0.0)).b
+                );
+
+                gl_FragColor = vec4(finalColor * vignette * 0.8, 1.0);
+            }
+        `;
+
+        // --- Texture Generation ---
+
+        function createRainTexture() {
+            const canvas = document.createElement('canvas');
+            const width = 128;
+            const height = 128; // High res is good, texture repeats
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, width, height);
+            
+            ctx.font = '14px monospace';
+            ctx.textBaseline = 'top';
+            
+            const cols = 10;
+            const rows = 10;
+            const fontSize = 12;
+            
+            for(let y=0; y<rows; y++) {
+                for(let x=0; x<cols; x++) {
+                    // Randomly choose characters
+                    const char = GLYPH_STRING.charAt(Math.floor(Math.random() * GLYPH_STRING.length));
+                    
+                    // Draw in a specific color, maybe slight variation
+                    const r = 0; 
+                    const g = Math.random() * 100 + 100; // Green variations
+                    const b = 0;
+                    ctx.fillStyle = `rgb(${r},${g},${b})`;
+                    
+                    ctx.fillText(char, x * 14, y * 14);
+                }
+            }
+            
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        function createCrawlTexture(text) {
+            const canvas = document.createElement('canvas');
+            // Make it wide enough to scroll
+            const aspect = 4; // Width is 4x height
+            const height = 64;
+            canvas.width = height * aspect;
+            canvas.height = height;
+            
+            const ctx = canvas.getContext('2d');
+            
+            // Draw background
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Center the text visually in the canvas space
+            ctx.font = 'bold 24px monospace';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = '#fff';
+            
+            // Add a border
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#0f0';
+            ctx.strokeRect(2, 2, canvas.width - 4, canvas.height - 4);
+            
+            // Draw text
+            ctx.fillStyle = '#0f0';
+            ctx.fillText(text, canvas.width/2, canvas.height/2);
+            
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        // --- Setup Three.js ---
+
+        const scene = new THREE.Scene();
+        const renderer = new THREE.WebGLRenderer({ antialias: false });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.body.appendChild(renderer.domElement);
+
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const planeGeometry = new THREE.PlaneGeometry(2, 2);
+
+        const uniforms = {
+            uRainTexture: { value: null },
+            uCrawlTexture: { value: null },
+            uTime: { value: 0 },
+            uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+            uFade: { value: 0 } // 0 = rain only, 1 = crawl only (or mix transition)
+        };
+
+        uniforms.uRainTexture.value = createRainTexture();
+        uniforms.uCrawlTexture.value = createCrawlTexture(CRYPTO_MESSAGES[0]);
+
+        const material = new THREE.ShaderMaterial({
+            vertexShader,
+            fragmentShader,
+            uniforms
+        });
+
+        const mesh = new THREE.Mesh(planeGeometry, material);
+        scene.add(mesh);
+
+        // --- Logic Loop ---
+
+        let lastTime = 0;
+        let nextCrawlTime = 8; // Start crawl at 8s
+        let currentMessageIndex = 0;
+
+        // Fade animation state
+        let fadeState = 'rain'; // rain, fading, crawl, fading_back
+
+        function animate(time) {
+            requestAnimationFrame(animate);
+            
+            const delta = (time - lastTime) / 1000;
+            lastTime = time;
+            
+            uniforms.uTime.value = time * 0.001;
+
+            // Handle Crawl Logic
+            if (time >= nextCrawlTime && fadeState === 'rain') {
+                // Time to start fade out rain / fade in crawl
+                fadeState = 'fading_in';
+                nextCrawlTime = time + 5000; // Crawl stays for 5s
+            }
+            
+            if (time >= nextCrawlTime && fadeState === 'fading_in') {
+                // Crawl is fully visible, wait before fading back
+                nextCrawlTime = time + 2000; // Wait 2s
+                fadeState = 'crawl';
+                // Update message content
+                currentMessageIndex = (currentMessageIndex + 1) % CRYPTO_MESSAGES.length;
+                uniforms.uCrawlTexture.value = createCrawlTexture(CRYPTO_MESSAGES[currentMessageIndex]);
+            }
+
+            if (time >= nextCrawlTime && fadeState === 'crawl') {
+                // Start fading back to rain
+                fadeState = 'fading_out';
+                nextCrawlTime = time + 5000;
+            }
+
+            // Update Fade Uniform (0.0 -> 1.0)
+            // When fading IN (rain -> crawl): 0 -> 1
+            // When fading OUT (crawl -> rain): 1 -> 0
+            // We want the shader to mix: (Rain * (1-alpha) + Crawl * alpha)
+            // Wait, my shader logic:
+            // `if (uFade > 0.5)`: Mix towards crawl
+            // `else`: Rain
+            // So uFade needs to go 0 -> 1 -> 0
+            
+            let targetFade = 0;
+            if (fadeState === 'fading_in') targetFade = 1;
+            if (fadeState === 'crawl') targetFade = 1; // Steady state
+            if (fadeState === 'fading_out') targetFade = 0;
+
+            // Simple easing
+            uniforms.uFade.value += (targetFade - uniforms.uFade.value) * delta * 2; // Speed of fade
+            
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+        });
+
+        animate(0);
+
+    </script>
+</body>
+</html>

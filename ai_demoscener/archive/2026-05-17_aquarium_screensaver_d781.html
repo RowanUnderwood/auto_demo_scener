@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Three.js Aquarium</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #001b2e; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+</script>
+<script type="module">
+    import * as THREE from 'three';
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x002b36);
+    scene.fog = new THREE.FogExp2(0x002b36, 0.05);
+
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 2, 10);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    document.body.appendChild(renderer.domElement);
+
+    const ambientLight = new THREE.AmbientLight(0x404040, 2);
+    scene.add(ambientLight);
+    const pointLight = new THREE.PointLight(0x00ffff, 15, 30);
+    pointLight.position.set(0, 5, 2);
+    scene.add(pointLight);
+
+    // --- Caustics Floor ---
+    const floorGeo = new THREE.PlaneGeometry(30, 30);
+    const floorMat = new THREE.ShaderMaterial({
+        uniforms: {
+            uTime: { value: 0 },
+            uColor1: { value: new THREE.Color(0x004d4d) },
+            uColor2: { value: new THREE.Color(0x00ffff) }
+        },
+        vertexShader: `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `,
+        fragmentShader: `
+            uniform float uTime;
+            uniform vec3 uColor1;
+            uniform vec3 uColor2;
+            varying vec2 vUv;
+            void main() {
+                vec2 p = vUv * 10.0;
+                float noise = sin(p.x + uTime) * sin(p.y + uTime) + sin(p.x*0.5 - uTime*0.8) * cos(p.y*0.3 + uTime);
+                vec3 color = mix(uColor1, uColor2, noise * 0.5 + 0.5);
+                gl_FragColor = vec4(color * 0.6, 1.0);
+            }
+        `
+    });
+    const floor = new THREE.Mesh(floorGeo, floorMat);
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.y = -3;
+    scene.add(floor);
+
+    // --- Seaweed ---
+    const seaweedMat = new THREE.ShaderMaterial({
+        uniforms: { uTime: { value: 0 } },
+        vertexShader: `
+            uniform float uTime;
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                vec3 pos = position;
+                float sway = sin(uTime * 2.0 + position.y * 0.5) * (position.y * 0.2);
+                pos.x += sway;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+            }
+        `,
+        fragmentShader: `
+            varying vec2 vUv;
+            void main() {
+                gl_FragColor = vec4(0.1, 0.5 + vUv.y*0.3, 0.2, 1.0);
+            }
+        `,
+        side: THREE.DoubleSide
+    });
+
+    for (let i = 0; i < 20; i++) {
+        const strand = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 4), seaweedMat);
+        strand.position.set(Math.random() * 16 - 8, -1, Math.random() * 16 - 8);
+        scene.add(strand);
+    }
+
+    // --- Bubbles ---
+    const bubbleCount = 200;
+    const bubbleGeo = new THREE.BufferGeometry();
+    const bubblePos = new Float32Array(bubbleCount * 3);
+    for (let i = 0; i < bubbleCount * 3; i++) {
+        bubblePos[i] = (Math.random() - 0.5) * 20;
+    }
+    bubbleGeo.setAttribute('position', new THREE.BufferAttribute(bubblePos, 3));
+    const bubbleMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.1, transparent: true, opacity: 0.5 });
+    const bubbles = new THREE.Points(bubbleGeo, bubbleMat);
+    scene.add(bubbles);
+
+    // --- Fish ---
+    const fishes = [];
+    for (let i = 0; i < 30; i++) {
+        const group = new THREE.Group();
+        
+        const body = new THREE.Mesh(
+            new THREE.SphereGeometry(0.2, 16, 16),
+            new THREE.MeshPhongMaterial({ color: new THREE.Color().setHSL(Math.random(), 0.8, 0.5) })
+        );
+        body.scale.set(1, 0.6, 0.4);
+        group.add(body);
+
+        const tail = new THREE.Mesh(
+            new THREE.PlaneGeometry(0.2, 0.3),
+            new THREE.MeshPhongMaterial({ color: body.material.color, side: THREE.DoubleSide })
+        );
+        tail.position.x = -0.3;
+        group.add(tail);
+
+        scene.add(group);
+        fishes.push({
+            mesh: group,
+            tail: tail,
+            phase: Math.random() * Math.PI * 2,
+            speed: 0.05 + Math.random() * 0.1,
+            amplitude: 0.2 + Math.random() * 0.8,
+            offset: Math.random() * 10,
+            dir: Math.random() > 0.5 ? 1 : -1,
+            pos: new THREE.Vector3((Math.random()-0.5)*10, (Math.random()-0.5)*6, (Math.random()-0.5)*10)
+        });
+    }
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    function animate(time) {
+        const t = time * 0.001;
+        requestAnimationFrame(animate);
+
+        floorMat.uniforms.uTime.value = t;
+        seaweedMat.uniforms.uTime.value = t;
+
+        const positions = bubbles.geometry.attributes.position.array;
+        for (let i = 1; i < positions.length; i += 3) {
+            positions[i] += 0.02;
+            if (positions[i] > 5) positions[i] = -3;
+        }
+        bubbles.geometry.attributes.position.needsUpdate = true;
+
+        fishes.forEach(f => {
+            f.pos.x += f.speed * f.dir;
+            f.pos.y += Math.sin(t * 2 + f.offset) * 0.01;
+            f.pos.z += Math.cos(t * 2 + f.offset) * 0.01;
+
+            if (Math.abs(f.pos.x) > 8) {
+                f.dir *= -1;
+            }
+
+            f.mesh.position.copy(f.pos);
+            f.mesh.rotation.y = f.dir === 1 ? 0 : Math.PI;
+            f.tail.rotation.y = Math.sin(t * 5 + f.phase) * 0.6;
+        });
+
+        renderer.render(scene, camera);
+    }
+
+    requestAnimationFrame(animate);
+</script>
+</body>
+</html>

@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Pipe Growth</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #050505; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script type="module">
+        import * as THREE from 'https://cdn.skypack.dev/three@0.136.0';
+
+        // --- Configuration ---
+        const GRID_SIZE = 20;
+        const SPACING = 5;
+        const PIPES_RADIUS = 1.0;
+        const ELBOW_RADIUS = 1.6;
+        const TICK_RATE = 100; // ms per step
+        const TOTAL_CELLS = GRID_SIZE * GRID_SIZE * GRID_SIZE;
+
+        // --- Scene Setup ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x050505);
+        scene.fog = new THREE.FogExp2(0x050505, 0.008);
+
+        const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1000);
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.body.appendChild(renderer.domElement);
+
+        // --- Lighting ---
+        const ambientLight = new THREE.AmbientLight(0x404040, 1.5);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(60, 80, 40);
+        scene.add(dirLight);
+
+        const dirLight2 = new THREE.DirectionalLight(0x4444ff, 0.4);
+        dirLight2.position.set(-40, -20, -60);
+        scene.add(dirLight2);
+
+        // --- Helpers ---
+        const blocked = {};
+        const pipes = [];
+
+        function getIdx(x, y, z) {
+            return x * GRID_SIZE * GRID_SIZE + y * GRID_SIZE + z;
+        }
+
+        function getOffset(x, y, z) {
+            return new THREE.Vector3(
+                (x - GRID_SIZE / 2) * SPACING,
+                (y - GRID_SIZE / 2) * SPACING,
+                (z - GRID_SIZE / 2) * SPACING
+            );
+        }
+
+        function getRandomSaturatedColor() {
+            const h = Math.random() * 360;
+            const c = new THREE.Color();
+            c.setHSL(h / 360, 1.0, 0.55);
+            return c;
+        }
+
+        // --- Pipe Class ---
+        class Pipe {
+            constructor() {
+                this.finished = false;
+                this.mesh = new THREE.Group();
+                scene.add(this.mesh);
+                this.spawn();
+            }
+
+            spawn() {
+                // Find a random free cell
+                let attempts = 0;
+                while (attempts < 1000) {
+                    const x = Math.floor(Math.random() * GRID_SIZE);
+                    const y = Math.floor(Math.random() * GRID_SIZE);
+                    const z = Math.floor(Math.random() * GRID_SIZE);
+                    const idx = getIdx(x, y, z);
+
+                    if (!blocked[idx]) {
+                        this.current = { x, y, z };
+                        this.currentIdx = idx;
+                        this.direction = { dx: 0, dy: 0, dz: 0 };
+                        this.color = getRandomSaturatedColor();
+
+                        // Create start sphere (elbow)
+                        this.createElbow(this.current.x, this.current.y, this.current.z);
+                        blocked[this.currentIdx] = true;
+                        return;
+                    }
+                    attempts++;
+                }
+                // If no space found, mark as finished and it will be cleaned up
+                this.finished = true;
+            }
+
+            createCylinder(x1, y1, z1, x2, y2, z2) {
+                // Create cylinder between x1,y1,z1 and x2,y2,z2
+                const geo = new THREE.CylinderGeometry(PIPES_RADIUS, PIPES_RADIUS, SPACING, 12);
+                const mat = new THREE.MeshPhongMaterial({ 
+                    color: this.color, 
+                    shininess: 80,
+                    emissive: this.color,
+                    emissiveIntensity: 0.15
+                });
+                const cyl = new THREE.Mesh(geo, mat);
+
+                // Position at midpoint
+                const midX = (x1 + x2) / 2;
+                const midY = (y1 + y2) / 2;
+                const midZ = (z1 + z2) / 2;
+                
+                const worldPos = getOffset(midX, midY, midZ);
+                cyl.position.copy(worldPos);
+
+                // Axis-aligned rotation for perfect snapping
+                if (x2 !== x1) {
+                    // Moving along X
+                    cyl.rotation.z = Math.PI / 2;
+                } else if (y2 !== y1) {
+                    // Moving along Y
+                    cyl.rotation.x = Math.PI / 2;
+                } else {
+                    // Moving along Z
+                    cyl.rotation.z = 0;
+                }
+
+                this.mesh.add(cyl);
+            }
+
+            createElbow(x, y, z) {
+                const geo = new THREE.SphereGeometry(ELBOW_RADIUS, 16, 12);
+                const mat = new THREE.MeshPhongMaterial({ 
+                    color: this.color, 
+                    shininess: 100,
+                    emissive: this.color,
+                    emissiveIntensity: 0.25
+                });
+                const elb = new THREE.Mesh(geo, mat);
+                const worldPos = getOffset(x, y, z);
+                elb.position.copy(worldPos);
+                this.mesh.add(elb);
+            }
+
+            tick() {
+                if (this.finished) return;
+
+                const { x, y, z } = this.current;
+                const neighbors = [
+                    { dx: 1, dy: 0, dz: 0 }, { dx: -1, dy: 0, dz: 0 },
+                    { dx: 0, dy: 1, dz: 0 }, { dx: 0, dy: -1, dz: 0 },
+                    { dx: 0, dy: 0, dz: 1 }, { dx: 0, dy: 0, dz: -1 }
+                ];
+
+                // Filter valid neighbors
+                const valid = neighbors.filter(n => {
+                    const nx = x + n.dx;
+                    const ny = y + n.dy;
+                    const nz = z + n.dz;
+                    if (nx < 0 || nx >= GRID_SIZE || ny < 0 || ny >= GRID_SIZE || nz < 0 || nz >= GRID_SIZE) return false;
+                    return !blocked[getIdx(nx, ny, nz)];
+                });
+
+                if (valid.length === 0) {
+                    this.finished = true;
+                    return;
+                }
+
+                // Pick random neighbor
+                const step = valid[Math.floor(Math.random() * valid.length)];
+                const nx = x + step.dx;
+                const ny = y + step.dy;
+                const nz = z + step.dz;
+                const nIdx = getIdx(nx, ny, nz);
+
+                // Create connection
+                this.createCylinder(x, y, z, nx, ny, nz);
+
+                // Check if direction changed
+                if (step.dx !== this.direction.dx || step.dy !== this.direction.dy || step.dz !== this.direction.dz) {
+                    // Place elbow at the CURRENT position where the change happens
+                    this.createElbow(x, y, z);
+                }
+
+                // Update state
+                this.current = { x: nx, y: ny, z: nz };
+                this.currentIdx = nIdx;
+                this.direction = step;
+                blocked[nIdx] = true;
+            }
+        }
+
+        // --- Init Pipes ---
+        for (let i = 0; i < 15; i++) {
+            pipes.push(new Pipe());
+        }
+
+        // --- Animation Loop ---
+        let time = 0;
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            time += delta;
+
+            // Slowly orbit the camera
+            const radius = 110;
+            const speed = 0.15;
+            camera.position.x = Math.sin(time * speed) * radius;
+            camera.position.z = Math.cos(time * speed) * radius;
+            camera.position.y = Math.sin(time * speed * 0.5) * 40 + 30;
+            camera.lookAt(0, 0, 0);
+
+            renderer.render(scene, camera);
+        }
+
+        // --- Game Loop for Pipe Growth ---
+        setInterval(() => {
+            // Remove finished pipes from scene and array
+            for (let i = pipes.length - 1; i >= 0; i--) {
+                if (pipes[i].finished) {
+                    scene.remove(pipes[i].mesh);
+                    pipes[i].mesh.traverse((child) => {
+                        if (child.isMesh) {
+                            child.geometry.dispose();
+                            child.material.dispose();
+                        }
+                    });
+                    pipes.splice(i, 1);
+                }
+            }
+
+            // Tick active pipes
+            for (const pipe of pipes) {
+                pipe.tick();
+            }
+
+            // Spawn new pipes if grid is not completely full
+            let occupiedCount = 0;
+            for (const key in blocked) {
+                if (blocked[key]) occupiedCount++;
+            }
+            if (occupiedCount < TOTAL_CELLS && Math.random() < 0.3) {
+                const p = new Pipe();
+                if (!p.finished) pipes.push(p);
+            }
+        }, TICK_RATE);
+
+        // Handle resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

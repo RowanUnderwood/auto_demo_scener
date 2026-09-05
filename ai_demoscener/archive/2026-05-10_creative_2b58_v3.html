@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EMBER TIDE</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #0a0e14; }
+        canvas { display: block; }
+        #ui {
+            position: absolute; top: 40px; left: 50%; transform: translateX(-50%);
+            color: rgba(255, 180, 100, 0.5); pointer-events: none;
+            font-family: 'Courier New', monospace; letter-spacing: 8px;
+            font-size: 9px; text-align: center; line-height: 2.2;
+        }
+        #ui span { display: block; }
+        #frame {
+            position: absolute; inset: 20px; border: 1px solid rgba(255,160,60,0.08);
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <span>THERMAL_CORE :: MELTING</span>
+        <span>ACCRETION_VELOCITY :: 0.97c</span>
+        <span>SHELL_INTEGRITY :: 4.2%</span>
+    </div>
+    <div id="frame"></div>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 500);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.body.appendChild(renderer.domElement);
+
+        // --- MOLTEN VOID SHADER ---
+        const voidMat = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uRes: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float uTime;
+                uniform vec2 uRes;
+                varying vec2 vUv;
+
+                vec3 hash3(vec3 p) {
+                    p = fract(p * 0.1031);
+                    p += dot(p, p.yzx + 33.33);
+                    return fract((p.xxy + p.yxx) * p.zyx);
+                }
+
+                float noise3(vec3 p) {
+                    vec3 i = floor(p);
+                    vec3 f = fract(p);
+                    f = f * f * (3.0 - 2.0 * f);
+                    float n000 = dot(hash3(i), vec3(1.0));
+                    float n100 = dot(hash3(i + vec3(1,0,0)), vec3(1.0));
+                    float n010 = dot(hash3(i + vec3(0,1,0)), vec3(1.0));
+                    float n110 = dot(hash3(i + vec3(1,1,0)), vec3(1.0));
+                    float n001 = dot(hash3(i + vec3(0,0,1)), vec3(1.0));
+                    float n101 = dot(hash3(i + vec3(1,0,1)), vec3(1.0));
+                    float n011 = dot(hash3(i + vec3(0,1,1)), vec3(1.0));
+                    float n111 = dot(hash3(i + vec3(1,1,1)), vec3(1.0));
+                    return mix(
+                        mix(mix(n000, n100, f.x), mix(n010, n110, f.x), f.y),
+                        mix(mix(n001, n101, f.x), mix(n011, n111, f.x), f.y),
+                        f.z
+                    );
+                }
+
+                float fbm(vec3 p) {
+                    float v = 0.0;
+                    float a = 0.5;
+                    for(int i = 0; i < 5; i++) {
+                        v += a * noise3(p);
+                        p *= 2.1;
+                        a *= 0.5;
+                    }
+                    return v;
+                }
+
+                float map(vec3 p) {
+                    float r = length(p);
+                    float n = fbm(p * 1.8 + uTime * 0.15);
+                    float shell = r - 1.2 + n * 0.7;
+                    return shell;
+                }
+
+                void main() {
+                    vec2 uv = (gl_FragCoord.xy - 0.5 * uRes.xy) / min(uRes.x, uRes.y);
+                    vec3 ro = vec3(0.0, 0.0, -5.0);
+                    vec3 rd = normalize(vec3(uv, 1.5));
+
+                    float t = 0.0;
+                    float glow = 0.0;
+                    vec3 col = vec3(0.0);
+
+                    vec3 cDeep = vec3(0.02, 0.08, 0.12);
+                    vec3 cMid  = vec3(0.1, 0.3, 0.35);
+                    vec3 cHot  = vec3(1.0, 0.55, 0.15);
+                    vec3 cPeak = vec3(1.0, 0.9, 0.6);
+
+                    for(int i = 0; i < 64; i++) {
+                        vec3 pos = ro + rd * t;
+                        float d = map(pos);
+
+                        if(d < 0.0) {
+                            float dist = length(pos);
+                            float heat = smoothstep(2.5, 0.5, dist);
+                            vec3 c = mix(cMid, cHot, heat);
+                            c = mix(c, cPeak, smoothstep(1.0, 0.3, dist));
+                            float alpha = 0.08 + heat * 0.12;
+                            col = col * (1.0 - alpha) + c * alpha;
+                            t += 0.05;
+                            if(t > 6.0) break;
+                        } else {
+                            glow += exp(-d * 6.0) * 0.008;
+                            t += max(d * 0.5, 0.05);
+                        }
+                        if(t > 8.0) break;
+                    }
+
+                    // Outer ember halo
+                    float halo = exp(-length(uv) * 2.5) * 0.15;
+                    col += cHot * halo;
+
+                    // Deep teal fog
+                    col += cDeep * (1.0 - length(uv) * 0.5) * 0.3;
+
+                    // Glow accumulation
+                    col += mix(cMid, cHot, 0.5) * glow * 4.0;
+
+                    // Vignette
+                    col *= 1.0 - length(uv) * 0.6;
+
+                    // Subtle grain
+                    float g = hash3(vec3(gl_FragCoord.xy, uTime * 10.0)).x * 0.03;
+                    col += g;
+
+                    // Tone map
+                    col = col / (1.0 + col);
+                    col = pow(col, vec3(0.9));
+
+                    gl_FragColor = vec4(col, 1.0);
+                }
+            `
+        });
+
+        const voidQuad = new THREE.Mesh(new THREE.PlaneGeometry(25, 25), voidMat);
+        voidQuad.position.z = -10;
+        scene.add(voidQuad);
+
+        // --- ACCRETION DISK PARTICLES ---
+        const diskCount = 6000;
+        const dGeo = new THREE.BufferGeometry();
+        const dPos = new Float32Array(diskCount * 3);
+        const dColor = new Float32Array(diskCount * 3);
+        const dData = [];
+
+        for (let i = 0; i < diskCount; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const radius = 1.8 + Math.random() * 4.0;
+            const y = (Math.random() - 0.5) * 0.3 * (1.0 - Math.random());
+            const speed = 0.2 + Math.random() * 0.4;
+            const phase = Math.random() * Math.PI * 2;
+
+            dData.push({ angle, radius, y, speed, phase });
+
+            dPos[i*3]   = Math.cos(angle) * radius;
+            dPos[i*3+1] = y;
+            dPos[i*3+2] = Math.sin(angle) * radius;
+
+            const heat = 1.0 - (radius - 1.8) / 4.0;
+            const r = 0.3 + heat * 0.7;
+            const g = 0.15 + heat * 0.45;
+            const b = 0.05 + (1.0 - heat) * 0.2;
+            dColor[i*3] = r;
+            dColor[i*3+1] = g;
+            dColor[i*3+2] = b;
+        }
+
+        dGeo.setAttribute('position', new THREE.BufferAttribute(dPos, 3));
+        dGeo.setAttribute('color', new THREE.BufferAttribute(dColor, 3));
+
+        const dMat = new THREE.PointsMaterial({
+            size: 0.035,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.7,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        });
+
+        const disk = new THREE.Points(dGeo, dMat);
+        scene.add(disk);
+
+        // --- BREATHING ICOSAHEDRON CAGE ---
+        const cageGeo = new THREE.IcosahedronGeometry(2.8, 1);
+        const cageMat = new THREE.MeshBasicMaterial({
+            color: 0xff8833,
+            wireframe: true,
+            transparent: true,
+            opacity: 0.12
+        });
+        const cage = new THREE.Mesh(cageGeo, cageMat);
+        scene.add(cage);
+
+        const cageGeo2 = new THREE.IcosahedronGeometry(3.4, 0);
+        const cageMat2 = new THREE.MeshBasicMaterial({
+            color: 0x2288aa,
+            wireframe: true,
+            transparent: true,
+            opacity: 0.08
+        });
+        const cage2 = new THREE.Mesh(cageGeo2, cageMat2);
+        scene.add(cage2);
+
+        // --- SPIRAL ARM POINTS ---
+        const spiralCount = 2000;
+        const sGeo = new THREE.BufferGeometry();
+        const sPos = new Float32Array(spiralCount * 3);
+        const sColor = new Float32Array(spiralCount * 3);
+        const sArms = 3;
+
+        for (let i = 0; i < spiralCount; i++) {
+            const arm = i % sArms;
+            const t = Math.floor(i / sArms) / (spiralCount / sArms);
+            const baseAngle = (arm / sArms) * Math.PI * 2 + t * Math.PI * 4;
+            const radius = 2.0 + t * 5.0;
+            const spread = (1.0 - t) * 0.8;
+            const y = (Math.random() - 0.5) * spread * 0.5;
+
+            sPos[i*3]   = Math.cos(baseAngle) * radius + (Math.random()-0.5)*0.3;
+            sPos[i*3+1] = y;
+            sPos[i*3+2] = Math.sin(baseAngle) * radius + (Math.random()-0.5)*0.3;
+
+            const fade = 1.0 - t;
+            sColor[i*3]   = 0.2 * fade + 0.05;
+            sColor[i*3+1] = 0.5 * fade + 0.1;
+            sColor[i*3+2] = 0.6 * fade + 0.1;
+        }
+
+        sGeo.setAttribute('position', new THREE.BufferAttribute(sPos, 3));
+        sGeo.setAttribute('color', new THREE.BufferAttribute(sColor, 3));
+
+        const sMat = new THREE.PointsMaterial({
+            size: 0.025,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.5,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        });
+
+        const spiral = new THREE.Points(sGeo, sMat);
+        spiral.rotation.x = 0.3;
+        scene.add(spiral);
+
+        // --- FLOATING EMBER WISPS ---
+        const wispCount = 800;
+        const wGeo = new THREE.BufferGeometry();
+        const wPos = new Float32Array(wispCount * 3);
+        const wPhase = new Float32Array(wispCount);
+
+        for (let i = 0; i < wispCount; i++) {
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos(2 * Math.random() - 1);
+            const r = 3.0 + Math.random() * 8.0;
+            wPos[i*3]   = r * Math.sin(phi) * Math.cos(theta);
+            wPos[i*3+1] = r * Math.sin(phi) * Math.sin(theta);
+            wPos[i*3+2] = r * Math.cos(phi);
+            wPhase[i] = Math.random() * Math.PI * 2;
+        }
+
+        wGeo.setAttribute('position', new THREE.BufferAttribute(wPos, 3));
+
+        const wMat = new THREE.PointsMaterial({
+            size: 0.05,
+            color: 0xffaa44,
+            transparent: true,
+            opacity: 0.25,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        });
+
+        const wisps = new THREE.Points(wGeo, wMat);
+        scene.add(wisps);
+
+        // --- CAMERA ---
+        camera.position.set(0, 2, 8);
+
+        // --- ANIMATION ---
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const t = clock.getElapsedTime();
+
+            voidMat.uniforms.uTime.value = t;
+            voidMat.uniforms.uRes.value.set(window.innerWidth, window.innerHeight);
+
+            // Accretion disk rotation
+            const dPositions = dGeo.attributes.position.array;
+            for (let i = 0; i < diskCount; i++) {
+                const d = dData[i];
+                const a = d.angle + t * d.speed;
+                const r = d.radius + Math.sin(t * 0.5 + d.phase) * 0.1;
+                dPositions[i*3]   = Math.cos(a) * r;
+                dPositions[i*3+1] = d.y + Math.sin(t * 0.8 + d.phase) * 0.05;
+                dPositions[i*3+2] = Math.sin(a) * r;
+            }
+            dGeo.attributes.position.needsUpdate = true;
+
+            // Spiral slow rotation
+            spiral.rotation.y += 0.001;
+
+            // Cage breathing
+            const breathe = 1.0 + Math.sin(t * 0.4) * 0.08;
+            cage.scale.setScalar(breathe);
+            cage.rotation.y += 0.003;
+            cage.rotation.x += 0.001;
+            cageMat.opacity = 0.08 + Math.sin(t * 0.6) * 0.04;
+
+            cage2.scale.setScalar(1.0 + Math.sin(t * 0.3 + 1.0) * 0.12);
+            cage2.rotation.y -= 0.002;
+            cage2.rotation.z += 0.001;
+
+            // Wisp drift
+            wisps.rotation.y += 0.0005;
+            wisps.rotation.x += 0.0002;
+            wMat.opacity = 0.2 + Math.sin(t * 0.3) * 0.08;
+
+            // Camera orbit
+            const camAngle = t * 0.08;
+            const camRadius = 7.5 + Math.sin(t * 0.15) * 1.5;
+            const camHeight = 1.5 + Math.sin(t * 0.1) * 1.0;
+            camera.position.x = Math.cos(camAngle) * camRadius;
+            camera.position.y = camHeight;
+            camera.position.z = Math.sin(camAngle) * camRadius;
+            camera.lookAt(0, 0, 0);
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            voidMat.uniforms.uRes.value.set(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

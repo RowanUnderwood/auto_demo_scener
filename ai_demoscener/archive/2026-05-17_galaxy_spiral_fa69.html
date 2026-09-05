@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Galaxy Shader</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+    </style>
+</head>
+<body>
+    <script type="module">
+        import * as THREE from 'https://cdn.skypack.dev/three@0.136.0';
+
+        // Scene Setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer({ antialias: false });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Geometry (Full screen quad)
+        const geometry = new THREE.PlaneGeometry(2, 2);
+
+        // Shader Code
+        const vertexShader = `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = vec4(position, 1.0);
+            }
+        `;
+
+        const fragmentShader = `
+            uniform float uTime;
+            uniform vec2 uResolution;
+            varying vec2 vUv;
+
+            // Simple 2D Hash/Noise function
+            float hash(vec2 p) {
+                return fract(sin(dot(p.xy, vec2(12.9898, 78.233))) * 43758.5453);
+            }
+
+            float noise(vec2 p) {
+                vec2 i = floor(p);
+                vec2 f = fract(p);
+                f = f * f * (3.0 - 2.0 * f);
+                float a = hash(i);
+                float b = hash(i + vec2(1.0, 0.0));
+                float c = hash(i + vec2(0.0, 1.0));
+                float d = hash(i + vec2(1.0, 1.0));
+                return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+            }
+
+            // Fractal Brownian Motion
+            float fbm(vec2 p, int octaves) {
+                float v = 0.0;
+                float a = 0.5;
+                vec2 shift = vec2(100.0);
+                mat2 rot = mat2(cos(0.5), sin(0.5), -sin(0.5), cos(0.50));
+                for (int i = 0; i < octaves; ++i) {
+                    v += a * noise(p);
+                    p = rot * p * 2.0 + shift;
+                    a *= 0.5;
+                }
+                return v;
+            }
+
+            void main() {
+                // Center coordinates and correct aspect ratio
+                vec2 uv = (vUv - 0.5) * 2.0;
+                uv.x *= uResolution.x / uResolution.y;
+                
+                // Convert to Polar
+                float r = length(uv);
+                float a = atan(uv.y, uv.x);
+
+                // Spiral Formula
+                // 0.5 + 0.5 * cos(...) converts -1..1 to 0..1 range for the power
+                float spiralBase = 0.5 + 0.5 * cos(2.0 * a + log(max(r, 0.01)) * 6.0 + uTime * 0.2);
+                float spiral = pow(spiralBase, 8.0) * exp(-r * 1.5);
+
+                // Dust Lanes (FBM mixed into spiral)
+                float dust = fbm(uv * 15.0 + uTime * 0.1, 4);
+                // Dust only visible where there is spiral structure
+                float dustLanes = spiral * dust * 0.4; 
+
+                // Bright Core
+                float core = exp(-r * 8.0);
+
+                // Color Palette Mapping
+                // Hot Core -> Pink -> Blue
+                vec3 colorHot = vec3(1.0, 0.9, 0.7);   // White/Yellow
+                vec3 colorMid = vec3(0.9, 0.2, 0.5);   // Pink
+                vec3 colorCold = vec3(0.1, 0.2, 0.8);  // Blue
+
+                // Mix colors based on distance from center
+                vec3 baseColor = mix(colorHot, colorMid, r * 3.0);
+                baseColor = mix(baseColor, colorCold, r * 1.5);
+
+                // Combine components
+                vec3 finalColor = vec3(0.0);
+
+                // 1. Add Core Glow
+                finalColor += baseColor * core * 2.0;
+
+                // 2. Add Spiral Arms
+                finalColor += baseColor * spiral * 1.5;
+
+                // 3. Add Dust Lanes (darker/redder)
+                finalColor += vec3(0.2, 0.05, 0.1) * dustLanes;
+
+                // 4. Stars (fine detail)
+                float stars = pow(noise(uv * 200.0 + uTime), 20.0) * 0.5;
+                finalColor += vec3(1.0) * stars * exp(-r * 5.0);
+
+                gl_FragColor = vec4(finalColor, 1.0);
+            }
+        `;
+
+        const material = new THREE.ShaderMaterial({
+            vertexShader,
+            fragmentShader,
+            uniforms: {
+                uTime: { value: 0 },
+                uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+            }
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        // Handle Window Resize
+        window.addEventListener('resize', () => {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            renderer.setSize(width, height);
+            material.uniforms.uResolution.value.set(width, height);
+        });
+
+        // Animation Loop
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            material.uniforms.uTime.value = clock.getElapsedTime();
+            renderer.render(scene, camera);
+        }
+
+        animate();
+    </script>
+</body>
+</html>

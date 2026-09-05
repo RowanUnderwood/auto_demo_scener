@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Quantum Fractal Demoscene</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+        #info {
+            position: absolute;
+            top: 10px;
+            width: 100%;
+            text-align: center;
+            color: white;
+            font-family: monospace;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">Quantum Fractal Demoscene<br>Press SPACE to toggle effect mode</div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.152.0/examples/js/loaders/FontLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.152.0/examples/js/geometries/TextGeometry.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.152.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script>
+        // Initialize scene, camera, renderer
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x000000);
+        
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 3;
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0x404040);
+        scene.add(ambientLight);
+        
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+        directionalLight.position.set(1, 1, 1).normalize();
+        scene.add(directionalLight);
+
+        // Create particle system for quantum effect
+        const particlesGeometry = new THREE.BufferGeometry();
+        const particlesCount = 5000;
+        
+        const posArray = new Float32Array(particlesCount * 3);
+        for (let i = 0; i < particlesCount * 3; i++) {
+            posArray[i] = (Math.random() - 0.5) * 10;
+        }
+        
+        particlesGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+        
+        const particlesMaterial = new THREE.PointsMaterial({
+            color: 0x6a0dad,
+            size: 0.8,
+            transparent: true,
+            opacity: 0.7,
+            depthWrite: false
+        });
+
+        const particleSystem = new THREE.Points(particlesGeometry, particlesMaterial);
+        scene.add(particleSystem);
+
+        // Create fractal geometry using recursive algorithm
+        function createFractalBranch(startX, startY, startZ, length, depth) {
+            if (depth <= 0) return;
+            
+            const angle1 = Math.random() * Math.PI / 4 - Math.PI / 8;
+            const angle2 = Math.random() * Math.PI / 4 + Math.PI / 8;
+            const newLength = length * 0.75;
+
+            // Create branch geometry
+            const points = [];
+            points.push(new THREE.Vector3(startX, startY, startZ));
+            
+            const dx = Math.cos(angle1) * newLength;
+            const dy = Math.sin(angle1) * newLength;
+            points.push(new THREE.Vector3(startX + dx, startY + dy, startZ));
+
+            const geometry = new THREE.BufferGeometry().setFromPoints(points);
+            const material = new THREE.LineBasicMaterial({ color: 0x8a2be2 });
+            
+            const line = new THREE.Line(geometry, material);
+            scene.add(line);
+
+            // Recursive calls for sub-branches
+            createFractalBranch(
+                startX + dx,
+                startY + dy,
+                startZ,
+                newLength * 0.8,
+                depth - 1
+            );
+        }
+
+        // Initialize fractal tree
+        const branchDepth = Math.floor(Math.random() * 6) + 3;
+        for (let i = 0; i < 5; i++) {
+            createFractalBranch(0, -2, 0, 1.5, branchDepth);
+        }
+
+        // Add glowing text effect
+        const fontLoader = new THREE.FontLoader();
+        fontLoader.load('https://threejs.org/examples/fonts/helvetiker_bold.typeface.json', function(font) {
+            const textGeometry = new THREE.TextGeometry("QUANTUM FRACTAL", {
+                font: font,
+                size: 0.5,
+                height: 0.1,
+                curveSegments: 12
+            });
+            
+            textGeometry.computeBoundingBox();
+            const centerOffset = -0.5 * (textGeometry.boundingBox.max.x - textGeometry.boundingBox.min.x);
+            
+            const textMaterial = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.8 });
+            const textMesh = new THREE.Mesh(textGeometry.translate(centerOffset, 0, 0), textMaterial);
+            scene.add(textMesh);
+
+            // Add animated glow effect
+            let time = 0;
+            function animateTextGlow() {
+                if (textMesh.material) {
+                    const intensity = Math.sin(time * 2) + 1.5;
+                    textMesh.material.opacity = intensity / 3;
+                }
+                time += 0.01;
+            }
+
+            // Add particle trail for quantum effect
+            function createQuantumTrail() {
+                const trailGeometry = new THREE.BufferGeometry();
+                
+                const positions = [];
+                for (let i = 0; i < particlesCount; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const radius = Math.random() * 5 + 1;
+                    positions.push(radius * Math.cos(angle), 0, radius * Math.sin(angle));
+                }
+                
+                trailGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
+                trailGeometry.computeVertexNormals();
+                
+                const trailMaterial = new THREE.PointsMaterial({
+                    color: 0x1e90ff,
+                    size: 0.5
+                });
+
+                const trailParticles = new THREE.Points(trailGeometry, trailMaterial);
+                scene.add(trailParticles);
+
+                // Animate the particles
+                function animateTrail() {
+                    for (let i = 0; i < positions.length; i += 3) {
+                        if (positions[i] > 5) {
+                            positions[i] -= 0.02;
+                            positions[i + 1] += 0.02;
+                            positions[i + 2] -= 0.02;
+                        }
+                    }
+                    
+                    trailGeometry.attributes.position.needsUpdate = true;
+                }
+
+                return animateTrail;
+            }
+
+            const trailAnimation = createQuantumTrail();
+
+            // Animation loop
+            function animate() {
+                requestAnimationFrame(animate);
+                
+                particleSystem.rotation.x += 0.01;
+                particleSystem.rotation.y += 0.02;
+
+                if (Math.random() < 0.03) {
+                    const position = new THREE.Vector3(
+                        Math.random() * 6 - 3,
+                        Math.random() * 4 - 2,
+                        Math.random() * 8 - 4
+                    );
+                    
+                    const particle = new THREE.SphereGeometry(0.1, 8, 8);
+                    const material = new THREE.MeshBasicMaterial({ color: 0xff69b4 });
+                    const mesh = new THREE.Mesh(particle, material);
+                    mesh.position.set(position.x, position.y, position.z);
+                    
+                    scene.add(mesh);
+
+                    // Animate particle
+                    function animateParticle() {
+                        if (mesh) {
+                            mesh.position.x += (Math.random() - 0.5) * 0.1;
+                            mesh.position.y += (Math.random() - 0.5) * 0.1;
+                            mesh.position.z += (Math.random() - 0.5) * 0.1;
+
+                            // Add movement
+                            mesh.rotation.x += 0.01;
+                            mesh.rotation.y += 0.02;
+                            
+                            if (mesh.position.lengthSq() > 64) {
+                                scene.remove(mesh);
+                            }
+                        }
+                    }
+
+                    setInterval(animateParticle, 50);
+                }
+
+                // Update text glow
+                animateTextGlow();
+
+                // Run trail animation every frame
+                if (Math.random() < 0.1) {
+                    trailAnimation();
+                }
+
+                renderer.render(scene, camera);
+            }
+
+            animate();
+        });
+    </script>
+</body>
+</html>

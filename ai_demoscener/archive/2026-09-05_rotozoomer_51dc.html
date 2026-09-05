@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Rotating Checker Shader</title>
+<style>
+  html, body { margin: 0; padding: 0; overflow: hidden; background: #000; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  document.body.appendChild(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+  const uniforms = {
+    uTime: { value: 0 },
+    uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+  };
+
+  const material = new THREE.ShaderMaterial({
+    uniforms: uniforms,
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = vec4(position.xy, 0.0, 1.0);
+      }
+    `,
+    fragmentShader: `
+      precision highp float;
+      varying vec2 vUv;
+      uniform float uTime;
+      uniform vec2 uResolution;
+
+      void main() {
+        // Centered UV (aspect-corrected for square cells)
+        vec2 p = vUv - 0.5;
+        p.x *= uResolution.x / uResolution.y;
+
+        // Rotation matrix with angle = time * 0.3
+        float a = uTime * 0.3;
+        mat2 rot = mat2(cos(a), -sin(a), sin(a), cos(a));
+        p = rot * p;
+
+        // Scale by (1.5 + sin(time) * 0.7)
+        float s = 1.5 + sin(uTime) * 0.7;
+        p *= s;
+
+        // Procedural checker texture
+        float checker = mod(floor(p.x) + floor(p.y), 2.0);
+
+        // Two contrasting colors
+        vec3 colorA = vec3(0.95, 0.92, 0.85);
+        vec3 colorB = vec3(0.08, 0.10, 0.16);
+        vec3 col = mix(colorA, colorB, checker);
+
+        // fract() tiles infinitely: subtle inner shading per cell
+        vec2 f = fract(p);
+        float d = length(f - 0.5);
+        col *= 0.82 + 0.18 * smoothstep(0.5, 0.35, d);
+
+        gl_FragColor = vec4(col, 1.0);
+      }
+    `
+  });
+
+  const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material);
+  scene.add(quad);
+
+  const clock = new THREE.Clock();
+
+  function animate() {
+    requestAnimationFrame(animate);
+    uniforms.uTime.value = clock.getElapsedTime();
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  window.addEventListener('resize', () => {
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+  });
+</script>
+</body>
+</html>

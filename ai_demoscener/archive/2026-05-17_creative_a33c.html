@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Quantum Echoes</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // Quantum particles
+    const particles = [];
+    const particleCount = 350;
+    const colors = [0x6a1b9a, 0x4a148c, 0x283593, 0x1e88e5, 0x00acc1];
+    const sphereGeo = new THREE.SphereGeometry(0.3, 8, 8);
+    
+    // Create particles with random positions and colors
+    for (let i = 0; i < particleCount; i++) {
+        const color = new THREE.Color(colors[Math.floor(Math.random() * colors.length)]);
+        const material = new THREE.MeshBasicMaterial({ 
+            color: color,
+            transparent: true, 
+            opacity: Math.random() * 0.5 + 0.3
+        });
+        
+        const particle = new THREE.Mesh(sphereGeo, material);
+        particle.position.x = (Math.random() - 0.5) * 20;
+        particle.position.y = (Math.random() - 0.5) * 20;
+        particle.position.z = (Math.random() - 0.5) * 20;
+        
+        // Add quantum state: 0=collapsed, 1=superposition
+        particle.userData = {
+            superposition: Math.random() > 0.7,
+            rotationSpeed: Math.random() * 0.03 + 0.01,
+            phase: Math.random() * Math.PI * 2
+        };
+        
+        scene.add(particle);
+        particles.push(particle);
+    }
+
+    // Quantum field effect
+    const light = new THREE.PointLight(0x4a148c, 2, 50);
+    light.position.set(0, 0, 20);
+    scene.add(light);
+
+    camera.position.z = 30;
+
+    function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+    
+    window.addEventListener('resize', onWindowResize);
+    onWindowResize();
+
+    // Quantum entanglement animation
+    const clock = new THREE.Clock();
+    
+    function animate() {
+        requestAnimationFrame(animate);
+        
+        const time = clock.getElapsedTime();
+        const quantumState = Math.sin(time * 0.5) * 0.5 + 0.5;
+        
+        // Update particle states
+        particles.forEach(particle => {
+            particle.userData.phase += particle.userData.rotationSpeed;
+            
+            if (particle.userData.superposition) {
+                // Superposition effect: oscillating color and rotation
+                const hue = Math.sin(particle.userData.phase) * 0.3 + 0.5;
+                particle.material.color.setHSL(hue, 0.7, 0.6);
+                
+                // Quantum entanglement - subtle connections between particles
+                if (Math.random() < 0.01 && !particle.userData.entangled) {
+                    particle.userData.entangled = true;
+                    const target = particles[Math.floor(Math.random() * particles.length)];
+                    if (target !== particle && !target.userData.entangled) {
+                        target.userData.superposition = true;
+                        target.userData.phase = particle.userData.phase;
+                        
+                        // Create temporary connection
+                        const lineGeo = new THREE.BufferGeometry();
+                        const positions = new Float32Array([
+                            particle.position.x, particle.position.y, particle.position.z,
+                            target.position.x, target.position.y, target.position.z
+                        ]);
+                        lineGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                        
+                        const lineMat = new THREE.LineBasicMaterial({ 
+                            color: particle.material.color.getHex(),
+                            transparent: true,
+                            opacity: 0.5
+                        });
+                        
+                        const connection = new THREE.Line(lineGeo, lineMat);
+                        scene.add(connection);
+                        
+                        // Remove after animation
+                        setTimeout(() => {
+                            scene.remove(connection);
+                            particle.userData.entangled = false;
+                        }, 1500);
+                    }
+                }
+            } else {
+                // Collapsed state: steady color
+                const baseHue = 0.7;
+                const hueVariation = Math.sin(time * 0.3) * 0.1;
+                particle.material.color.setHSL(baseHue + hueVariation, 0.6, 0.5);
+            }
+            
+            // Randomize superposition state
+            if (Math.random() < 0.002 && !particle.userData.superposition) {
+                particle.userData.superposition = true;
+                particle.userData.phase = Math.random() * Math.PI * 2;
+            }
+        });
+        
+        renderer.render(scene, camera);
+    }
+
+    animate();
+</script>
+</body>
+</html>

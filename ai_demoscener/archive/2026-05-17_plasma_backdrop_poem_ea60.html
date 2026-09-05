@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Plasma Poetry</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #000;
+            touch-action: none;
+        }
+        canvas {
+            display: block;
+        }
+        .poem-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .poem-container {
+            color: #f8e9c7;
+            font-family: 'Courier New', Courier, monospace;
+            text-shadow: 0 0 10px rgba(248, 233, 199, 0.7);
+            background: rgba(0, 0, 0, 0.5);
+            padding: 2rem;
+            max-width: 80%;
+            line-height: 1.6;
+        }
+        .poem-line {
+            margin-bottom: 1.2rem;
+            opacity: 0;
+            transition: opacity 0.8s ease-in-out;
+            text-align: center;
+            font-size: 1.4rem;
+            letter-spacing: 0.5px;
+        }
+        .poem-line.visible {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+<div class="poem-overlay">
+    <div class="poem-container" id="poemContainer">
+        <div class="poem-line">Light in the vacuum's quiet hum</div>
+        <div class="poem-line">Where math makes patterns bloom</div>
+        <div class="poem-line">A tiny machine, precise and small</div>
+        <div class="poem-line">Unfolds the universe to all.</div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    document.body.appendChild(renderer.domElement);
+
+    // Plasma shader
+    const fragmentShader = `
+        uniform float time;
+        varying vec2 vUv;
+
+        void main() {
+            vec2 uv = vUv * 4.0 - 2.0;
+            float len = length(uv);
+            
+            vec3 color1 = vec3(1.0, 0.0, 1.0); // Magenta
+            vec3 color2 = vec3(0.0, 1.0, 1.0); // Cyan
+            vec3 color3 = vec3(0.2, 0.0, 0.4); // Deep purple
+            
+            float t = mod(time * 0.5, 1.0);
+            
+            if (t < 0.33) {
+                float s = t / 0.33;
+                gl_FragColor = vec4(mix(color1, color2, s), 1.0);
+            } else if (t < 0.66) {
+                float s = (t - 0.33) / 0.33;
+                gl_FragColor = vec4(mix(color2, color3, s), 1.0);
+            } else {
+                float s = (t - 0.66) / 0.34;
+                gl_FragColor = vec4(mix(color3, color1, s), 1.0);
+            }
+        }
+    `;
+
+    const planeGeometry = new THREE.PlaneGeometry(2, 2);
+    const plasmaMaterial = new THREE.ShaderMaterial({
+        uniforms: {
+            time: { value: 0 }
+        },
+        fragmentShader,
+        vertexShader: `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `
+    });
+
+    const plasmaPlane = new THREE.Mesh(planeGeometry, plasmaMaterial);
+    scene.add(plasmaPlane);
+
+    camera.position.z = 2;
+
+    // Poem animation
+    const poemLines = document.querySelectorAll('.poem-line');
+    let currentLineIndex = 0;
+    let fadeInTimer = null;
+    let fadeOutTimer = null;
+
+    function showNextLine() {
+        if (currentLineIndex >= poemLines.length) return;
+        
+        poemLines.forEach(line => line.classList.remove('visible'));
+        
+        setTimeout(() => {
+            poemLines[currentLineIndex].classList.add('visible');
+            
+            // Start fading out after 6 seconds
+            fadeOutTimer = setTimeout(() => {
+                poemLines[currentLineIndex].classList.remove('visible');
+                currentLineIndex++;
+                showNextLine();
+            }, 6000);
+        }, 100);
+    }
+
+    showNextLine();
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // Animation loop
+    const startTime = performance.now();
+    
+    function animate() {
+        requestAnimationFrame(animate);
+        
+        const time = (performance.now() - startTime) * 0.001; // seconds
+        plasmaMaterial.uniforms.time.value = time;
+        
+        renderer.render(scene, camera);
+    }
+    
+    animate();
+});
+</script>
+</body>
+</html>

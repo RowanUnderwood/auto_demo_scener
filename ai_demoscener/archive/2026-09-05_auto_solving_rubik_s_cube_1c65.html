@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rubik's Cube</title>
+<style>
+  html, body { margin: 0; padding: 0; overflow: hidden; background: #111; }
+  canvas { display: block; }
+  #hud {
+    position: absolute; top: 12px; left: 12px;
+    font-family: monospace; color: #8fd; font-size: 13px;
+    background: rgba(0,0,0,0.4); padding: 8px 12px; border-radius: 6px;
+    pointer-events: none;
+  }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
+</head>
+<body>
+<div id="hud">Rubik's Cube — scramble then solve</div>
+<script>
+(function () {
+  // ---------- Scene ----------
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x101018);
+
+  const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 100);
+  camera.position.set(4.5, 4, 4.5);
+  camera.lookAt(0, 0, 0);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  document.body.appendChild(renderer.domElement);
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+  const dir = new THREE.DirectionalLight(0xffffff, 0.9);
+  dir.position.set(5, 8, 6);
+  scene.add(dir);
+  const dir2 = new THREE.DirectionalLight(0xffffff, 0.35);
+  dir2.position.set(-6, -3, -4);
+  scene.add(dir2);
+
+  // ---------- Colors ----------
+  const WHITE = 0xffffff, YELLOW = 0xffd500, RED = 0xb71234,
+        ORANGE = 0xff5800, BLUE = 0x0046ad, GREEN = 0x009b48,
+        INNER = 0x1a1a1a;
+
+  function faceColor(i, j, k, axis, sign) {
+    if (axis === 'x') return sign > 0 ? RED : ORANGE;
+    if (axis === 'y') return sign > 0 ? WHITE : YELLOW;
+    if (axis === 'z') return sign > 0 ? GREEN : BLUE;
+    return INNER;
+  }
+
+  const materials = [
+    new THREE.MeshLambertMaterial({ color: faceColor(0,0,0,'x',1) }), // +x
+    new THREE.MeshLambertMaterial({ color: faceColor(0,0,0,'x',-1) }),// -x
+    new THREE.MeshLambertMaterial({ color: faceColor(0,0,0,'y',1) }), // +y
+    new THREE.MeshLambertMaterial({ color: faceColor(0,0,0,'y',-1) }),// -y
+    new THREE.MeshLambertMaterial({ color: faceColor(0,0,0,'z',1) }), // +z
+    new THREE.MeshLambertMaterial({ color: faceColor(0,0,0,'z',-1) }),// -z
+  ];
+
+  // ---------- Build 27 cubies ----------
+  const cube = new THREE.Group();
+  scene.add(cube);
+
+  const cubieGeo = new THREE.BoxGeometry(0.96, 0.96, 0.96);
+  const cubies = [];
+  for (let x = -1; x <= 1; x++)
+    for (let y = -1; y <= 1; y++)
+      for (let z = -1; z <= 1; z++) {
+        const mat = [
+          new THREE.MeshLambertMaterial({ color: faceColor(x, y, z, 'x', 1) }),
+          new THREE.MeshLambertMaterial({ color: faceColor(x, y, z, 'x', -1) }),
+          new THREE.MeshLambertMaterial({ color: faceColor(x, y, z, 'y', 1) }),
+          new THREE.MeshLambertMaterial({ color: faceColor(x, y, z, 'y', -1) }),
+          new THREE.MeshLambertMaterial({ color: faceColor(x, y, z, 'z', 1) }),
+          new THREE.MeshLambertMaterial({ color: faceColor(x, y, z, 'z', -1) }),
+        ];
+        const m = new THREE.Mesh(cubieGeo, mat);
+        m.position.set(x, y, z);
+        m.userData.home = { x, y, z };
+        cube.add(m);
+        cubies.push(m);
+      }
+
+  // ---------- Precomputed scramble ----------
+  const FACES = ['R', "R'", "L", "L'", "U", "U'", "D", "D'", "F", "F'", "B", "B'"];
+  const scramble = [];
+  const SCRAMBLE_LEN = 12;
+  let lastFace = '';
+  while (scramble.length < SCRAMBLE_LEN) {
+    const f = FACES[Math.floor(Math.random() * FACES.length)];
+    if (f[0] === lastFace) continue;
+    scramble.push(f);
+    lastFace = f[0];
+  }
+  const solve = scramble.slice().reverse().map(t => t === "'" ? t[0] : t[0] + "'");
+
+  const queue = scramble.slice().concat(solve);
+  let qi = 0;
+
+  const hud = document.getElementById('hud');
+
+  // ---------- Turn system ----------
+  // face definition: axis + layer
+  function faceDef(move) {
+    const face = move[0];
+    const primed = move === "'";
+    let axis, layer;
+    switch (face) {
+      case 'R': axis = 'x'; layer = 1; break;
+      case 'L': axis = 'x'; layer = -1; break;
+      case 'U': axis = 'y'; layer = 1; break;
+      case 'D': axis = 'y'; layer = -1; break;
+      case 'F': axis = 'z'; layer = 1; break;
+      case 'B': axis = 'z'; layer = -1; break;
+    }
+    const angle = primed ? -Math.PI / 2 : Math.PI / 2;
+    return { axis, layer, angle, face };
+  }
+
+  function selectCubies(axis, layer) {
+    return cubies.filter(c => {
+      const h = c.userData.home;
+      return h[axis] === layer;
+    });
+  }
+
+  const tmpGroup = new THREE.Group();
+  let current = null;
+  const TURN_DUR = 0.4;
+
+  function startTurn(move) {
+    const d = faceDef(move);
+    const members = selectCubies(d.axis, d.layer);
+
+    members.forEach(c => {
+      cube.remove(c);
+      tmpGroup.add(c);
+    });
+    scene.add(tmpGroup);
+
+    current = {
+      d, members,
+      q0: new THREE.Quaternion(),
+      q1: new THREE.Quaternion().setFromAxisAngle(
+        new THREE.Vector3(d.axis === 'x' ? 1 : 0, d.axis === 'y' ? 1 : 0, d.axis === 'z' ? 1 : 0),
+        d.angle
+      ),
+      t: 0
+    };
+  }
+
+  function finishTurn() {
+    const { d, members } = current;
+    members.forEach(c => {
+      const pos = c.position;
+      const h = c.userData.home;
+      // apply rotation to home position
+      const v = new THREE.Vector3(h.x, h.y, h.z).applyQuaternion(current.q1);
+      const snapped = {
+        x: Math.round(v.x), y: Math.round(v.y), z: Math.round(v.z)
+      };
+      h.x = snapped.x; h.y = snapped.y; h.z = snapped.z;
+
+      c.position.set(snapped.x, snapped.y, snapped.z);
+      c.quaternion.premultiply(current.q1);
+      c.updateMatrix();
+      c.updateMatrixWorld(true);
+      tmpGroup.remove(c);
+      cube.add(c);
+    });
+    scene.remove(tmpGroup);
+    current = null;
+  }
+
+  // ---------- Animation loop ----------
+  let last = performance.now();
+  let orbitAngle = 0;
+
+  function animate(now) {
+    requestAnimationFrame(animate);
+    const dt = Math.min((now - last) / 1000, 0.05);
+    last = now;
+
+    orbitAngle += dt * 0.3;
+    const radius = 7;
+    camera.position.x = Math.cos(orbitAngle) * radius;
+    camera.position.z = Math.sin(orbitAngle) * radius;
+    camera.position.y = 2.5;
+    camera.lookAt(0, 0, 0);
+
+    if (current) {
+      current.t += dt;
+      let k = current.t / TURN_DUR;
+      if (k >= 1) {
+        k = 1;
+        finishTurn();
+      } else {
+        // smoothstep for nicer easing
+        const s = k * k * (3 - 2 * k);
+        current.q0.slerp(current.q1, s);
+        tmpGroup.quaternion.copy(
+          new THREE.Quaternion().slerpQuaternions(current.q0, current.q1, s)
+        );
+      }
+    } else if (qi < queue.length) {
+      startTurn(queue[qi++]);
+      const phase = qi <= SCRAMBLE_LEN ? 'SCRAMBLE' : (qi <= SCRAMBLE_LEN + solve.length ? 'SOLVING' : 'DONE');
+      hud.textContent = `Phase: ${phase}  Move ${Math.min(qi, queue.length)}/${queue.length}: ${queue[Math.min(qi, queue.length)-1]}`;
+    } else {
+      hud.textContent = 'Phase: DONE — solved';
+    }
+
+    renderer.render(scene, camera);
+  }
+  requestAnimationFrame(animate);
+
+  addEventListener('resize', () => {
+    camera.aspect = innerWidth / innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+  });
+})();
+</script>
+</body>
+</html>

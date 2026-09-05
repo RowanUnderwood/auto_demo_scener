@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Starry Curtains</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#000014;}
+  canvas{display:block;}
+</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+  var scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x000020, 0.010);
+  var camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 500);
+  camera.position.set(0, 4, 42);
+
+  var renderer = new THREE.WebGLRenderer({antialias:true});
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setClearColor(0x020214);
+  document.body.appendChild(renderer.domElement);
+
+  // ---------- Sky background ----------
+  var skyGeo = new THREE.SphereGeometry(300, 32, 16);
+  var skyMat = new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    depthWrite: false,
+    uniforms: {},
+    vertexShader: 'varying vec3 vPos; void main(){ vPos=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
+    fragmentShader: 'varying vec3 vPos; void main(){ float t=clamp(normalize(vPos).y*0.5+0.5,0.0,1.0); vec3 c=mix(vec3(0.01,0.02,0.10), vec3(0.0,0.0,0.03), t); gl_FragColor=vec4(c,1.0); }'
+  });
+  scene.add(new THREE.Mesh(skyGeo, skyMat));
+
+  // ---------- Stars ----------
+  var starCount = 3000;
+  var starPos = new Float32Array(starCount * 3);
+  for (var i = 0; i < starCount; i++) {
+    // distribute on a wide shell behind the scene
+    var r = 200 + Math.random() * 60;
+    var theta = Math.random() * Math.PI * 2;
+    var phi = Math.acos(Math.random() * 1.4 - 0.4); // bias toward upper sky
+    starPos[i*3]   = r * Math.sin(phi) * Math.cos(theta);
+    starPos[i*3+1] = Math.abs(r * Math.cos(phi)) * 0.9 + 2;
+    starPos[i*3+2] = r * Math.sin(phi) * Math.sin(theta) - 40;
+    if (starPos[i*3+2] > -10) starPos[i*3+2] = -Math.abs(starPos[i*3+2]);
+  }
+  var starGeo = new THREE.BufferGeometry();
+  starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+  var starMat = new THREE.PointsMaterial({
+    color: 0xffffff, size: 0.7, sizeAttenuation: true,
+    transparent: true, opacity: 0.9, depthWrite: false, fog: false
+  });
+  scene.add(new THREE.Points(starGeo, starMat));
+
+  // a few brighter stars
+  var brightGeo = new THREE.BufferGeometry();
+  var bp = new Float32Array(120 * 3);
+  for (var j = 0; j < 120; j++) {
+    var r2 = 210 + Math.random()*40;
+    var t2 = Math.random()*Math.PI*2;
+    var p2 = Math.acos(Math.random()*1.3 - 0.3);
+    bp[j*3]   = r2*Math.sin(p2)*Math.cos(t2);
+    bp[j*3+1] = Math.abs(r2*Math.cos(p2))*0.85 + 3;
+    bp[j*3+2] = -Math.abs(r2*Math.sin(p2)*Math.sin(t2));
+  }
+  brightGeo.setAttribute('position', new THREE.BufferAttribute(bp, 3));
+  scene.add(new THREE.Points(brightGeo, new THREE.PointsMaterial({
+    color: 0xcfe4ff, size: 1.6, sizeAttenuation: true, transparent: true, opacity: 0.95, depthWrite: false, fog: false
+  })));
+
+  // ---------- Jagged mountain silhouette ----------
+  var mtnMat = new THREE.ShaderMaterial({
+    uniforms: {},
+    vertexShader: 'varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
+    fragmentShader: [
+      'varying vec2 vUv;',
+      'float ridge(float x){',
+      '  float h = 0.0;',
+      '  h += 0.45*sin(x*0.8) + 0.30*sin(x*2.1 + 1.7) + 0.18*sin(x*4.3 + 0.6) + 0.10*sin(x*9.1 + 2.4);',
+      '  h *= 0.5 + 0.5;',
+      '  // sharpen peaks',
+      '  h = abs(h);',
+      '  h = pow(h, 1.6);',
+      '  return 0.12 + h*0.55;',
+      '}',
+      'void main(){',
+      '  float r = ridge(vUv.x*7.0);',
+      '  if(vUv.y > r) discard;',
+      '  // subtle vertical shading, darker at base',
+      '  float shade = smoothstep(0.0, r, vUv.y);',
+      '  vec3 c = mix(vec3(0.004,0.006,0.020), vec3(0.020,0.030,0.075), shade*0.5);',
+      '  gl_FragColor = vec4(c, 1.0);',
+      '}'
+    ].join('\n')
+  });
+  var mtn = new THREE.Mesh(new THREE.PlaneGeometry(240, 70), mtnMat);
+  mtn.position.set(0, 6, -60);
+  scene.add(mtn);
+
+  // ---------- Curtain shader ----------
+  var curtainVert = [
+    'varying vec2 vUv;',
+    'uniform float uTime;',
+    'uniform float uWave;',
+    'void main(){',
+    '  vUv = uv;',
+    '  vec3 p = position;',
+    '  // gentle horizontal sway of the whole plane',
+    '  p.z += sin(uTime*0.4 + p.y*0.08) * uWave;',
+    '  gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);',
+    '}'
+  ].join('\n');
+
+  var curtainFrag = [
+    'precision highp float;',
+    'varying vec2 vUv;',
+    'uniform float uTime;',
+    'uniform float uSeed;',
+    'uniform float uIntensity;',
+    '',
+    'float hash(vec2 p){',
+    '  p = fract(p * vec2(123.34, 456.21));',
+    '  p += dot(p, p + 34.345);',
+    '  return fract(p.x * p.y);',
+    '}',
+    'float noise(vec2 p){',
+    '  vec2 i = floor(p); vec2 f = fract(p);',
+    '  f = f*f*(3.0-2.0*f);',
+    '  float a = hash(i);',
+    '  float b = hash(i+vec2(1.0,0.0));',
+    '  float c = hash(i+vec2(0.0,1.0));',
+    '  float d = hash(i+vec2(1.0,1.0));',
+    '  return mix(mix(a,b,f.x), mix(c,d,f.x), f.y);',
+    '}',
+    'float fbm2(vec2 p){',
+    '  float v = 0.0; float amp = 0.6;',
+    '  v += noise(p) * amp;',
+    '  v += noise(p*2.0) * amp*0.5;',
+    '  return v;',
+    '}',
+    '',
+    'void main(){',
+    '  vec2 uv = vUv;',
+    '  uv.x = fract(uv.x + uSeed*0.3183);',
+    '',
+    '  // 2-octave noise scrolling sideways with time',
+    '  float n1 = fbm2(vec2(uv.x*3.0 - uTime*0.25 + uSeed*10.0, uv.y*1.2));',
+    '  float n2 = fbm2(vec2(uv.x*6.0 - uTime*0.55 + uSeed*23.0, uv.y*2.4));',
+    '',
+    '  // vertical flowing color bands, distorted by noise',
+    '  float phase = uv.x*14.0 + (n1 - 0.45)*6.0 + (n2 - 0.45)*3.5 - uTime*0.8;',
+    '  float bands = 0.5 + 0.5*sin(phase);',
+    '  bands = pow(bands, 1.4);',
+    '',
+    '  // vertical color ramp: lime -> teal -> violet',
+    '  vec3 lime   = vec3(0.55, 1.0, 0.15);',
+    '  vec3 teal   = vec3(0.0, 0.85, 0.95);',
+    '  vec3 violet = vec3(0.42, 0.10, 0.95);',
+    '  float y = uv.y;',
+    '  vec3 col;',
+    '  col = mix(lime, teal, smoothstep(0.0, 0.45, y));',
+    '  col = mix(col, violet, smoothstep(0.40, 0.95, y));',
+    '',
+    '  // band modulation darkens/brightens',
+    '  col *= 0.35 + 0.9*bands;',
+    '',
+    '  // occasional pink flares: sparse high-contrast noise events',
+    '  float flareN = fbm2(vec2(uv.x*2.0 + uTime*0.18 + uSeed*40.0, uv.y*3.0 - uTime*0.3));',
+    '  float flare = smoothstep(0.62, 0.85, flareN) * smoothstep(0.3, 0.7, sin(uTime*0.7 + uSeed*17.0 + uv.y*2.0)*0.5+0.5);',
+    '  vec3 pink = vec3(1.0, 0.35, 0.85);',
+    '  col = mix(col, pink, clamp(flare*1.4, 0.0, 1.0));',
+    '',
+    '  // fade curtain edges horizontally & fade near very top',
+    '  float edge = smoothstep(0.0, 0.08, uv.x) * smoothstep(1.0, 0.92, uv.x);',
+    '  float topFade = smoothstep(1.0, 0.75, uv.y) * 0.85 + 0.15;',
+    '  col *= edge * topFade * uIntensity;',
+    '',
+    '  gl_FragColor = vec4(col, 1.0);',
+    '}'
+  ].join('\n');
+
+  var curtains = [];
+  var curtainConfigs = [
+    { z: 26, w: 26, h: 46, x: -7,  seed: 1.0, intensity: 0.55, wave: 1.2 },
+    { z: 18, w: 30, h: 50, x: 6,   seed: 2.7, intensity: 0.65, wave: 1.6 },
+    { z: 10, w: 34, h: 54, x: -10, seed: 4.3, intensity: 0.75, wave: 2.0 },
+    { z: 3,  w: 38, h: 58, x: 3,   seed: 6.9, intensity: 0.9,  wave: 2.6 },
+    { z: -6, w: 42, h: 60, x: -3,  seed: 8.2, intensity: 1.0,  wave: 3.0 }
+  ];
+
+  curtainConfigs.forEach(function(cfg){
+    var mat = new THREE.ShaderMaterial({
+      uniforms: {
+        uTime: { value: 0 },
+        uSeed: { value: cfg.seed },
+        uIntensity: { value: cfg.intensity },
+        uWave: { value: cfg.wave }
+      },
+      vertexShader: curtainVert,
+      fragmentShader: curtainFrag,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide
+    });
+    var mesh = new THREE.Mesh(new THREE.PlaneGeometry(cfg.w, cfg.h, 1, 32), mat);
+    mesh.position.set(cfg.x, cfg.h*0.5 - 12, cfg.z);
+    scene.add(mesh);
+    curtains.push(mesh);
+  });
+
+  // ---------- Animate ----------
+  var clock = new THREE.Clock();
+  var t = 0;
+
+  function animate(){
+    requestAnimationFrame(animate);
+    t = clock.getElapsedTime();
+    for (var k = 0; k < curtains.length; k++){
+      curtains[k].material.uniforms.uTime.value = t;
+    }
+    // slow camera drift
+    camera.position.x = Math.sin(t * 0.07) * 3.0;
+    camera.position.y = 4 + Math.sin(t * 0.11) * 0.8;
+    camera.lookAt(0, 10, -20);
+
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  addEventListener('resize', function(){
+    camera.aspect = innerWidth / innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+  });
+})();
+</script>
+</body>
+</html>

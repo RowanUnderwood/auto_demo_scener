@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>3D Demoscene: Quantum Flux</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Initialize scene, camera, and renderer
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setClearColor(0x000000);
+        document.body.appendChild(renderer.domElement);
+
+        // Add ambient light
+        const ambientLight = new THREE.AmbientLight(0x404040);
+        scene.add(ambientLight);
+
+        // Add directional light
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+        directionalLight.position.set(5, 5, 5);
+        scene.add(directionalLight);
+
+        // Create a grid of particles
+        const particleCount = 500;
+        const particles = [];
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(particleCount * 3);
+        const colors = new Float32Array(particleCount * 3);
+
+        for (let i = 0; i < particleCount; i++) {
+            positions[i * 3] = (Math.random() - 0.5) * 20;
+            positions[i * 3 + 1] = (Math.random() - 0.5) * 20;
+            positions[i * 3 + 2] = (Math.random() - 0.5) * 20;
+            
+            colors[i * 3] = Math.random();
+            colors[i * 3 + 1] = Math.random();
+            colors[i * 3 + 2] = Math.random();
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+        const material = new THREE.PointsMaterial({
+            size: 0.1,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.7
+        });
+
+        const pointCloud = new THREE.Points(geometry, material);
+        scene.add(pointCloud);
+
+        // Add a simple plane for base
+        const planeGeometry = new THREE.PlaneGeometry(20, 20);
+        const planeMaterial = new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.DoubleSide });
+        const plane = new THREE.Mesh(planeGeometry, planeMaterial);
+        plane.rotation.x = -Math.PI / 2;
+        plane.position.y = -5;
+        scene.add(plane);
+
+        // Create a particle system for the effect
+        const particleSystem = new THREE.ParticleSystem();
+        const particleGeometry = new THREE.SphereGeometry(0.1, 16, 16);
+        const particleMaterial = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.8 });
+        const particleMesh = new THREE.Mesh(particleGeometry, particleMaterial);
+        particleMesh.position.set(0, 0, 0);
+        particleMesh.visible = false;
+        scene.add(particleMesh);
+
+        // Add a rotating sphere for visual interest
+        const sphereGeometry = new THREE.SphereGeometry(2, 32, 32);
+        const sphereMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+        const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+        sphere.position.set(0, 0, 0);
+        scene.add(sphere);
+
+        // Create a torus for the base structure
+        const torusGeometry = new THREE.TorusGeometry(2, 0.5, 16, 100);
+        const torusMaterial = new THREE.MeshBasicMaterial({ color: 0x0000ff });
+        const torus = new THREE.Mesh(torusGeometry, torusMaterial);
+        torus.position.set(0, 0, 0);
+        scene.add(torus);
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Move particles
+            for (let i = 0; i < particleCount; i++) {
+                const x = positions[i * 3];
+                const y = positions[i * 3 + 1];
+                const z = positions[i * 3 + 2];
+                
+                // Apply a quantum-like movement
+                positions[i * 3] = x + (Math.sin(Date.now() * 0.001 + i) * 0.1);
+                positions[i * 3 + 1] = y + (Math.cos(Date.now() * 0.001 + i) * 0.1);
+                positions[i * 3 + 2] = z + (Math.sin(Date.now() * 0.001 + i * 2) * 0.1);
+                
+                // Update colors based on position and time
+                colors[i * 3] = Math.abs(Math.sin(Date.now() * 0.001 + i) * 0.5 + 0.5);
+                colors[i * 3 + 1] = Math.abs(Math.cos(Date.now() * 0.001 + i) * 0.5 + 0.5);
+                colors[i * 3 + 2] = Math.abs(Math.sin(Date.now() * 0.001 + i * 2) * 0.5 + 0.5);
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+            // Rotate the sphere and torus
+            sphere.rotation.y += 0.01;
+            torus.rotation.y += 0.01;
+            torus.rotation.x += 0.005;
+
+            // Make the particle mesh appear and disappear in a pattern
+            const time = Date.now() * 0.001;
+            const opacity = Math.sin(time * 2) * 0.5 + 0.5;
+            particleMesh.visible = opacity > 0.1;
+            particleMesh.material.opacity = opacity;
+
+            // Rotate the particle system around the sphere
+            particleMesh.position.x = Math.sin(time) * 2;
+            particleMesh.position.z = Math.cos(time) * 2;
+            particleMesh.position.y = Math.sin(time * 2) * 1;
+
+            renderer.render(scene, camera);
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Start animation
+        animate();
+    </script>
+</body>
+</html>

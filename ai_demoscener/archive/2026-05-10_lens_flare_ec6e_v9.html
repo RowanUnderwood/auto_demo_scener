@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Ember Nebula — Spiral Collapse</title>
+    <style>
+        html, body { margin: 0; height: 100%; overflow: hidden; background: #08030d; }
+        canvas { display: block; }
+        #title {
+            position: fixed; left: 24px; bottom: 22px;
+            font-family: 'Courier New', monospace;
+            color: rgba(255, 210, 150, 0.55);
+            font-size: 12px; letter-spacing: 3px;
+            pointer-events: none; text-transform: uppercase;
+            z-index: 2;
+        }
+    </style>
+</head>
+<body>
+<div id="title">Ember Nebula</div>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+</script>
+<script type="module">
+    import * as THREE from 'three';
+
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x08030d, 0.055);
+
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 4.2, 8.5);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setClearColor(0x08030d, 1);
+    document.body.appendChild(renderer.domElement);
+
+    const group = new THREE.Group();
+    group.rotation.x = -0.5;
+    scene.add(group);
+
+    // ---------- Spiral galaxy particle system ----------
+    const params = {
+        count: 26000,
+        radius: 7,
+        branches: 5,
+        spin: 1.15,
+        randomness: 0.45,
+        randomnessPower: 2.6,
+        insideColor: new THREE.Color(0xffcf6b),
+        midColor: new THREE.Color(0xff5e62),
+        outsideColor: new THREE.Color(0x6a4cff),
+        tipColor: new THREE.Color(0x33aaff)
+    };
+
+    const positions = new Float32Array(params.count * 3);
+    const colors = new Float32Array(params.count * 3);
+    const sizes = new Float32Array(params.count);
+    const phases = new Float32Array(params.count);
+
+    for (let i = 0; i < params.count; i++) {
+        const r = Math.pow(Math.random(), 1.4) * params.radius;
+        const branchAngle = ((i % params.branches) / params.branches) * Math.PI * 2;
+        const spinAngle = r * params.spin;
+
+        const rx = Math.pow(Math.random(), params.randomnessPower)
+            * (Math.random() < 0.5 ? 1 : -1) * params.randomness * r;
+        const ry = Math.pow(Math.random(), params.randomnessPower)
+            * (Math.random() < 0.5 ? 1 : -1) * params.randomness * r * 0.5;
+        const rz = Math.pow(Math.random(), params.randomnessPower)
+            * (Math.random() < 0.5 ? 1 : -1) * params.randomness * r;
+
+        positions[i * 3]     = Math.cos(branchAngle + spinAngle) * r + rx;
+        positions[i * 3 + 1] = ry;
+        positions[i * 3 + 2] = Math.sin(branchAngle + spinAngle) * r + rz;
+
+        const t = r / params.radius;
+        const c = new THREE.Color();
+        if (t < 0.4) {
+            c.copy(params.insideColor).lerp(params.midColor, t / 0.4);
+        } else if (t < 0.75) {
+            c.copy(params.midColor).lerp(params.outsideColor, (t - 0.4) / 0.35);
+        } else {
+            c.copy(params.outsideColor).lerp(params.tipColor, (t - 0.75) / 0.25);
+        }
+        colors[i * 3] = c.r; colors[i * 3 + 1] = c.g; colors[i * 3 + 2] = c.b;
+
+        sizes[i] = 0.5 + Math.random() * 1.6;
+        phases[i] = Math.random() * Math.PI * 2;
+    }
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+    geometry.setAttribute('phase', new THREE.BufferAttribute(phases, 1));
+
+    const particleMat = new THREE.ShaderMaterial({
+        uniforms: {
+            uTime: { value: 0 },
+            uScale: { value: 300.0 }
+        },
+        vertexShader: `
+            uniform float uTime;
+            uniform float uScale;
+            attribute float size;
+            attribute float phase;
+            attribute vec3 color;
+            varying vec3 vColor;
+            varying float vPhase;
+            void main() {
+                vColor = color;
+                vPhase = phase;
+                vec3 p = position;
+                float d = length(p.xz);
+                float a = uTime * (0.12 + 0.35 / (d + 1.5));
+                float c = cos(a), s = sin(a);
+                p = vec3(c * p.x + s * p.z, p.y, -s * p.x + c * p.z);
+                vec4 mv = modelViewMatrix * vec4(p, 1.0);
+                gl_PointSize = size * uScale / -mv.z;
+                gl_Position = projectionMatrix * mv;
+            }
+        `,
+        fragmentShader: `
+            uniform float uTime;
+            varying vec3 vColor;
+            varying float vPhase;
+            void main() {
+                float d = distance(gl_PointCoord, vec2(0.5));
+                if (d > 0.5) discard;
+                float core = smoothstep(0.5, 0.0, d);
+                float twinkle = 0.75 + 0.25 * sin(uTime * 2.0 + vPhase * 10.0);
+                gl_FragColor = vec4(vColor, core * core * twinkle);
+            }
+        `,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending
+    });
+
+    const galaxy = new THREE.Points(geometry, particleMat);
+    group.add(galaxy);
+
+    // ---------- Distant star dust ----------
+    const dustCount = 1500;
+    const dustPos = new Float32Array(dustCount * 3);
+    for (let i = 0; i < dustCount; i++) {
+        const r = 12 + Math.random() * 20;
+        const t = Math.random() * Math.PI * 2;
+        const p = Math.acos((Math.random() * 2) - 1);
+        dustPos[i * 3]     = r * Math.sin(p) * Math.cos(t);
+        dustPos[i * 3 + 1] = r * Math.cos(p) * 0.6;
+        dustPos[i * 3 + 2] = r * Math.sin(p) * Math.sin(t);
+    }
+    const dustGeo = new THREE.BufferGeometry();
+    dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
+    const dustMat = new THREE.PointsMaterial({
+        size: 0.03, color: 0x8a6bff, transparent: true,
+        opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false
+    });
+    const dust = new THREE.Points(dustGeo, dustMat);
+    scene.add(dust);
+
+    // ---------- Pulsing core with fresnel glow ----------
+    const coreUniforms = { uTime: { value: 0 } };
+    const coreMat = new THREE.ShaderMaterial({
+        uniforms: coreUniforms,
+        vertexShader: `
+            varying vec3 vN;
+            varying vec3 vV;
+            void main() {
+                vN = normalize(normalMatrix * normal);
+                vec4 mv = modelViewMatrix * vec4(position, 1.0);
+                vV = normalize(-mv.xyz);
+                gl_Position = projectionMatrix * mv;
+            }
+        `,
+        fragmentShader: `
+            uniform float uTime;
+            varying vec3 vN;
+            varying vec3 vV;
+            void main() {
+                float fres = pow(1.0 - max(dot(vN, vV), 0.0), 2.0);
+                float pulse = 0.85 + 0.15 * sin(uTime * 3.0);
+                vec3 inner = vec3(1.0, 0.95, 0.8) * 1.6;
+                vec3 rim = vec3(1.0, 0.35, 0.55);
+                vec3 col = mix(inner, rim, fres) * pulse;
+                gl_FragColor = vec4(col, 1.0);
+            }
+        `
+    });
+    const core = new THREE.Mesh(new THREE.SphereGeometry(0.55, 48, 48), coreMat);
+    group.add(core);
+
+    const halo = new THREE.Mesh(
+        new THREE.SphereGeometry(1.15, 48, 48),
+        new THREE.ShaderMaterial({
+            uniforms: coreUniforms,
+            vertexShader: `
+                varying vec3 vN; varying vec3 vV;
+                void main(){
+                    vN = normalize(normalMatrix * normal);
+                    vec4 mv = modelViewMatrix * vec4(position,1.0);
+                    vV = normalize(-mv.xyz);
+                    gl_Position = projectionMatrix * mv;
+                }`,
+            fragmentShader: `
+                uniform float uTime;
+                varying vec3 vN; varying vec3 vV;
+                void main(){
+                    float f = pow(1.0 - max(dot(vN, vV),0.0), 3.0);
+                    float pulse = 0.7 + 0.3 * sin(uTime * 3.0);
+                    gl_FragColor = vec4(vec3(1.0,0.4,0.6) * f, f * pulse);
+                }`,
+            transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+        })
+    );
+    group.add(halo);
+
+    // ---------- Interaction ----------
+    let mouseX = 0, mouseY = 0, tx = 0, ty = 0;
+    window.addEventListener('pointermove', (e) => {
+        mouseX = (e.clientX / window.innerWidth) * 2 - 1;
+        mouseY = (e.clientY / window.innerHeight) * 2 - 1;
+    });
+
+    // ---------- Loop ----------
+    const clock = new THREE.Clock();
+    function animate() {
+        requestAnimationFrame(animate);
+        const t = clock.getElapsedTime();
+
+        particleMat.uniforms.uTime.value = t;
+        coreUniforms.uTime.value = t;
+
+        const pulse = 1 + Math.sin(t * 3.0) * 0.08;
+        core.scale.setScalar(pulse);
+
+        tx += (mouseX - tx) * 0.03;
+        ty += (mouseY - ty) * 0.03;
+        group.rotation.y = t * 0.05 + tx * 0.4;
+        group.rotation.x = -0.5 + ty * 0.25;
+
+        dust.rotation.y = -t * 0.01;
+
+        camera.position.x = Math.sin(t * 0.1) * 0.6;
+        camera.lookAt(0, 0, 0);
+
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+</script>
+</body>
+</html>

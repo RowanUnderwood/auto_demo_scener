@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lorenz System with Three.js</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000000;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    <script>
+        // Lorenz system parameters
+        const sigma = 10, rho = 28, beta = 8 / 3;
+        let dt = 0.005;
+        let stepsPerFrame = 100;
+
+        // Initialize Three.js scene
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Camera positioning and orbit controls
+        camera.position.z = 50;
+        let angle = 0;
+
+        // Create a line for the Lorenz attractor
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(8000 * 3);
+        const colors = new Float32Array(8000 * 3);
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+        const material = new THREE.LineBasicMaterial({
+            vertexColors: true,
+            linewidth: 1
+        });
+
+        const line = new THREE.Line(geometry, material);
+        scene.add(line);
+
+        // Lorenz system variables and initial conditions
+        let x = Math.random() * 2 - 1;
+        let y = Math.random() * 2 - 1;
+        let z = Math.random() * 2 - 1;
+        let t = 0;
+
+        // Buffer management
+        const maxVertices = 8000;
+        let vertexCount = 0;
+
+        function updateLorenz() {
+            for (let i = 0; i < stepsPerFrame; i++) {
+                const k1x = sigma * (y - x);
+                const k1y = x * (rho - z) - y;
+                const k1z = x * y - beta * z;
+
+                const k2x = sigma * ((y + dt / 2 * k1y) - (x + dt / 2 * k1x));
+                const k2y = (x + dt / 2 * k1x) * (rho - (z + dt / 2 * k1z)) - (y + dt / 2 * k1y);
+                const k2z = (x + dt / 2 * k1x) * (y + dt / 2 * k1y) - beta * (z + dt / 2 * k1z);
+
+                const k3x = sigma * ((y + dt / 2 * k2y) - (x + dt / 2 * k2x));
+                const k3y = (x + dt / 2 * k2x) * (rho - (z + dt / 2 * k2z)) - (y + dt / 2 * k2y);
+                const k3z = (x + dt / 2 * k2x) * (y + dt / 2 * k2y) - beta * (z + dt / 2 * k2z);
+
+                const k4x = sigma * ((y + dt * k3y) - (x + dt * k3x));
+                const k4y = (x + dt * k3x) * (rho - (z + dt * k3z)) - (y + dt * k3y);
+                const k4z = (x + dt * k3x) * (y + dt * k3y) - beta * (z + dt * k3z);
+
+                x += dt / 6 * (k1x + 2 * k2x + 2 * k3x + k4x);
+                y += dt / 6 * (k1y + 2 * k2y + 2 * k3y + k4y);
+                z += dt / 6 * (k1z + 2 * k2z + 2 * k3z + k4z);
+
+                const posIdx = vertexCount * 3;
+                positions[posIdx] = x;
+                positions[posIdx + 1] = y;
+                positions[posIdx + 2] = z;
+
+                // HSL color mapping based on time
+                const h = (t % 360) / 360;
+                const s = 0.7;
+                const l = 0.5;
+                const color = new THREE.Color();
+                color.setHSL(h, s, l);
+                colors[posIdx] = color.r;
+                colors[posIdx + 1] = color.g;
+                colors[posIdx + 2] = color.b;
+
+                vertexCount++;
+                if (vertexCount >= maxVertices) {
+                    vertexCount = 0; // Reset to start overwriting the buffer
+                }
+
+                geometry.attributes.position.needsUpdate = true;
+                geometry.attributes.color.needsUpdate = true;
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            updateLorenz();
+            renderer.render(scene, camera);
+
+            // Slowly rotate the camera
+            angle += 0.001;
+            camera.position.x = 50 * Math.cos(angle);
+            camera.position.z = 50 * Math.sin(angle);
+            camera.lookAt(0, 0, 0);
+
+            t += dt; // Increment time for color mapping
+        }
+
+        animate();
+    </script>
+</body>
+</html>

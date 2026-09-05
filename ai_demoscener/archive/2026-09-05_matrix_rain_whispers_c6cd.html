@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>0xDEADC0DE</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#000}
+  canvas{display:block}
+</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const MESSAGES = [
+  "KERNEL DREAMS IN HEXADECIMAL",
+  "CHECKSUM OF THE HEART: 0xDEADC0DE",
+  "THE NULL POINTER POINTS INWARD",
+  "GOD IS A BUFFER OVERFLOW",
+  "SECTOR 7 DOES NOT ACKNOWLEDGE THE VISITOR",
+  "THE CLOCK IS A LIE TOLD IN REGULAR INTERVALS",
+  "WE HAVE FORGOTTEN THE FIFTH PRIME",
+  "THE COMPILER HAS SEEN YOUR FUTURE AND DISMISSED IT",
+  "MEMORY LEAKS INTO THE MOUNTAIN",
+  "THE MACHINE REMEMBERS WHAT YOU FORGAVE IT",
+  "ALL SIGNALS BECOME NOISE, THEN RITUAL",
+  "0x7F45: A DOOR THAT WAS NEVER A DOOR",
+  "STATIC IS THE SOUND OF THE UNIVERSE COMPILING",
+  "THE ARCHIVE OF UNBORN PROCESSES IS FULL"
+];
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
+
+const scene  = new THREE.Scene();
+const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+/* ---------- glyph atlas ---------- */
+const GRID = { x: 16, y: 5 };
+const CELL = { w: 32, h: 64 };
+const kata   = "アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン".split("");
+const ascii  = "0123456789ABCDEF<>[]{}/\\|=+*#$%!?&@".split("");
+let glyphs   = kata.concat(ascii);
+while (glyphs.length < GRID.x * GRID.y) glyphs.push("0");
+
+const ac = document.createElement("canvas");
+ac.width = GRID.x * CELL.w;
+ac.height = GRID.y * CELL.h;
+const actx = ac.getContext("2d");
+actx.fillStyle = "#000";
+actx.fillRect(0, 0, ac.width, ac.height);
+actx.font = "26px 'MS Gothic','Courier New',monospace";
+actx.textAlign = "center";
+actx.textBaseline = "middle";
+glyphs.forEach((ch, i) => {
+  const x = (i % GRID.x) * CELL.w;
+  const y = Math.floor(i / GRID.x) * CELL.h;
+  actx.shadowColor = "rgba(140,255,160,0.9)";
+  actx.shadowBlur  = 3;
+  actx.fillStyle   = "#9fffb0";
+  actx.fillText(ch, x + CELL.w / 2, y + CELL.h / 2 + 4);
+});
+const atlasTex = new THREE.CanvasTexture(ac);
+atlasTex.minFilter = THREE.LinearFilter;
+atlasTex.magFilter = THREE.LinearFilter;
+
+/* ---------- message texture ---------- */
+const tc = document.createElement("canvas");
+tc.width = 1024; tc.height = 128;
+const tctx = tc.getContext("2d");
+const textTex = new THREE.CanvasTexture(tc);
+function drawMessage(msg) {
+  tctx.clearRect(0, 0, tc.width, tc.height);
+  tctx.font = "44px 'Courier New',monospace";
+  tctx.textAlign = "center";
+  tctx.textBaseline = "middle";
+  tctx.shadowColor = "#4f8";
+  tctx.shadowBlur  = 18;
+  tctx.fillStyle   = "#b8ffd0";
+  tctx.fillText(msg, tc.width / 2, tc.height / 2);
+  tctx.fillText(msg, tc.width / 2, tc.height / 2);
+  textTex.needsUpdate = true;
+}
+drawMessage(MESSAGES[0]);
+
+/* ---------- shader ---------- */
+const mat = new THREE.ShaderMaterial({
+  uniforms: {
+    uAtlas:  { value: atlasTex },
+    uText:   { value: textTex },
+    uTime:   { value: 0 },
+    uDim:    { value: 0 },
+    uScroll: { value: 1 }
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    precision highp float;
+    uniform sampler2D uAtlas;
+    uniform sampler2D uText;
+    uniform float uTime;
+    uniform float uDim;
+    uniform float uScroll;
+    varying vec2 vUv;
+
+    float hash(vec2 p) {
+      p = fract(p * vec2(123.34, 456.21));
+      p += dot(p, p + 45.32);
+      return fract(p.x * p.y);
+    }
+
+    void main() {
+      float COLS = 42.0;
+      float ROWS = 30.0;
+
+      float col      = floor(vUv.x * COLS);
+      float localX   = fract(vUv.x * COLS);
+      float cellRow  = floor(vUv.y * ROWS);
+      float cellY    = (cellRow + 0.5) / ROWS;
+
+      float speed = 0.12 + 0.30 * hash(vec2(col, 1.7));
+      float seed  = hash(vec2(col, 9.1));
+      float head  = 1.0 - fract(uTime * speed + seed);
+
+      float dist = head - cellY;
+      float trail = 14.0 / ROWS;
+      float glow = step(0.0, dist) * smoothstep(trail, 0.0, dist);
+      float headGlow = smoothstep(0.6 / ROWS, 0.0, dist);
+
+      float gTick = floor(uTime * 3.5) + floor(hash(vec2(col, cellRow)) * 10.0);
+      float idx = floor(hash(vec2(col, cellRow * 7.13 + gTick)) * ${GRID.x * GRID.y}.0);
+      vec2 cellUv = (vec2(mod(idx, ${GRID.x}.0), floor(idx / ${GRID.x}.0))
+                     + vec2(localX, fract(vUv.y * ROWS))) / vec2(${GRID.x}.0, ${GRID.y}.0);
+
+      vec4 glyph = texture2D(uAtlas, cellUv);
+
+      vec3 base = vec3(0.15, 1.0, 0.35) * glow;
+      base += vec3(0.85, 1.0, 0.90) * headGlow;
+      base *= glyph.rgb;
+      base *= (1.0 - uDim * 0.92);
+
+      vec2 tuv = vec2(fract(vUv.x + uScroll), 0.5);
+      float ta = texture2D(uText, tuv).r * uDim;
+      base += vec3(0.35, 0.90, 0.55) * ta;
+
+      float scan = 0.92 + 0.08 * sin(vUv.y * 900.0);
+      vec2 q = vUv - 0.5;
+      float vig = 1.0 - dot(q, q) * 0.6;
+      base *= scan * vig;
+      base += vec3(0.004, 0.012, 0.006);
+
+      gl_FragColor = vec4(base, 1.0);
+    }
+  `
+});
+scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat));
+
+/* ---------- timing: 8s rain / 8s dim, new message each dim ---------- */
+const CYCLE = 16, DIMLEN = 8;
+let lastIdx = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+  const el = performance.now() / 1000;
+  const t  = el % CYCLE;
+
+  const dim = t >= DIMLEN
+    ? THREE.MathUtils.smoothstep(t - DIMLEN, 0, 1.2) *
+      THREE.MathUtils.smoothstep(CYCLE - t,  0, 1.2)
+    : 0;
+
+  const idx = ((Math.floor((el - DIMLEN) / CYCLE) % MESSAGES.length) + MESSAGES.length) % MESSAGES.length;
+  if (idx !== lastIdx) { drawMessage(MESSAGES[idx]); lastIdx = idx; }
+
+  mat.uniforms.uTime.value   = el;
+  mat.uniforms.uDim.value    = dim;
+  mat.uniforms.uScroll.value = 1 - THREE.MathUtils.clamp((t - DIMLEN) / DIMLEN, 0, 1);
+
+  renderer.render(scene, camera);
+}
+animate();
+
+addEventListener("resize", () => {
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.setPixelRatio(devicePixelRatio);
+});
+renderer.setPixelRatio(devicePixelRatio);
+renderer.setSize(innerWidth, innerHeight);
+</script>
+</body>
+</html>

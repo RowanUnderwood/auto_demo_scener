@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nebula Void Raymarching</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #05000a; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+    </style>
+</head>
+<body>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        const vertexShader = `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = vec4(position, 1.0);
+            }
+        `;
+
+        const fragmentShader = `
+            uniform float uTime;
+            uniform vec2 uResolution;
+            varying vec2 vUv;
+
+            // Optimized hash for cosmic noise
+            float hash(vec3 p) {
+                p  = fract(p * 0.1031);
+                p += dot(p, p.yzx + 33.33);
+                return fract((p.x + p.y) * p.z);
+            }
+
+            // Smooth noise for organic gas feel
+            float noise(vec3 x) {
+                vec3 i = floor(x);
+                vec3 f = fract(x);
+                f = f*f*(3.0-2.0*f);
+                return mix(mix(mix(hash(i+vec3(0,0,0)), hash(i+vec3(1,0,0)),f.x),
+                               mix(hash(i+vec3(0,1,0)), hash(i+vec3(1,1,0)),f.x),f.y),
+                           mix(mix(hash(i+vec3(0,0,1)), hash(i+vec3(1,0,1)),f.x),
+                               mix(hash(i+vec3(0,1,1)), hash(i+vec3(1,1,1)),f.x),f.y),f.z);
+            }
+
+            float fbm(vec3 p) {
+                float v = 0.0;
+                float amp = 0.5;
+                vec3 shift = vec3(100.0);
+                for (int i = 0; i < 5; i++) {
+                    v += amp * noise(p);
+                    p = p * 2.0 + shift;
+                    amp *= 0.5;
+                }
+                return v;
+            }
+
+            float getDensity(vec3 p) {
+                // Swirling movement using time and coordinates
+                float angle = uTime * 0.1;
+                mat2 rot = mat2(cos(angle), -sin(angle), sin(angle), cos(angle));
+                vec3 pRot = vec3(rot * p.xz, p.y);
+                
+                float d = fbm(pRot * 0.4 + uTime * 0.05);
+                
+                // Sphere mask to keep the nebula contained in a central void
+                float dist = length(p) - 3.0;
+                float mask = smoothstep(2.0, -1.0, dist);
+                
+                return max(0.0, d * mask - 0.3) * 2.0;
+            }
+
+            void main() {
+                vec2 uv = (gl_FragCoord.xy - 0.5 * uResolution.xy) / min(uResolution.y, uResolution.x);
+                
+                // Dynamic camera motion
+                float camT = uTime * 0.2;
+                vec3 ro = vec3(sin(camT)*6.0, cos(camT*0.7)*2.0, cos(camT)*6.0);
+                vec3 target = vec3(0.0, 0.0, 0.0);
+                vec3 cw = normalize(target - ro);
+                vec3 cp = vec3(0.0, 1.0, 0.0);
+                vec3 cu = normalize(cross(cw, cp));
+                vec3 cv = normalize(cross(cu, cw));
+                vec3 rd = normalize(uv.x * cu + uv.y * cv + 2.0 * cw);
+
+                // Palette: Deep Purple to Neon Cyan
+                vec3 color1 = vec3(0.2, 0.0, 0.5); // Deep Indigo
+                vec3 color2 = vec3(0.0, 0.8, 0.9); // Electric Cyan
+                vec3 starColor = vec3(0.8, 0.9, 1.0);
+
+                // Background stars
+                float stars = pow(hash(rd * 500.0), 100.0) * 2.0;
+                vec3 finalCol = stars * starColor;
+
+                // Raymarching the volume
+                const int steps = 80;
+                float stepSize = 0.15;
+                float transmittance = 1.0;
+                vec3 volumetricLight = vec3(0.0);
+
+                for (int i = 0; i < steps; i++) {
+                    vec3 p = ro + rd * float(i) * stepSize;
+                    float d = getDensity(p);
+
+                    if (d > 0.01) {
+                        // Color shift based on density and position
+                        vec3 localCol = mix(color1, color2, d + length(p)*0.1);
+                        
+                        // Light integration
+                        float absorption = d * stepSize;
+                        volumetricLight += transmittance * localCol * absorption * 0.6;
+                        transmittance *= exp(-absorption);
+                    }
+
+                    if (transmittance < 0.05) break;
+                }
+
+                finalCol += volumetricLight;
+                
+                // Post processing: Vignette and Gamma
+                float vignette = 1.0 - dot(uv, uv) * 0.4;
+                finalCol *= vignette;
+                finalCol = pow(finalCol, vec3(0.85));
+
+                gl_FragColor = vec4(finalCol, 1.0);
+            }
+        `;
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const uniforms = {
+            uTime: { value: 0 },
+            uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+        };
+
+        const material = new THREE.ShaderMaterial({
+            vertexShader,
+            fragmentShader,
+            uniforms
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        function animate(time) {
+            uniforms.uTime.value = time * 0.001;
+            renderer.render(scene, camera);
+            requestAnimationFrame(animate);
+        }
+
+        window.addEventListener('resize', () => {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+        });
+
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>

@@ -3,31 +3,58 @@
     "crashes": 0,
     "blanks": 1,
     "total": 1,
-    "last_fail": "2026-05-10T11:57:17.493502"
+    "last_fail": "2026-05-10T11:57:17.493502",
+    "runs": 1,
+    "by_model": {
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      }
+    }
   },
   "Audio Sphere": {
     "crashes": 1,
     "blanks": 1,
     "total": 2,
     "last_fail": "2026-05-14T06:27:23.387119",
-    "runs": 1,
+    "runs": 2,
     "by_model": {
       "huihui-qwen3-vl-8b-instruct-abliterated": {
         "crashes": 1,
         "blanks": 0,
         "total": 1,
         "runs": 1
+      },
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
       }
     }
   },
   "Audio-Reactive Bars": {
     "crashes": 0,
-    "blanks": 3,
-    "total": 3,
-    "last_fail": "2026-05-10T16:08:32.006654",
-    "runs": 1,
+    "blanks": 4,
+    "total": 4,
+    "last_fail": "2026-05-17T04:23:50.916885",
+    "runs": 3,
     "by_model": {
       "qwen/qwen3.6-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      },
+      "qwen3-30b-a3b-thinking-2507": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
+        "runs": 1
+      },
+      "magistral-small-2509": {
         "crashes": 0,
         "blanks": 0,
         "total": 0,
@@ -36,11 +63,11 @@
     }
   },
   "Phyllotaxis Spiral": {
-    "crashes": 0,
-    "blanks": 3,
-    "total": 3,
-    "last_fail": "2026-05-15T05:38:24.607883",
-    "runs": 2,
+    "crashes": 1,
+    "blanks": 5,
+    "total": 6,
+    "last_fail": "2026-09-05T08:42:08.124009",
+    "runs": 5,
     "by_model": {
       "nvidia-nemotron-nano-9b-v2": {
         "crashes": 0,
@@ -53,6 +80,24 @@
         "blanks": 1,
         "total": 1,
         "runs": 1
+      },
+      "unsloth/qwen3-vl-30b-a3b-instruct": {
+        "crashes": 1,
+        "blanks": 0,
+        "total": 1,
+        "runs": 1
+      },
+      "qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
+        "runs": 1
+      },
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
+        "runs": 1
       }
     }
   },
@@ -61,12 +106,24 @@
     "blanks": 1,
     "total": 2,
     "last_fail": "2026-05-14T08:21:58.709278",
-    "runs": 1,
+    "runs": 3,
     "by_model": {
       "liquid/lfm2-24b-a2b": {
         "crashes": 1,
         "blanks": 0,
         "total": 1,
+        "runs": 1
+      },
+      "qwen/qwen3.5-9b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      },
+      "qwen/qwen3-vl-8b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
         "runs": 1
       }
     }
@@ -75,35 +132,55 @@
     "crashes": 0,
     "blanks": 1,
     "total": 1,
-    "last_fail": "2026-05-12T04:49:11.679794"
+    "last_fail": "2026-05-12T04:49:11.679794",
+    "runs": 1,
+    "by_model": {
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1,
+        "deletions": 1
+      }
+    },
+    "deletions": 1
   },
   "Kaleidoscope": {
     "crashes": 0,
-    "blanks": 1,
-    "total": 1,
-    "last_fail": "2026-05-12T05:02:28.523591",
-    "runs": 1,
+    "blanks": 2,
+    "total": 2,
+    "last_fail": "2026-05-17T14:04:45.228550",
+    "runs": 3,
     "by_model": {
       "qwen3-vl-8b-instruct-abliterated-v2.0": {
         "crashes": 0,
         "blanks": 0,
         "total": 0,
         "runs": 1
+      },
+      "google/gemma-4-e4b": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
+        "runs": 2,
+        "deletions": 1
       }
-    }
+    },
+    "deletions": 1
   },
   "Sorting Visualizer": {
     "crashes": 2,
     "blanks": 1,
     "total": 3,
     "last_fail": "2026-05-15T10:43:57.050346",
-    "runs": 2,
+    "runs": 3,
     "by_model": {
       "gemma-4-e4b-it-heretic": {
         "crashes": 1,
         "blanks": 0,
         "total": 1,
-        "runs": 1
+        "runs": 2,
+        "deletions": 1
       },
       "nvidia-nemotron-nano-9b-v2": {
         "crashes": 1,
@@ -111,13 +188,31 @@
         "total": 1,
         "runs": 1
       }
-    }
+    },
+    "deletions": 1
   },
   "Barnsley Fern": {
     "crashes": 0,
-    "blanks": 1,
-    "total": 1,
-    "last_fail": "2026-05-13T05:11:27.203263"
+    "blanks": 2,
+    "total": 2,
+    "last_fail": "2026-09-05T08:37:23.634877",
+    "runs": 2,
+    "by_model": {
+      "qwen3-30b-a3b-instruct-2507": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1,
+        "deletions": 1
+      },
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
+        "runs": 1
+      }
+    },
+    "deletions": 1
   },
   "Demoscene Greetz": {
     "crashes": 0,
@@ -158,18 +253,19 @@
     "deletions": 1
   },
   "creative": {
-    "crashes": 9,
-    "blanks": 10,
-    "total": 19,
-    "runs": 47,
-    "deletions": 7,
-    "last_fail": "2026-05-15T12:19:45.779618",
+    "crashes": 13,
+    "blanks": 18,
+    "total": 31,
+    "runs": 99,
+    "deletions": 13,
+    "last_fail": "2026-09-05T09:19:06.108995",
     "by_model": {
       "google/gemma-4-26b-a4b": {
         "crashes": 0,
         "blanks": 1,
         "total": 1,
-        "runs": 2
+        "runs": 3,
+        "deletions": 1
       },
       "lmstudio-community/qwen3.5-35b-a3b": {
         "crashes": 0,
@@ -181,40 +277,40 @@
         "crashes": 0,
         "blanks": 0,
         "total": 0,
-        "runs": 2,
-        "deletions": 1
+        "runs": 4,
+        "deletions": 2
       },
       "qwen3-30b-a3b-instruct-2507": {
         "crashes": 0,
         "blanks": 1,
         "total": 1,
-        "runs": 3
+        "runs": 4
       },
       "google/gemma-4-e4b": {
         "crashes": 0,
         "blanks": 0,
         "total": 0,
-        "runs": 1
+        "runs": 2
       },
       "unsloth/qwen3.5-35b-a3b": {
         "crashes": 0,
         "blanks": 0,
         "total": 0,
-        "runs": 1,
+        "runs": 2,
         "deletions": 1
       },
       "qwen_qwen3-30b-a3b-thinking-2507": {
         "crashes": 1,
         "blanks": 0,
         "total": 1,
-        "runs": 4,
-        "deletions": 1
+        "runs": 6,
+        "deletions": 2
       },
       "qwen/qwen3-vl-4b": {
-        "crashes": 3,
+        "crashes": 4,
         "blanks": 0,
-        "total": 3,
-        "runs": 4
+        "total": 4,
+        "runs": 7
       },
       "mistralai/devstral-small-2507": {
         "crashes": 0,
@@ -226,14 +322,14 @@
         "crashes": 0,
         "blanks": 0,
         "total": 0,
-        "runs": 1,
+        "runs": 3,
         "deletions": 1
       },
       "qwen/qwen3.6-27b": {
         "crashes": 0,
-        "blanks": 0,
-        "total": 0,
-        "runs": 1
+        "blanks": 2,
+        "total": 2,
+        "runs": 4
       },
       "gemma-4-e4b-it-heretic": {
         "crashes": 1,
@@ -249,16 +345,16 @@
       },
       "qwen/qwen3-vl-8b": {
         "crashes": 1,
-        "blanks": 0,
-        "total": 1,
-        "runs": 2,
+        "blanks": 1,
+        "total": 2,
+        "runs": 4,
         "deletions": 1
       },
       "liquid/lfm2-24b-a2b": {
         "crashes": 0,
         "blanks": 1,
         "total": 1,
-        "runs": 1
+        "runs": 2
       },
       "qwen/qwen3-vl-30b": {
         "crashes": 1,
@@ -267,34 +363,36 @@
         "runs": 3
       },
       "huihui-qwen3-vl-8b-instruct-abliterated": {
-        "crashes": 1,
+        "crashes": 2,
         "blanks": 0,
-        "total": 1,
-        "runs": 1
+        "total": 2,
+        "runs": 4
       },
       "qwen/qwen3.6-35b-a3b": {
         "crashes": 0,
         "blanks": 0,
         "total": 0,
-        "runs": 2
+        "runs": 3,
+        "deletions": 1
       },
       "aescoder-4b": {
         "crashes": 0,
-        "blanks": 1,
-        "total": 1,
-        "runs": 2
+        "blanks": 2,
+        "total": 2,
+        "runs": 3
       },
       "magistral-small-2509": {
         "crashes": 0,
         "blanks": 0,
         "total": 0,
-        "runs": 1
+        "runs": 2,
+        "deletions": 1
       },
       "qwen3-coder-30b-a3b-instruct": {
         "crashes": 0,
         "blanks": 0,
         "total": 0,
-        "runs": 1
+        "runs": 4
       },
       "gemma-4-31b-it": {
         "crashes": 0,
@@ -315,10 +413,35 @@
         "runs": 1
       },
       "qwen3.5-9b-abliterated": {
+        "crashes": 2,
+        "blanks": 0,
+        "total": 2,
+        "runs": 3,
+        "deletions": 1
+      },
+      "qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
+        "runs": 1
+      },
+      "nvidia-nemotron-nano-9b-v2": {
         "crashes": 1,
         "blanks": 0,
         "total": 1,
         "runs": 1
+      },
+      "zai-org/glm-4.7-flash": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
+        "runs": 1
+      },
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 2,
+        "total": 2,
+        "runs": 19
       }
     }
   },
@@ -326,8 +449,8 @@
     "crashes": 0,
     "blanks": 1,
     "total": 1,
-    "runs": 1,
-    "deletions": 0,
+    "runs": 2,
+    "deletions": 1,
     "last_fail": "2026-05-14T06:08:42.575662",
     "by_model": {
       "google/gemma-4-26b-a4b": {
@@ -335,38 +458,70 @@
         "blanks": 1,
         "total": 1,
         "runs": 1
+      },
+      "qwen/qwen3.6-35b-a3b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1,
+        "deletions": 1
       }
     }
   },
   "Maze Walker Screensaver": {
-    "crashes": 1,
+    "crashes": 2,
     "blanks": 0,
-    "total": 1,
-    "runs": 1,
+    "total": 2,
+    "runs": 3,
     "deletions": 0,
-    "last_fail": "2026-05-14T06:13:56.394283",
+    "last_fail": "2026-05-17T05:03:42.230054",
     "by_model": {
       "qwen3-vl-8b-instruct-abliterated-v2.0": {
         "crashes": 1,
         "blanks": 0,
         "total": 1,
         "runs": 1
+      },
+      "huihui-qwen3-vl-8b-instruct-abliterated": {
+        "crashes": 1,
+        "blanks": 0,
+        "total": 1,
+        "runs": 1
+      },
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
       }
     }
   },
   "Penrose P3 Tiling": {
-    "crashes": 0,
+    "crashes": 1,
     "blanks": 1,
-    "total": 1,
-    "runs": 1,
-    "deletions": 0,
-    "last_fail": "2026-05-14T06:19:26.712263",
+    "total": 2,
+    "runs": 3,
+    "deletions": 1,
+    "last_fail": "2026-05-17T04:40:19.758842",
     "by_model": {
       "liquid/lfm2-24b-a2b": {
         "crashes": 0,
         "blanks": 1,
         "total": 1,
         "runs": 1
+      },
+      "mistralai/devstral-small-2507": {
+        "crashes": 1,
+        "blanks": 0,
+        "total": 1,
+        "runs": 1
+      },
+      "huihui-qwen3-vl-8b-instruct-abliterated": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1,
+        "deletions": 1
       }
     }
   },
@@ -410,11 +565,11 @@
   },
   "Sine Scroller": {
     "crashes": 0,
-    "blanks": 1,
-    "total": 1,
-    "runs": 2,
+    "blanks": 2,
+    "total": 2,
+    "runs": 3,
     "deletions": 2,
-    "last_fail": "2026-05-15T08:34:16.887897",
+    "last_fail": "2026-05-17T04:07:15.405469",
     "by_model": {
       "qwen3-30b-a3b-thinking-2507": {
         "crashes": 0,
@@ -424,6 +579,12 @@
         "deletions": 1
       },
       "gemma-4-e4b-it-heretic": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
+        "runs": 1
+      },
+      "qwen3-30b-a3b-instruct-2507": {
         "crashes": 0,
         "blanks": 1,
         "total": 1,
@@ -451,7 +612,7 @@
     "crashes": 0,
     "blanks": 1,
     "total": 1,
-    "runs": 1,
+    "runs": 2,
     "deletions": 0,
     "last_fail": "2026-05-14T06:49:19.690636",
     "by_model": {
@@ -459,6 +620,12 @@
         "crashes": 0,
         "blanks": 1,
         "total": 1,
+        "runs": 1
+      },
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
         "runs": 1
       }
     }
@@ -481,11 +648,11 @@
   },
   "Mandelbrot Zoom": {
     "crashes": 0,
-    "blanks": 0,
-    "total": 0,
-    "runs": 3,
+    "blanks": 1,
+    "total": 1,
+    "runs": 4,
     "deletions": 1,
-    "last_fail": null,
+    "last_fail": "2026-05-17T05:46:36.969885",
     "by_model": {
       "zai-org/glm-4.7-flash": {
         "crashes": 0,
@@ -498,6 +665,12 @@
         "crashes": 0,
         "blanks": 0,
         "total": 0,
+        "runs": 1
+      },
+      "unsloth/qwen3.5-35b-a3b": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
         "runs": 1
       }
     }
@@ -526,11 +699,11 @@
   },
   "Demo-Mode Asteroids": {
     "crashes": 1,
-    "blanks": 1,
-    "total": 2,
-    "runs": 2,
+    "blanks": 2,
+    "total": 3,
+    "runs": 3,
     "deletions": 0,
-    "last_fail": "2026-05-15T09:38:03.442352",
+    "last_fail": "2026-09-05T08:27:59.492351",
     "by_model": {
       "qwen/qwen3.6-27b": {
         "crashes": 0,
@@ -543,22 +716,28 @@
         "blanks": 0,
         "total": 1,
         "runs": 1
+      },
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
+        "runs": 1
       }
     }
   },
   "Starfield": {
     "crashes": 0,
-    "blanks": 1,
-    "total": 1,
-    "runs": 2,
+    "blanks": 2,
+    "total": 2,
+    "runs": 3,
     "deletions": 0,
-    "last_fail": "2026-05-14T07:07:49.843260",
+    "last_fail": "2026-05-17T06:44:33.033268",
     "by_model": {
       "unsloth/qwen3-vl-30b-a3b-instruct": {
         "crashes": 0,
-        "blanks": 1,
-        "total": 1,
-        "runs": 1
+        "blanks": 2,
+        "total": 2,
+        "runs": 2
       },
       "qwen/qwen3.5-9b": {
         "crashes": 0,
@@ -585,14 +764,33 @@
     }
   },
   "Mystify Bezier Lines": {
-    "crashes": 0,
+    "crashes": 1,
     "blanks": 0,
-    "total": 0,
-    "runs": 1,
-    "deletions": 0,
-    "last_fail": null,
+    "total": 1,
+    "runs": 4,
+    "deletions": 1,
+    "last_fail": "2026-05-17T07:18:26.596411",
     "by_model": {
       "qwen/qwen3.6-35b-a3b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      },
+      "qwen3-coder-30b-a3b-instruct": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1,
+        "deletions": 1
+      },
+      "liquid/lfm2-24b-a2b": {
+        "crashes": 1,
+        "blanks": 0,
+        "total": 1,
+        "runs": 1
+      },
+      "qwen3.8-27b": {
         "crashes": 0,
         "blanks": 0,
         "total": 0,
@@ -604,7 +802,7 @@
     "crashes": 1,
     "blanks": 0,
     "total": 1,
-    "runs": 1,
+    "runs": 3,
     "deletions": 0,
     "last_fail": "2026-05-14T07:21:18.306021",
     "by_model": {
@@ -613,6 +811,18 @@
         "blanks": 0,
         "total": 1,
         "runs": 1
+      },
+      "qwen_qwen3-30b-a3b-thinking-2507": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      },
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
       }
     }
   },
@@ -620,8 +830,8 @@
     "crashes": 0,
     "blanks": 1,
     "total": 1,
-    "runs": 1,
-    "deletions": 0,
+    "runs": 4,
+    "deletions": 1,
     "last_fail": "2026-05-14T07:23:31.116665",
     "by_model": {
       "unsloth/qwen3-vl-30b-a3b-instruct": {
@@ -629,21 +839,46 @@
         "blanks": 1,
         "total": 1,
         "runs": 1
+      },
+      "lmstudio-community/qwen3.5-35b-a3b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      },
+      "qwen3-coder-30b-a3b-instruct": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1,
+        "deletions": 1
+      },
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
       }
     }
   },
   "Matrix Digital Rain": {
     "crashes": 0,
-    "blanks": 0,
-    "total": 0,
-    "runs": 1,
+    "blanks": 1,
+    "total": 1,
+    "runs": 2,
     "deletions": 0,
-    "last_fail": null,
+    "last_fail": "2026-05-17T05:06:42.856008",
     "by_model": {
       "unsloth/qwen3-vl-30b-a3b-instruct": {
         "crashes": 0,
         "blanks": 0,
         "total": 0,
+        "runs": 1
+      },
+      "qwen_qwen3-30b-a3b-thinking-2507": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
         "runs": 1
       }
     }
@@ -652,8 +887,8 @@
     "crashes": 0,
     "blanks": 0,
     "total": 0,
-    "runs": 2,
-    "deletions": 0,
+    "runs": 3,
+    "deletions": 2,
     "last_fail": null,
     "by_model": {
       "google/gemma-4-26b-a4b": {
@@ -666,7 +901,15 @@
         "crashes": 0,
         "blanks": 0,
         "total": 0,
-        "runs": 1
+        "runs": 1,
+        "deletions": 1
+      },
+      "nvidia-nemotron-nano-9b-v2": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1,
+        "deletions": 1
       }
     }
   },
@@ -674,8 +917,8 @@
     "crashes": 1,
     "blanks": 0,
     "total": 1,
-    "runs": 2,
-    "deletions": 1,
+    "runs": 4,
+    "deletions": 2,
     "last_fail": "2026-05-15T10:22:27.004273",
     "by_model": {
       "zai-org/glm-4.7-flash": {
@@ -690,22 +933,53 @@
         "blanks": 0,
         "total": 1,
         "runs": 1
+      },
+      "unsloth/qwen3-vl-30b-a3b-instruct": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1,
+        "deletions": 1
+      },
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
       }
     }
   },
   "Cube Twister": {
-    "crashes": 0,
+    "crashes": 2,
     "blanks": 2,
-    "total": 2,
-    "runs": 2,
+    "total": 4,
+    "runs": 5,
     "deletions": 1,
-    "last_fail": "2026-05-15T06:30:59.991404",
+    "last_fail": "2026-05-17T15:07:17.340235",
     "by_model": {
       "qwen3-coder-30b-a3b-instruct": {
         "crashes": 0,
         "blanks": 2,
         "total": 2,
         "runs": 2
+      },
+      "gpt-oss-20b": {
+        "crashes": 1,
+        "blanks": 0,
+        "total": 1,
+        "runs": 1
+      },
+      "huihui-qwen3-vl-8b-instruct-abliterated": {
+        "crashes": 1,
+        "blanks": 0,
+        "total": 1,
+        "runs": 1
+      },
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
       }
     }
   },
@@ -713,7 +987,7 @@
     "crashes": 0,
     "blanks": 1,
     "total": 1,
-    "runs": 1,
+    "runs": 2,
     "deletions": 0,
     "last_fail": "2026-05-14T07:34:21.173691",
     "by_model": {
@@ -722,6 +996,12 @@
         "blanks": 1,
         "total": 1,
         "runs": 1
+      },
+      "qwen/qwen3.6-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
       }
     }
   },
@@ -729,8 +1009,8 @@
     "crashes": 1,
     "blanks": 0,
     "total": 1,
-    "runs": 1,
-    "deletions": 0,
+    "runs": 3,
+    "deletions": 2,
     "last_fail": "2026-05-14T07:35:37.641143",
     "by_model": {
       "qwen/qwen3-vl-8b": {
@@ -738,18 +1018,44 @@
         "blanks": 0,
         "total": 1,
         "runs": 1
+      },
+      "magistral-small-2509": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1,
+        "deletions": 1
+      },
+      "qwen/qwen3-vl-30b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1,
+        "deletions": 1
       }
     }
   },
   "Aurora Borealis": {
-    "crashes": 0,
+    "crashes": 1,
     "blanks": 0,
-    "total": 0,
-    "runs": 1,
+    "total": 1,
+    "runs": 3,
     "deletions": 0,
-    "last_fail": null,
+    "last_fail": "2026-05-17T04:33:02.463966",
     "by_model": {
       "qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      },
+      "nvidia-nemotron-nano-9b-v2": {
+        "crashes": 1,
+        "blanks": 0,
+        "total": 1,
+        "runs": 1
+      },
+      "qwen3.8-27b": {
         "crashes": 0,
         "blanks": 0,
         "total": 0,
@@ -775,11 +1081,11 @@
   },
   "Auto-Play Pong": {
     "crashes": 0,
-    "blanks": 0,
-    "total": 0,
-    "runs": 2,
+    "blanks": 1,
+    "total": 1,
+    "runs": 3,
     "deletions": 0,
-    "last_fail": null,
+    "last_fail": "2026-09-05T09:59:19.684334",
     "by_model": {
       "qwen/qwen3.6-35b-a3b": {
         "crashes": 0,
@@ -792,6 +1098,12 @@
         "blanks": 0,
         "total": 0,
         "runs": 1
+      },
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
+        "runs": 1
       }
     }
   },
@@ -799,11 +1111,24 @@
     "crashes": 0,
     "blanks": 0,
     "total": 0,
-    "runs": 1,
-    "deletions": 0,
+    "runs": 3,
+    "deletions": 1,
     "last_fail": null,
     "by_model": {
       "qwen3-30b-a3b-thinking-2507": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      },
+      "qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1,
+        "deletions": 1
+      },
+      "qwen3.8-27b": {
         "crashes": 0,
         "blanks": 0,
         "total": 0,
@@ -813,13 +1138,19 @@
   },
   "Solar System": {
     "crashes": 0,
-    "blanks": 1,
-    "total": 1,
-    "runs": 1,
+    "blanks": 2,
+    "total": 2,
+    "runs": 2,
     "deletions": 0,
-    "last_fail": "2026-05-14T08:05:17.896502",
+    "last_fail": "2026-05-17T07:35:17.052186",
     "by_model": {
       "qwen/qwen3-vl-30b": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
+        "runs": 1
+      },
+      "gemma-4-31b-it": {
         "crashes": 0,
         "blanks": 1,
         "total": 1,
@@ -851,27 +1182,39 @@
   },
   "Auto-Play Breakout": {
     "crashes": 1,
-    "blanks": 0,
-    "total": 1,
-    "runs": 1,
+    "blanks": 1,
+    "total": 2,
+    "runs": 3,
     "deletions": 0,
-    "last_fail": "2026-05-14T08:23:39.939664",
+    "last_fail": "2026-05-17T08:09:34.720349",
     "by_model": {
       "qwen/qwen3-vl-8b": {
         "crashes": 1,
         "blanks": 0,
         "total": 1,
         "runs": 1
+      },
+      "google/gemma-4-26b-a4b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      },
+      "aescoder-4b": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
+        "runs": 1
       }
     }
   },
   "Procedural Terrain Flythrough": {
-    "crashes": 0,
-    "blanks": 1,
-    "total": 1,
-    "runs": 2,
-    "deletions": 1,
-    "last_fail": "2026-05-15T09:35:42.508439",
+    "crashes": 1,
+    "blanks": 2,
+    "total": 3,
+    "runs": 5,
+    "deletions": 2,
+    "last_fail": "2026-05-17T09:14:17.539320",
     "by_model": {
       "qwen3-vl-8b-instruct-abliterated-v2.0": {
         "crashes": 0,
@@ -885,6 +1228,25 @@
         "blanks": 1,
         "total": 1,
         "runs": 1
+      },
+      "huihui-qwen3-vl-8b-instruct-abliterated": {
+        "crashes": 1,
+        "blanks": 0,
+        "total": 1,
+        "runs": 1
+      },
+      "mistralai/devstral-small-2507": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
+        "runs": 1
+      },
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1,
+        "deletions": 1
       }
     }
   },
@@ -892,8 +1254,8 @@
     "crashes": 0,
     "blanks": 1,
     "total": 1,
-    "runs": 1,
-    "deletions": 0,
+    "runs": 2,
+    "deletions": 1,
     "last_fail": "2026-05-14T08:30:53.425517",
     "by_model": {
       "qwen/qwen3.6-35b-a3b": {
@@ -901,16 +1263,23 @@
         "blanks": 1,
         "total": 1,
         "runs": 1
+      },
+      "huihui-qwen3-vl-8b-instruct-abliterated": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1,
+        "deletions": 1
       }
     }
   },
   "Retrowave Sunset": {
-    "crashes": 2,
+    "crashes": 3,
     "blanks": 0,
-    "total": 2,
-    "runs": 2,
+    "total": 3,
+    "runs": 5,
     "deletions": 0,
-    "last_fail": "2026-05-15T10:37:39.075690",
+    "last_fail": "2026-05-17T13:07:38.656376",
     "by_model": {
       "qwen/qwen3-vl-4b": {
         "crashes": 1,
@@ -923,6 +1292,24 @@
         "blanks": 0,
         "total": 1,
         "runs": 1
+      },
+      "qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      },
+      "magistral-small-2509": {
+        "crashes": 1,
+        "blanks": 0,
+        "total": 1,
+        "runs": 1
+      },
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
       }
     }
   },
@@ -930,7 +1317,7 @@
     "crashes": 0,
     "blanks": 1,
     "total": 1,
-    "runs": 1,
+    "runs": 2,
     "deletions": 3,
     "last_fail": "2026-05-14T08:33:23.701613",
     "by_model": {
@@ -939,22 +1326,34 @@
         "blanks": 1,
         "total": 1,
         "runs": 1
+      },
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
       }
     }
   },
   "Sine-Wave News Crawl": {
-    "crashes": 2,
+    "crashes": 3,
     "blanks": 0,
-    "total": 2,
-    "runs": 2,
+    "total": 3,
+    "runs": 4,
     "deletions": 0,
-    "last_fail": "2026-05-15T08:27:31.113468",
+    "last_fail": "2026-05-17T14:34:11.786264",
     "by_model": {
       "liquid/lfm2-24b-a2b": {
-        "crashes": 2,
+        "crashes": 3,
         "blanks": 0,
-        "total": 2,
-        "runs": 2
+        "total": 3,
+        "runs": 3
+      },
+      "magistral-small-2509": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
       }
     }
   },
@@ -962,7 +1361,7 @@
     "crashes": 0,
     "blanks": 1,
     "total": 1,
-    "runs": 2,
+    "runs": 3,
     "deletions": 1,
     "last_fail": "2026-05-15T08:32:54.397840",
     "by_model": {
@@ -978,6 +1377,12 @@
         "blanks": 1,
         "total": 1,
         "runs": 1
+      },
+      "qwen/qwen3-vl-30b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
       }
     }
   },
@@ -985,8 +1390,8 @@
     "crashes": 1,
     "blanks": 1,
     "total": 2,
-    "runs": 2,
-    "deletions": 0,
+    "runs": 4,
+    "deletions": 1,
     "last_fail": "2026-05-15T11:16:01.370559",
     "by_model": {
       "unsloth/qwen3-vl-30b-a3b-instruct": {
@@ -1000,6 +1405,19 @@
         "blanks": 1,
         "total": 1,
         "runs": 1
+      },
+      "qwen3-coder-30b-a3b-instruct": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1,
+        "deletions": 1
+      },
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
       }
     }
   },
@@ -1007,7 +1425,7 @@
     "crashes": 2,
     "blanks": 0,
     "total": 2,
-    "runs": 2,
+    "runs": 3,
     "deletions": 0,
     "last_fail": "2026-05-15T11:49:13.469476",
     "by_model": {
@@ -1022,18 +1440,36 @@
         "blanks": 0,
         "total": 1,
         "runs": 1
+      },
+      "gemma-4-31b-it": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
       }
     }
   },
   "Fourier Epicycles": {
-    "crashes": 1,
-    "blanks": 0,
-    "total": 1,
-    "runs": 1,
+    "crashes": 2,
+    "blanks": 1,
+    "total": 3,
+    "runs": 3,
     "deletions": 0,
-    "last_fail": "2026-05-14T08:48:27.009927",
+    "last_fail": "2026-05-17T15:05:30.873305",
     "by_model": {
       "qwen3.5-9b-abliterated": {
+        "crashes": 1,
+        "blanks": 0,
+        "total": 1,
+        "runs": 1
+      },
+      "google/gemma-4-e4b": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
+        "runs": 1
+      },
+      "mistralai/devstral-small-2507": {
         "crashes": 1,
         "blanks": 0,
         "total": 1,
@@ -1045,11 +1481,24 @@
     "crashes": 0,
     "blanks": 0,
     "total": 0,
-    "runs": 1,
-    "deletions": 0,
+    "runs": 3,
+    "deletions": 1,
     "last_fail": null,
     "by_model": {
       "qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      },
+      "unsloth/qwen3-vl-30b-a3b-instruct": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1,
+        "deletions": 1
+      },
+      "qwen3.8-27b": {
         "crashes": 0,
         "blanks": 0,
         "total": 0,
@@ -1059,11 +1508,11 @@
   },
   "Wireframe Icosahedron": {
     "crashes": 0,
-    "blanks": 0,
-    "total": 0,
-    "runs": 2,
+    "blanks": 1,
+    "total": 1,
+    "runs": 3,
     "deletions": 5,
-    "last_fail": null,
+    "last_fail": "2026-05-17T09:17:50.125365",
     "by_model": {
       "qwen/qwen3-vl-30b": {
         "crashes": 0,
@@ -1077,24 +1526,37 @@
         "blanks": 0,
         "total": 0,
         "runs": 1
+      },
+      "unsloth/qwen3.5-35b-a3b": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
+        "runs": 1
       }
     }
   },
   "N-Body Galaxy": {
     "crashes": 0,
-    "blanks": 0,
-    "total": 0,
-    "runs": 0,
+    "blanks": 1,
+    "total": 1,
+    "runs": 1,
     "deletions": 1,
-    "last_fail": null,
-    "by_model": {}
+    "last_fail": "2026-05-17T06:48:56.269697",
+    "by_model": {
+      "magistral-small-2509": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
+        "runs": 1
+      }
+    }
   },
   "Fractal Flame": {
     "crashes": 1,
     "blanks": 0,
     "total": 1,
-    "runs": 1,
-    "deletions": 0,
+    "runs": 2,
+    "deletions": 1,
     "last_fail": "2026-05-15T05:31:03.172353",
     "by_model": {
       "qwen3-vl-8b-instruct-abliterated-v2.0": {
@@ -1102,6 +1564,13 @@
         "blanks": 0,
         "total": 1,
         "runs": 1
+      },
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1,
+        "deletions": 1
       }
     }
   },
@@ -1123,11 +1592,11 @@
   },
   "Raymarched Scene": {
     "crashes": 0,
-    "blanks": 0,
-    "total": 0,
-    "runs": 1,
+    "blanks": 1,
+    "total": 1,
+    "runs": 2,
     "deletions": 1,
-    "last_fail": null,
+    "last_fail": "2026-05-17T06:22:03.759846",
     "by_model": {
       "qwen3.5-9b-abliterated": {
         "crashes": 0,
@@ -1135,68 +1604,80 @@
         "total": 0,
         "runs": 1,
         "deletions": 1
+      },
+      "text-embedding-nomic-embed-text-v1.5": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
+        "runs": 1
       }
     }
   },
   "L-System Tree": {
-    "crashes": 0,
+    "crashes": 1,
     "blanks": 0,
-    "total": 0,
-    "runs": 1,
+    "total": 1,
+    "runs": 2,
     "deletions": 0,
-    "last_fail": null,
+    "last_fail": "2026-05-17T12:05:05.795850",
     "by_model": {
       "mistralai/devstral-small-2507": {
         "crashes": 0,
         "blanks": 0,
         "total": 0,
         "runs": 1
+      },
+      "huihui-qwen3-vl-8b-instruct-abliterated": {
+        "crashes": 1,
+        "blanks": 0,
+        "total": 1,
+        "runs": 1
       }
     }
   },
   "update": {
-    "crashes": 2,
-    "blanks": 6,
-    "total": 8,
-    "runs": 22,
-    "deletions": 1,
-    "last_fail": "2026-05-15T10:13:50.322595",
+    "crashes": 6,
+    "blanks": 35,
+    "total": 41,
+    "runs": 94,
+    "deletions": 6,
+    "last_fail": "2026-09-05T09:23:14.247042",
     "by_model": {
       "qwen3.5-9b-abliterated": {
-        "crashes": 0,
-        "blanks": 2,
-        "total": 2,
-        "runs": 2
+        "crashes": 1,
+        "blanks": 3,
+        "total": 4,
+        "runs": 4
       },
       "google/gemma-4-e4b": {
         "crashes": 0,
         "blanks": 1,
         "total": 1,
-        "runs": 2
+        "runs": 3
       },
       "qwen/qwen3-vl-4b": {
         "crashes": 0,
-        "blanks": 1,
-        "total": 1,
-        "runs": 1
+        "blanks": 2,
+        "total": 2,
+        "runs": 3
       },
       "gemma-4-31b-it": {
         "crashes": 0,
         "blanks": 0,
         "total": 0,
-        "runs": 2
+        "runs": 5
       },
       "qwen/qwen3-vl-30b": {
         "crashes": 0,
-        "blanks": 0,
-        "total": 0,
-        "runs": 1
+        "blanks": 2,
+        "total": 2,
+        "runs": 4
       },
       "huihui-qwen3-vl-8b-instruct-abliterated": {
         "crashes": 0,
-        "blanks": 0,
-        "total": 0,
-        "runs": 2
+        "blanks": 2,
+        "total": 2,
+        "runs": 5
       },
       "text-embedding-nomic-embed-text-v1.5": {
         "crashes": 0,
@@ -1208,56 +1689,138 @@
         "crashes": 0,
         "blanks": 0,
         "total": 0,
-        "runs": 2
+        "runs": 3,
+        "deletions": 1
       },
       "qwen_qwen3-30b-a3b-thinking-2507": {
         "crashes": 1,
         "blanks": 0,
         "total": 1,
-        "runs": 1
+        "runs": 2,
+        "deletions": 1
       },
       "qwen3-30b-a3b-instruct-2507": {
         "crashes": 1,
         "blanks": 0,
         "total": 1,
-        "runs": 1
+        "runs": 2,
+        "deletions": 1
       },
       "unsloth/qwen3.5-35b-a3b": {
         "crashes": 0,
         "blanks": 1,
         "total": 1,
-        "runs": 1
+        "runs": 3
       },
       "gemma-4-e4b-it-heretic": {
         "crashes": 0,
-        "blanks": 0,
-        "total": 0,
-        "runs": 1
+        "blanks": 1,
+        "total": 1,
+        "runs": 3
       },
       "liquid/lfm2-24b-a2b": {
+        "crashes": 1,
+        "blanks": 2,
+        "total": 3,
+        "runs": 3
+      },
+      "lmstudio-community/qwen3.5-35b-a3b": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
+        "runs": 3
+      },
+      "qwen3-30b-a3b-thinking-2507": {
+        "crashes": 0,
+        "blanks": 4,
+        "total": 4,
+        "runs": 8,
+        "deletions": 2
+      },
+      "aescoder-4b": {
+        "crashes": 1,
+        "blanks": 0,
+        "total": 1,
+        "runs": 2
+      },
+      "qwen/qwen3.5-9b": {
+        "crashes": 0,
+        "blanks": 2,
+        "total": 2,
+        "runs": 2
+      },
+      "qwen/qwen3-vl-8b": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
+        "runs": 2
+      },
+      "nvidia-nemotron-nano-9b-v2": {
+        "crashes": 1,
+        "blanks": 1,
+        "total": 2,
+        "runs": 2
+      },
+      "qwen/qwen3.6-27b": {
+        "crashes": 0,
+        "blanks": 2,
+        "total": 2,
+        "runs": 2
+      },
+      "magistral-small-2509": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 3,
+        "deletions": 1
+      },
+      "unsloth/qwen3-vl-30b-a3b-instruct": {
         "crashes": 0,
         "blanks": 1,
         "total": 1,
         "runs": 1
       },
-      "lmstudio-community/qwen3.5-35b-a3b": {
+      "qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive": {
+        "crashes": 0,
+        "blanks": 2,
+        "total": 2,
+        "runs": 2
+      },
+      "mistralai/devstral-small-2507": {
+        "crashes": 0,
+        "blanks": 2,
+        "total": 2,
+        "runs": 2
+      },
+      "google/gemma-4-26b-a4b": {
         "crashes": 0,
         "blanks": 0,
         "total": 0,
         "runs": 1
       },
-      "qwen3-30b-a3b-thinking-2507": {
+      "gpt-oss-20b": {
         "crashes": 0,
-        "blanks": 0,
-        "total": 0,
-        "runs": 1,
-        "deletions": 1
+        "blanks": 2,
+        "total": 2,
+        "runs": 2
       },
-      "aescoder-4b": {
+      "zai-org/glm-4.7-flash": {
         "crashes": 0,
         "blanks": 0,
         "total": 0,
         "runs": 1
+      },
+      "qwen3-vl-8b-instruct-abliterated-v2.0": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      },
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 3,
+        "total": 3,
+        "runs": 18
       }
     }
   },
@@ -1265,8 +1828,8 @@
     "crashes": 1,
     "blanks": 1,
     "total": 2,
-    "runs": 2,
-    "deletions": 0,
+    "runs": 4,
+    "deletions": 1,
     "last_fail": "2026-05-15T11:53:03.977970",
     "by_model": {
       "unsloth/qwen3-vl-30b-a3b-instruct": {
@@ -1280,18 +1843,37 @@
         "blanks": 0,
         "total": 1,
         "runs": 1
+      },
+      "magistral-small-2509": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      },
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1,
+        "deletions": 1
       }
     }
   },
   "Iridescent Oil Slick": {
     "crashes": 0,
-    "blanks": 1,
-    "total": 1,
-    "runs": 1,
+    "blanks": 2,
+    "total": 2,
+    "runs": 2,
     "deletions": 0,
-    "last_fail": "2026-05-15T05:53:39.187828",
+    "last_fail": "2026-05-17T11:53:11.284994",
     "by_model": {
       "qwen/qwen3-vl-4b": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
+        "runs": 1
+      },
+      "gemma-4-31b-it": {
         "crashes": 0,
         "blanks": 1,
         "total": 1,
@@ -1303,7 +1885,7 @@
     "crashes": 0,
     "blanks": 0,
     "total": 0,
-    "runs": 1,
+    "runs": 2,
     "deletions": 1,
     "last_fail": null,
     "by_model": {
@@ -1313,6 +1895,12 @@
         "total": 0,
         "runs": 1,
         "deletions": 1
+      },
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
       }
     }
   },
@@ -1320,11 +1908,23 @@
     "crashes": 0,
     "blanks": 0,
     "total": 0,
-    "runs": 1,
+    "runs": 3,
     "deletions": 0,
     "last_fail": null,
     "by_model": {
       "qwen3-30b-a3b-thinking-2507": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      },
+      "qwen/qwen3.6-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      },
+      "qwen3.8-27b": {
         "crashes": 0,
         "blanks": 0,
         "total": 0,
@@ -1336,7 +1936,7 @@
     "crashes": 1,
     "blanks": 0,
     "total": 1,
-    "runs": 1,
+    "runs": 3,
     "deletions": 0,
     "last_fail": "2026-05-15T08:40:32.490468",
     "by_model": {
@@ -1345,18 +1945,14 @@
         "blanks": 0,
         "total": 1,
         "runs": 1
-      }
-    }
-  },
-  "Gravity Well Grid": {
-    "crashes": 0,
-    "blanks": 0,
-    "total": 0,
-    "runs": 1,
-    "deletions": 0,
-    "last_fail": null,
-    "by_model": {
-      "google/gemma-4-26b-a4b": {
+      },
+      "qwen3-30b-a3b-thinking-2507": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      },
+      "qwen/qwen3.6-35b-a3b": {
         "crashes": 0,
         "blanks": 0,
         "total": 0,
@@ -1364,18 +1960,46 @@
       }
     }
   },
-  "Bloom Torus Knot": {
+  "Gravity Well Grid": {
     "crashes": 0,
-    "blanks": 0,
-    "total": 0,
-    "runs": 1,
+    "blanks": 1,
+    "total": 1,
+    "runs": 2,
     "deletions": 0,
-    "last_fail": null,
+    "last_fail": "2026-05-17T06:04:25.358033",
     "by_model": {
       "google/gemma-4-26b-a4b": {
         "crashes": 0,
         "blanks": 0,
         "total": 0,
+        "runs": 1
+      },
+      "qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
+        "runs": 1
+      }
+    }
+  },
+  "Bloom Torus Knot": {
+    "crashes": 0,
+    "blanks": 1,
+    "total": 1,
+    "runs": 2,
+    "deletions": 0,
+    "last_fail": "2026-05-17T14:35:14.759115",
+    "by_model": {
+      "google/gemma-4-26b-a4b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      },
+      "gpt-oss-20b": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
         "runs": 1
       }
     }
@@ -1384,7 +2008,7 @@
     "crashes": 0,
     "blanks": 1,
     "total": 1,
-    "runs": 1,
+    "runs": 2,
     "deletions": 0,
     "last_fail": "2026-05-15T10:23:50.051429",
     "by_model": {
@@ -1392,6 +2016,12 @@
         "crashes": 0,
         "blanks": 1,
         "total": 1,
+        "runs": 1
+      },
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
         "runs": 1
       }
     }
@@ -1414,13 +2044,25 @@
   },
   "Koch Snowflake": {
     "crashes": 0,
-    "blanks": 1,
-    "total": 1,
-    "runs": 1,
+    "blanks": 3,
+    "total": 3,
+    "runs": 3,
     "deletions": 0,
-    "last_fail": "2026-05-15T10:45:37.366084",
+    "last_fail": "2026-09-05T09:25:59.817981",
     "by_model": {
       "magistral-small-2509": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
+        "runs": 1
+      },
+      "qwen/qwen3.6-35b-a3b": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
+        "runs": 1
+      },
+      "qwen3.8-27b": {
         "crashes": 0,
         "blanks": 1,
         "total": 1,
@@ -1429,17 +2071,29 @@
     }
   },
   "Glitch Postprocess": {
-    "crashes": 0,
+    "crashes": 1,
     "blanks": 1,
-    "total": 1,
-    "runs": 1,
+    "total": 2,
+    "runs": 3,
     "deletions": 1,
-    "last_fail": "2026-05-15T11:40:50.420440",
+    "last_fail": "2026-05-17T09:18:33.727933",
     "by_model": {
       "qwen/qwen3.5-9b": {
         "crashes": 0,
         "blanks": 1,
         "total": 1,
+        "runs": 1
+      },
+      "qwen/qwen3-vl-4b": {
+        "crashes": 1,
+        "blanks": 0,
+        "total": 1,
+        "runs": 1
+      },
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
         "runs": 1
       }
     }
@@ -1452,5 +2106,248 @@
     "deletions": 1,
     "last_fail": null,
     "by_model": {}
+  },
+  "Auto-Play Pac-Maze": {
+    "crashes": 0,
+    "blanks": 1,
+    "total": 1,
+    "runs": 1,
+    "deletions": 0,
+    "last_fail": "2026-05-17T04:45:28.300684",
+    "by_model": {
+      "unsloth/qwen3-vl-30b-a3b-instruct": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
+        "runs": 1
+      }
+    }
+  },
+  "Galaxy Spiral": {
+    "crashes": 0,
+    "blanks": 1,
+    "total": 1,
+    "runs": 2,
+    "deletions": 0,
+    "last_fail": "2026-05-17T07:30:44.460362",
+    "by_model": {
+      "lmstudio-community/qwen3.5-35b-a3b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      },
+      "qwen_qwen3-30b-a3b-thinking-2507": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
+        "runs": 1
+      }
+    }
+  },
+  "3D Pipes Screensaver": {
+    "crashes": 0,
+    "blanks": 1,
+    "total": 1,
+    "runs": 3,
+    "deletions": 0,
+    "last_fail": "2026-05-17T13:10:02.951282",
+    "by_model": {
+      "qwen/qwen3.6-35b-a3b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      },
+      "qwen3-vl-8b-instruct-abliterated-v2.0": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
+        "runs": 1
+      },
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      }
+    }
+  },
+  "Conway Game of Life": {
+    "crashes": 0,
+    "blanks": 2,
+    "total": 2,
+    "runs": 2,
+    "deletions": 0,
+    "last_fail": "2026-05-17T11:08:17.466570",
+    "by_model": {
+      "qwen3-30b-a3b-instruct-2507": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
+        "runs": 1
+      },
+      "huihui-qwen3-vl-8b-instruct-abliterated": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
+        "runs": 1
+      }
+    }
+  },
+  "Lens Flare": {
+    "crashes": 0,
+    "blanks": 1,
+    "total": 1,
+    "runs": 1,
+    "deletions": 0,
+    "last_fail": "2026-05-17T06:14:21.153868",
+    "by_model": {
+      "unsloth/qwen3.5-35b-a3b": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
+        "runs": 1
+      }
+    }
+  },
+  "Metaballs": {
+    "crashes": 0,
+    "blanks": 2,
+    "total": 2,
+    "runs": 2,
+    "deletions": 0,
+    "last_fail": "2026-05-17T09:22:42.459656",
+    "by_model": {
+      "mistralai/devstral-small-2507": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
+        "runs": 1
+      },
+      "gemma-4-31b-it": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
+        "runs": 1
+      }
+    }
+  },
+  "Wolfram Rule 30": {
+    "crashes": 0,
+    "blanks": 1,
+    "total": 1,
+    "runs": 1,
+    "deletions": 0,
+    "last_fail": "2026-05-17T06:26:54.728781",
+    "by_model": {
+      "zai-org/glm-4.7-flash": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
+        "runs": 1
+      }
+    }
+  },
+  "Water Ripple": {
+    "crashes": 0,
+    "blanks": 0,
+    "total": 0,
+    "runs": 3,
+    "deletions": 2,
+    "last_fail": null,
+    "by_model": {
+      "text-embedding-nomic-embed-text-v1.5": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      },
+      "qwen3-vl-8b-instruct-abliterated-v2.0": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1,
+        "deletions": 1
+      },
+      "unknown": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 0,
+        "deletions": 1
+      },
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      }
+    }
+  },
+  "DNA Helix": {
+    "crashes": 0,
+    "blanks": 1,
+    "total": 1,
+    "runs": 1,
+    "deletions": 0,
+    "last_fail": "2026-05-17T08:27:02.696622",
+    "by_model": {
+      "qwen3-coder-30b-a3b-instruct": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
+        "runs": 1
+      }
+    }
+  },
+  "Spirograph": {
+    "crashes": 0,
+    "blanks": 0,
+    "total": 0,
+    "runs": 1,
+    "deletions": 0,
+    "last_fail": null,
+    "by_model": {
+      "qwen/qwen3-vl-30b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      }
+    }
+  },
+  "Voronoi Bloom": {
+    "crashes": 0,
+    "blanks": 0,
+    "total": 0,
+    "runs": 1,
+    "deletions": 1,
+    "last_fail": null,
+    "by_model": {
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1,
+        "deletions": 1
+      }
+    }
+  },
+  "Boot-POST Parade": {
+    "crashes": 0,
+    "blanks": 0,
+    "total": 0,
+    "runs": 1,
+    "deletions": 0,
+    "last_fail": null,
+    "by_model": {
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      }
+    }
   }
 }

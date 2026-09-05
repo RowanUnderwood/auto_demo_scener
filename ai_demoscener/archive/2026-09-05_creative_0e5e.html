@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+*{margin:0;padding:0;overflow:hidden}
+body{background:#000}
+canvas{display:block}
+#hud{position:fixed;top:18px;left:50%;transform:translateX(-50%);font:12px/1.6 'Courier New',monospace;color:#0ef;text-shadow:0 0 8px #0ef,0 0 24px #06f;letter-spacing:5px;text-align:center;pointer-events:none;user-select:none}
+#hud span{display:block;font-size:9px;color:#a4f;letter-spacing:8px;margin-top:4px;text-shadow:0 0 6px #a4f}
+</style>
+</head>
+<body>
+<div id="hud">CHRONO&#183;PRISM<span>4D HYPERCUBE FRACTAL GARDEN</span></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+const scene=new THREE.Scene();
+scene.fog=new THREE.FogExp2(0x000508,0.035);
+const camera=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,0.1,100);
+camera.position.set(0,0,7);
+const renderer=new THREE.WebGLRenderer({antialias:true,alpha:false});
+renderer.setSize(innerWidth,innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setClearColor(0x000508);
+document.body.appendChild(renderer.domElement);
+
+// Lights
+const ambient=new THREE.AmbientLight(0x101030,0.8);
+scene.add(ambient);
+const pointLight=new THREE.PointLight(0x00ffff,2,20);
+pointLight.position.set(0,0,0);
+scene.add(pointLight);
+const pointLight2=new THREE.PointLight(0xff44ff,1.2,15);
+pointLight2.position.set(3,2,3);
+scene.add(pointLight2);
+
+// 4D Tesseract
+const V4=[];
+for(let i=0;i<16;i++)V4.push([(i&1)?1:-1,(i&2)?1:-1,(i&4)?1:-1,(i&8)?1:-1]);
+const E4=[];
+for(let i=0;i<16;i++)for(let j=i+1;j<16;j++){
+let d=0;for(let k=0;k<4;k++)if(V4[i][k]!==V4[j][k])d++;
+if(d===1)E4.push([i,j]);
+}
+// 32 edges
+
+function rot4D(v,plane,theta){
+const c=Math.cos(theta),s=Math.sin(theta);
+const r=[v[0],v[1],v[2],v[3]];
+const[a,b]=plane;
+r[a]=v[a]*c-v[b]*s;
+r[b]=v[a]*s+v[b]*c;
+return r;
+}
+
+function project4D(v4){
+const W=3.2;
+const f=W/(W-v4[3]);
+return new THREE.Vector3(v4[0]*f,v4[1]*f,v4[2]*f);
+}
+
+// Edge lines
+const edgeGeo=new THREE.BufferGeometry();
+const edgePos=new Float32Array(32*6);
+edgeGeo.setAttribute('position',new THREE.BufferAttribute(edgePos,3));
+const edgeMat=new THREE.LineBasicMaterial({color:0x00eeff,transparent:true,opacity:0.9,blending:THREE.AdditiveBlending});
+const edgeLines=new THREE.LineSegments(edgeGeo,edgeMat);
+scene.add(edgeLines);
+
+// Branch system (InstancedMesh)
+const NUM_EDGES=E4.length;
+const NODES_PER_EDGE=6;
+const TENTACLES_PER_NODE=3;
+const totalTentacles=NUM_EDGES*NODES_PER_EDGE*TENTACLES_PER_NODE;
+const totalNodes=NUM_EDGES*NODES_PER_EDGE;
+
+// Tentacle geometry
+const tentGeo=new THREE.CylinderGeometry(0.008,0.02,1,4,1);
+tentGeo.translate(0,0.5,0);
+const tentMat=new THREE.MeshStandardMaterial({color:0xcc44ff,emissive:0x440044,metalness:0.8,roughness:0.3,transparent:true,opacity:0.85});
+const tentMesh=new THREE.InstancedMesh(tentGeo,tentMat,totalTentacles);
+tentMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+scene.add(tentMesh);
+
+// Node spheres
+const nodeGeo=new THREE.SphereGeometry(0.035,6,4);
+const nodeMat=new THREE.MeshStandardMaterial({color:0x00ffcc,emissive:0x005544,metalness:0.9,roughness:0.2});
+const nodeMesh=new THREE.InstancedMesh(nodeGeo,nodeMat,totalNodes);
+nodeMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+scene.add(nodeMesh);
+
+// Pre-compute branch specs
+const tentSpecs=[];
+const nodeSpecs=[];
+for(let e=0;e<NUM_EDGES;e++){
+for(let n=0;n<NODES_PER_EDGE;n++){
+const t=n/(NODES_PER_EDGE-1);
+nodeSpecs.push({edge:e,t:t,phase:Math.random()*Math.PI*2});
+for(let b=0;b<TENTACLES_PER_NODE;b++){
+const dir=new THREE.Vector3(Math.random()-0.5,Math.random()-0.5,Math.random()-0.5).normalize();
+tentSpecs.push({edge:e,t:t,dir:dir,phase:Math.random()*Math.PI*2,speed:0.5+Math.random()*1.5,baseLen:0.15+Math.random()*0.3});
+}
+}}
+
+// Particles (pollen/spores)
+const P_COUNT=600;
+const pGeo=new THREE.BufferGeometry();
+const pPos=new Float32Array(P_COUNT*3);
+const pCol=new Float32Array(P_COUNT*3);
+const pVel=[];
+for(let i=0;i<P_COUNT;i++){
+const r=2+Math.random()*4;
+const theta=Math.random()*Math.PI*2;
+const phi=Math.acos(2*Math.random()-1);
+pPos[i*3]=r*Math.sin(phi)*Math.cos(theta);
+pPos[i*3+1]=r*Math.sin(phi)*Math.sin(theta);
+pPos[i*3+2]=r*Math.cos(phi);
+const hue=0.1+Math.random()*0.15;
+const c=new THREE.Color().setHSL(hue,1,0.7);
+pCol[i*3]=c.r;pCol[i*3+1]=c.g;pCol[i*3+2]=c.b;
+pVel.push({r:r,theta:theta,phi:phi,spT:0.1+Math.random()*0.3,spP:0.05+Math.random()*0.2,drift:(Math.random()-0.5)*0.01});
+}
+pGeo.setAttribute('position',new THREE.BufferAttribute(pPos,3));
+pGeo.setAttribute('color',new THREE.BufferAttribute(pCol,3));
+const pMat=new THREE.PointsMaterial({size:0.04,vertexColors:true,transparent:true,opacity:0.7,blending:THREE.AdditiveBlending,sizeAttenuation:true});
+const particles=new THREE.Points(pGeo,pMat);
+scene.add(particles);
+
+// Outer ring of small floating tetrahedra
+const ringCount=24;
+const tetraGeo=new THREE.TetrahedronGeometry(0.08);
+const tetraMat=new THREE.MeshStandardMaterial({color:0x2244ff,emissive:0x1122aa,metalness:0.9,roughness:0.1,transparent:true,opacity:0.7});
+const ringMesh=new THREE.InstancedMesh(tetraGeo,tetraMat,ringCount);
+ringMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+scene.add(ringMesh);
+
+const dummy=new THREE.Object3D();
+const tmpV=new THREE.Vector3();
+const tmpV2=new THREE.Vector3();
+const tmpM=new THREE.Matrix4();
+const tmpQ=new THREE.Quaternion();
+const tmpS=new THREE.Vector3();
+
+function getRotated4D(idx,time){
+let v=[V4[idx][0],V4[idx][1],V4[idx][2],V4[idx][3]];
+v=rot4D(v,[0,3],time*0.3);
+v=rot4D(v,[1,3],time*0.17);
+v=rot4D(v,[2,3],time*0.11);
+v=rot4D(v,[0,1],time*0.08);
+v=rot4D(v,[1,2],time*0.05);
+return v;
+}
+
+function animate(time){
+requestAnimationFrame(animate);
+const t=time*0.001;
+
+// Rotate 4D vertices and update edges
+const proj=[];
+for(let i=0;i<16;i++)proj.push(project4D(getRotated4D(i,t)));
+
+for(let e=0;e<NUM_EDGES;e++){
+const a=E4[e][0],b=E4[e][1];
+edgePos[e*6]=proj[a].x;edgePos[e*6+1]=proj[a].y;edgePos[e*6+2]=proj[a].z;
+edgePos[e*6+3]=proj[b].x;edgePos[e*6+4]=proj[b].y;edgePos[e*6+5]=proj[b].z;
+}
+edgeGeo.attributes.position.needsUpdate=true;
+
+// Pulse edge opacity
+edgeMat.opacity=0.6+0.3*Math.sin(t*2);
+edgeMat.color.setHSL(0.52+0.05*Math.sin(t*0.5),1,0.6);
+
+// Update nodes
+for(let i=0;i<totalNodes;i++){
+const spec=nodeSpecs[i];
+const a=E4[spec.edge][0],b=E4[spec.edge][1];
+tmpV.copy(proj[a]).lerp(proj[b],spec.t);
+const pulse=1+0.3*Math.sin(t*3+spec.phase);
+dummy.position.copy(tmpV);
+dummy.scale.setScalar(pulse);
+dummy.quaternion.identity();
+dummy.updateMatrix();
+nodeMesh.setMatrixAt(i,dummy.matrix);
+}
+nodeMesh.instanceMatrix.needsUpdate=true;
+
+// Update tentacles
+for(let i=0;i<totalTentacles;i++){
+const spec=tentSpecs[i];
+const a=E4[spec.edge][0],b=E4[spec.edge][1];
+tmpV.copy(proj[a]).lerp(proj[b],spec.t);
+const len=spec.baseLen*(1+0.8*Math.sin(t*spec.speed+spec.phase));
+dummy.position.copy(tmpV);
+tmpV2.copy(spec.dir);
+tmpQ.setFromUnitVectors(new THREE.Vector3(0,1,0),tmpV2);
+dummy.quaternion.copy(tmpQ);
+dummy.scale.set(1,len,1);
+dummy.updateMatrix();
+tentMesh.setMatrixAt(i,dummy.matrix);
+}
+tentMesh.instanceMatrix.needsUpdate=true;
+
+// Update particles
+for(let i=0;i<P_COUNT;i++){
+const v=pVel[i];
+v.theta+=v.spT*0.016;
+v.phi+=v.spP*0.016;
+v.r+=v.drift;
+if(v.r>6.5)v.drift=-Math.abs(v.drift);
+if(v.r<1.5)v.drift=Math.abs(v.drift);
+pPos[i*3]=v.r*Math.sin(v.phi)*Math.cos(v.theta);
+pPos[i*3+1]=v.r*Math.sin(v.phi)*Math.sin(v.theta);
+pPos[i*3+2]=v.r*Math.cos(v.phi);
+}
+pGeo.attributes.position.needsUpdate=true;
+
+// Update ring tetrahedra
+for(let i=0;i<ringCount;i++){
+const angle=(i/ringCount)*Math.PI*2+t*0.2;
+const r=3.5+0.3*Math.sin(t*0.7+i*0.5);
+const y=Math.sin(t*0.4+i)*0.5;
+dummy.position.set(Math.cos(angle)*r,y,Math.sin(angle)*r);
+dummy.rotation.set(t*0.5+i,t*0.3,0);
+const s=0.7+0.3*Math.sin(t*2+i*1.1);
+dummy.scale.setScalar(s);
+dummy.updateMatrix();
+ringMesh.setMatrixAt(i,dummy.matrix);
+}
+ringMesh.instanceMatrix.needsUpdate=true;
+
+// Pulse lights
+pointLight.intensity=1.5+Math.sin(t*2)*0.8;
+pointLight.color.setHSL(0.5+0.1*Math.sin(t*0.3),1,0.5);
+pointLight2.intensity=0.8+Math.sin(t*1.3)*0.4;
+
+// Camera orbit
+const camAngle=t*0.15;
+camera.position.x=Math.cos(camAngle)*7;
+camera.position.z=Math.sin(camAngle)*7;
+camera.position.y=1.5*Math.sin(t*0.1);
+camera.lookAt(0,0,0);
+
+renderer.render(scene,camera);
+}
+requestAnimationFrame(animate);
+
+addEventListener('resize',()=>{
+camera.aspect=innerWidth/innerHeight;
+camera.updateProjectionMatrix();
+renderer.setSize(innerWidth,innerHeight);
+});
+})();
+</script>
+</body>
+</html>

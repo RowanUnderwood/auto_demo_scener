@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Neon Cosmos</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const geometry = new THREE.SphereGeometry(500, 64, 64);
+        const material = new THREE.MeshBasicMaterial({ color: 0x0000ff, wireframe: true });
+        const sphere = new THREE.Mesh(geometry, material);
+        scene.add(sphere);
+
+        const points = 10000;
+        const particles = new THREE.BufferGeometry();
+        const positions = new Float32Array(points * 3);
+
+        for (let i = 0; i < points; i++) {
+            positions[i * 3] = (Math.random() - 0.5) * 2000;
+            positions[i * 3 + 1] = (Math.random() - 0.5) * 2000;
+            positions[i * 3 + 2] = (Math.random() - 0.5) * 2000;
+        }
+        particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+        const pointMaterial = new THREE.PointsMaterial({ color: 0x00ffff, size: 2, transparent: true, opacity: 0.8 });
+        const pointCloud = new THREE.Points(particles, pointMaterial);
+        scene.add(pointCloud);
+
+        const light = new THREE.PointLight(0xffffff, 1, 100);
+        light.position.set(0, 0, 500);
+        scene.add(light);
+
+        camera.position.z = 800;
+
+        function animate() {
+            requestAnimationFrame(animate);
+            sphere.rotation.x += 0.002;
+            sphere.rotation.y += 0.005;
+            pointCloud.rotation.x += 0.001;
+            pointCloud.rotation.y += 0.003;
+            pointCloud.rotation.z += 0.002;
+            light.position.x = (Math.sin(Date.now() * 0.0005) * 400);
+            light.position.y = (Math.cos(Date.now() * 0.0007) * 400);
+            light.position.z = Math.sin(Date.now() * 0.0003) * 500 + 300;
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>

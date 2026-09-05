@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Photon Circuits</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { overflow: hidden; background: #000; }
+  canvas#plasma { display: block; position: fixed; top: 0; left: 0; z-index: 0; }
+  canvas#poem { display: block; position: fixed; top: 0; left: 0; z-index: 1; }
+</style>
+</head>
+<body>
+<canvas id="plasma"></canvas>
+<canvas id="poem"></canvas>
+<script type="x-shader/x-vertex" id="plasmaVert">
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+</script>
+<script type="x-shader/x-fragment" id="plasmaFrag">
+  precision highp float;
+  varying vec2 vUv;
+  uniform float uTime;
+  uniform vec2 uRes;
+
+  vec3 palette(float t, vec3 a, vec3 b, vec3 c, vec3 d) {
+    return a + b * cos(6.28318 * (c * t + d));
+  }
+
+  void main() {
+    vec2 uv = (gl_FragCoord.xy - 0.5 * uRes) / min(uRes.x, uRes.y);
+    float t = uTime * 0.15;
+
+    vec2 p = uv;
+    vec2 q = uv;
+
+    float f = 0.0;
+
+    for (int i = 0; i < 4; i++) {
+      p = mix(abs(p), p, 0.6);
+      p += vec2(-0.78, -0.56) * 0.45;
+      p += vec2(sin(t + p.x * 3.0 + p.y * 2.0), cos(t + p.y * 3.0 + p.x * 2.0)) * 0.35;
+      f += 1.0 / length(p + 0.5);
+      q += sin(p + t * 0.5 + f);
+    }
+
+    f = f * 0.08 - 0.5 + sin(t * 0.7) * 0.1;
+
+    vec3 col = palette(f + sin(t * 0.3) * 0.5,
+      vec3(0.5, 0.5, 0.5),
+      vec3(0.5, 0.5, 0.5),
+      vec3(1.0, 1.0, 1.0),
+      vec3(0.0, 0.33, 0.67)
+    );
+
+    vec3 magenta = vec3(0.95, 0.1, 0.75);
+    vec3 cyan    = vec3(0.1, 0.85, 0.9);
+    vec3 purple  = vec3(0.25, 0.05, 0.55);
+
+    float phase = sin(t * 1.8) * 0.5 + 0.5;
+    float phase2 = cos(t * 1.2 + 2.0) * 0.5 + 0.5;
+
+    col = mix(purple, magenta, smoothstep(0.3, 0.7, phase));
+    col = mix(col, cyan, smoothstep(0.4, 0.8, phase2));
+    col = mix(col, purple, smoothstep(0.6, 0.9, sin(t * 0.9 + 1.0) * 0.5 + 0.5));
+
+    col *= f * 0.6;
+
+    float vignette = 1.0 - dot(uv * 0.8, uv * 0.8);
+    col *= smoothstep(0.0, 0.5, vignette);
+
+    gl_FragColor = vec4(col, 1.0);
+  }
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function() {
+  const stanzas = [
+    "In circuits where the photons race\nand Fibonacci divides the space,\na tiny spark begins to wake—\nthe geometry of light's own make.",
+    "Beneath the silicon and wire,\na thousand tiny minds conspire;\neach transistor, a star's reflection,\na universe of pure connection.",
+    "Through fractal gates and binary,\nthe smallest gears begin to stir;\nthey dream in angles, sharp and bright,\nand plot the stars with mathematical light.",
+    "So let us praise the tiny things—\nthe circuits and the photon rings—\nfor in their glow, both cold and true,\nthe cosmos whispers back to us."
+  ];
+
+  const STANZA_DURATION = 6000;
+  const FADE_TIME = 1800;
+  const TOTAL_STANZA_TIME = STANZA_DURATION + FADE_TIME;
+
+  const poemCanvas = document.getElementById('poem');
+  const poemCtx = poemCanvas.getContext('2d');
+  const plasmaCanvas = document.getElementById('plasma');
+
+  function resize() {
+    const dpr = window.devicePixelRatio || 1;
+    poemCanvas.width = window.innerWidth * dpr;
+    poemCanvas.height = window.innerHeight * dpr;
+    poemCanvas.style.width = window.innerWidth + 'px';
+    poemCanvas.style.height = window.innerHeight + 'px';
+    poemCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  const poem = document.getElementById('poem');
+  poem.style.fontFamily = "'VT323', 'Share Tech Mono', 'Courier New', monospace";
+  poem.style.fontSize = '28px';
+  poem.style.color = '#f5f0d8';
+  poem.style.textShadow = '0 0 8px rgba(245,240,216,0.5), 0 0 20px rgba(200,180,255,0.3)';
+  poem.style.textAlign = 'center';
+  poem.style.lineHeight = '1.6';
+  poem.style.letterSpacing = '1px';
+  poem.style.whiteSpace = 'pre';
+  poem.style.userSelect = 'none';
+
+  const textMetrics = poem;
+
+  const plasmaRenderer = new THREE.WebGLRenderer({ canvas: plasmaCanvas, alpha: false });
+  plasmaRenderer.setSize(window.innerWidth, window.innerHeight);
+  plasmaRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+  const plasmaScene = new THREE.Scene();
+  const plasmaCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+  const plasmaMaterial = new THREE.ShaderMaterial({
+    vertexShader: document.getElementById('plasmaVert').textContent,
+    fragmentShader: document.getElementById('plasmaFrag').textContent,
+    uniforms: {
+      uTime: { value: 0 },
+      uRes: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+    }
+  });
+
+  plasmaScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), plasmaMaterial));
+
+  window.addEventListener('resize', () => {
+    plasmaRenderer.setSize(window.innerWidth, window.innerHeight);
+    plasmaMaterial.uniforms.uRes.value.set(window.innerWidth, window.innerHeight);
+    resize();
+  });
+
+  const poemWidth = Math.min(window.innerWidth * 0.75, 700);
+  const poemStyle = poem.style;
+  poemStyle.width = poemWidth + 'px';
+  poemStyle.left = (window.innerWidth / 2 - poemWidth / 2) + 'px';
+  poemStyle.top = (window.innerHeight / 2) + 'px';
+  poemStyle.transform = 'translateY(-50%)';
+
+  let currentStanza = -1;
+  let stanzaStartTime = 0;
+  let globalStartTime = 0;
+
+  function drawStanza(index, alpha) {
+    if (index < 0 || index >= stanzas.length) {
+      poemCtx.clearRect(0, 0, poemCanvas.width / (window.devicePixelRatio || 1), poemCanvas.height / (window.devicePixelRatio || 1));
+      poem.style.opacity = 0;
+      return;
+    }
+
+    poem.textContent = stanzas[index];
+    poem.style.opacity = alpha;
+
+    poemCtx.clearRect(0, 0, poemCanvas.width / (window.devicePixelRatio || 1), poemCanvas.height / (window.devicePixelRatio || 1));
+
+    const textRect = poem.getBoundingClientRect();
+    const lines = stanzas[index].split('\n');
+    const fontSize = 28;
+    poemCtx.font = `28px 'VT323', 'Share Tech Mono', 'Courier New', monospace`;
+    poemCtx.textAlign = 'center';
+    poemCtx.textBaseline = 'middle';
+
+    const cx = textRect.left + textRect.width / 2;
+    const startY = textRect.top + 20;
+    const lineH = 44;
+
+    poemCtx.save();
+    poemCtx.globalAlpha = alpha;
+    poemCtx.shadowColor = 'rgba(200, 180, 255, 0.6)';
+    poemCtx.shadowBlur = 16;
+    poemCtx.shadowOffsetX = 0;
+    poemCtx.shadowOffsetY = 0;
+    poemCtx.fillStyle = 'rgba(245, 240, 216, 1)';
+
+    lines.forEach((line, i) => {
+      poemCtx.fillText(line, cx, startY + i * lineH);
+    });
+
+    poemCtx.restore();
+
+    poem.style.opacity = 1;
+  }
+
+  function animate(now) {
+    plasmaMaterial.uniforms.uTime.value = now * 0.001;
+    plasmaRenderer.render(plasmaScene, plasmaCamera);
+
+    if (globalStartTime === 0) {
+      globalStartTime = now;
+    }
+
+    const elapsed = now - globalStartTime;
+    const cyclePos = elapsed % TOTAL_STANZA_TIME;
+
+    if (cyclePos < STANZA_DURATION) {
+      const newStanza = Math.floor(elapsed / TOTAL_STANZA_TIME);
+      if (newStanza !== currentStanza && newStanza < stanzas.length) {
+        currentStanza = newStanza;
+      }
+      const fadeIn = Math.min(1, (cyclePos) / FADE_TIME * 1.5);
+      const fadeOut = cyclePos > STANZA_DURATION - FADE_TIME
+        ? Math.max(0, 1 - (cyclePos - (STANZA_DURATION - FADE_TIME)) / FADE_TIME)
+        : 1;
+      const alpha = Math.min(fadeIn, fadeOut);
+      drawStanza(currentStanza, alpha);
+    }
+
+    requestAnimationFrame(animate);
+  }
+
+  requestAnimationFrame(animate);
+})();
+</script>
+</body>
+</html>

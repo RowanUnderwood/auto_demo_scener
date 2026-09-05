@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Synthwave Mode 7</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #050011; }
+        canvas { display: block; width: 100vw; height: 100vh; image-rendering: pixelated; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+</script>
+<script type="module">
+    import * as THREE from 'three';
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    const renderer = new THREE.WebGLRenderer({ antialias: false });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    const geometry = new THREE.PlaneGeometry(2, 2);
+    const uniforms = {
+        u_time: { value: 0.0 },
+        u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+        u_speed: { value: 1.0 }
+    };
+
+    const material = new THREE.ShaderMaterial({
+        uniforms: uniforms,
+        vertexShader: `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = vec4(position, 1.0);
+            }
+        `,
+        fragmentShader: `
+            uniform float u_time;
+            uniform vec2 u_resolution;
+            uniform float u_speed;
+            varying vec2 vUv;
+
+            // Helper for grid lines
+            float grid(vec2 st, float size, float thickness, float colorVal) {
+                vec2 gridCoords = step(thickness, fract(st * size));
+                return min(gridCoords.x, gridCoords.y) * colorVal;
+            }
+
+            void main() {
+                vec2 uv = gl_FragCoord.xy / u_resolution.xy;
+                float x = uv.x;
+                float y = uv.y;
+
+                // --- Configuration ---
+                const float horizon = 0.45;
+                const float gridScale = 0.15;
+                const float moveSpeed = 3.0;
+                
+                // Colors
+                const vec3 bgDark = vec3(0.02, 0.0, 0.1);
+                const vec3 floorDark = vec3(0.1, 0.0, 0.2); // Deep purple
+                const vec3 gridNeon = vec3(1.0, 0.1, 0.8); // Hot pink
+                const vec3 gridSecondary = vec3(0.0, 0.8, 1.0); // Cyan
+                const vec3 sunColor = vec3(1.0, 0.6, 0.0);
+
+                vec3 color;
+
+                if (y < horizon) {
+                    // --- Floor Logic ---
+                    // The "Perspective Divide"
+                    // We map the distance from the horizon to a depth factor.
+                    // Small distance (bottom of screen) = Near plane (zoomed in)
+                    // Large distance (horizon) = Far plane (zoomed out)
+                    float dist = horizon - y;
+                    if (dist < 0.001) dist = 0.001;
+                    
+                    float perspective = 1.0 / (dist * 2.0);
+
+                    // --- Movement Logic ---
+                    // As we get closer to the horizon, the world expands faster.
+                    // This creates the "warp speed" or "Mode 7" sliding effect.
+                    float worldX = (x - 0.5) * perspective;
+                    float worldZ = (perspective * 0.5) - (u_time * moveSpeed);
+
+                    // --- Procedural Grid Texture ---
+                    // Base grid
+                    vec2 gridPos = vec2(worldX * 10.0, worldZ * 10.0);
+                    
+                    // Create a "retro" glowing effect using sine waves
+                    float lineX = sin(gridPos.x * 3.14159);
+                    float lineZ = sin(gridPos.y * 3.14159);
+                    
+                    // Combine to make glowing lines
+                    float intensity = clamp(lineX + lineZ, 0.0, 1.0);
+                    
+                    // Add a second grid layer for complexity
+                    float gridOverlay = grid(vec2(worldX, worldZ), gridScale, 0.05, 1.0);
+                    intensity = max(intensity, gridOverlay);
+
+                    // Pulsing brightness based on time
+                    float pulse = sin(u_time * 2.0) * 0.3 + 0.7;
+                    
+                    // Mix colors
+                    vec3 mixColor = mix(floorDark, gridNeon, intensity);
+                    mixColor = mix(mixColor, gridSecondary, intensity * 0.5);
+
+                    // Distance fog/atmosphere (things get darker and more purple further away)
+                    float fogFactor = 1.0 - smoothstep(0.0, 0.8, dist);
+                    color = mix(floorDark, mixColor, intensity * pulse * (1.0 - fogFactor * 0.5));
+
+                } else {
+                    // --- Sky Logic ---
+                    float skyY = (y - horizon) / (1.0 - horizon);
+                    
+                    // Draw the Sun
+                    float sunSize = 0.2;
+                    float sunX = 0.5; // Center X
+                    float sunY = 0.15; // Position in sky
+                    float sunDist = distance(uv, vec2(sunX, sunY));
+                    float sunGlow = 1.0 / (sunDist * 10.0);
+                    sunGlow = pow(sunGlow, 1.5);
+
+                    // Sky Gradient (Sunset)
+                    vec3 topSky = vec3(0.05, 0.0, 0.15);
+                    vec3 midSky = vec3(0.3, 0.0, 0.4);
+                    vec3 bottomSky = mix(vec3(0.1, 0.1, 0.2), vec3(1.0, 0.4, 0.1), smoothstep(0.0, 0.5, skyY));
+                    
+                    color = mix(topSky, midSky, skyY);
+                    color = mix(color, bottomSky, skyY * 0.8);
+                    
+                    // Add the sun
+                    color += sunColor * sunGlow;
+                }
+                
+                // Vignette effect
+                float vignette = 1.0 - smoothstep(0.5, 1.5, length(uv - vec2(0.5)));
+                color *= vignette;
+
+                gl_FragColor = vec4(color, 1.0);
+            }
+        `
+    });
+
+    const quad = new THREE.Mesh(geometry, material);
+    scene.add(quad);
+
+    function animate(time) {
+        uniforms.u_time.value = time * 0.001;
+        renderer.render(scene, camera);
+        requestAnimationFrame(animate);
+    }
+
+    window.addEventListener('resize', () => {
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        renderer.setSize(w, h);
+        uniforms.u_resolution.value.set(w, h);
+    });
+
+    requestAnimationFrame(animate);
+</script>
+</body>
+</html>

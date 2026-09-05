@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>90s BBS Scrolltext</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    <script>
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        camera.position.z = 5;
+
+        const scrollText = `*** BREAKING NEWS *** *******************************
+WELCOME TO UNDERGROUND CYBER NETWORK (UCN) v2.0
+THIS IS A SYSTEM ALERT: YOUR DATA PACKETS ARE BEING MONITORED
+****************************************************
+
+IN TODAY'S DIGITAL FRONTIER:
+- ANONYMOUS HACKERS RELEASE TOP SECRET GOV FILES
+- NEW VIRUS 'MEGABYTE MUNCHER' DESTROYS 10K PCS
+- ELITE CODERS UNVEIL QUAD-CORE DEMOSCENE
+- ONLINE PHREAKERS JAM 911 LINES AGAIN
+
+*** STAY TUNED FOR MORE ***
+****************************************************
+
+90s HACKER CULTURE: A LOOK BACK
+- BBS SYSTEMS: THE ORIGINAL SOCIAL NETWORKS
+- PHREAKING: THE ART OF FREE LONG-DISTANCE CALLS
+- DEMOSCENE: WHERE CODE MEETS ART
+- CYBERPUNK: THE FUTURE THAT NEVER WAS
+
+*** BULLETIN: NEW SECURITY PATCHES AVAILABLE ***
+****************************************************
+
+LATE-NIGHT DOWNLOAD TIPS:
+1. USE 28.8KBPS MODEMS FOR FASTEST TRANSFERS
+2. ALWAYS CHECK FILE CRC32 BEFORE INSTALLING
+3. DISABLE WINDOWS 95 ERROR MESSAGES FOR SILENT OPERATIONS
+
+*** FINAL WARNING: SYSTEM WILL REBOOT IN T-5 ***
+****************************************************
+
+THIS HAS BEEN A PUBLIC SERVICE ANNOUNCEMENT FROM UCN
+REMEMBER: KEEP CALM AND CODE ON, BROTHERS AND SISTERS
+`;
+
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        canvas.width = 1024;
+        canvas.height = 256;
+
+        context.fillStyle = '#0f0';
+        context.font = 'Bold 32px Courier New';
+        context.textAlign = 'left';
+        for (let i = 0; i < scrollText.length; i += 1) {
+            if (scrollText[i] === '\n') {
+                context.fillText(scrollText.substring(i - lineLength + 1, i), 10, (i / lineLength + 1) * 40);
+            } else if (context.measureText(scrollText.substring(0, i)).width > canvas.width - 20 && scrollText[i] !== ' ') {
+                context.fillText(scrollText.substring(i - lineLength, i), 10, (i / lineLength + 1) * 40);
+            } else if (scrollText[i] === '*') {
+                lineLength = i;
+                context.fillText(scrollText.substring(0, i), 10, (i / lineLength + 1) * 40);
+            }
+        }
+
+        const texture = new THREE.CanvasTexture(canvas);
+        const geometry = new THREE.PlaneGeometry(20, 20, 1, 1);
+        const material = new THREE.MeshBasicMaterial({ map: texture });
+
+        const plane = new THREE.Mesh(geometry, material);
+        scene.add(plane);
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            material.map.offset.x -= 0.02;
+            if (material.map.offset.x < -1) {
+                material.map.offset.x = 0;
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>

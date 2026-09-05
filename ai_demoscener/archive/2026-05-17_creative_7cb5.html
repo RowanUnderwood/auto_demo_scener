@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Demo Scene: Quantum Resonance</title>
+  <style>
+    body { margin: 0; overflow: hidden; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+<script>
+  // Quantum Resonance - A dynamic three.js demo inspired by quantum fluctuations and wave interference
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x05051e);
+  
+  const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+  camera.position.z = 30;
+  
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(window.devicePixelRatio);
+  document.body.appendChild(renderer.domElement);
+
+  // Create a quantum field with oscillating particles
+  const particleCount = 1500;
+  const particles = [];
+  
+  for (let i = 0; i < particleCount; i++) {
+    const geometry = new THREE.SphereGeometry(0.2, 8, 8);
+    const material = new THREE.MeshBasicMaterial({ 
+      color: new THREE.Color(Math.random() * 0.5 + 0.5, Math.random() * 0.5 + 0.5, Math.random() * 0.5 + 0.5),
+      transparent: true,
+      opacity: 0.7
+    });
+    
+    const particle = new THREE.Mesh(geometry, material);
+    
+    // Random position within a sphere around center
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.random() * Math.PI;
+    const r = Math.random() * 15 + 5;
+    
+    particle.position.x = r * Math.sin(phi) * Math.cos(theta);
+    particle.position.y = r * Math.sin(phi) * Math.sin(theta);
+    particle.position.z = r * Math.cos(phi);
+    
+    // Add oscillation properties
+    particle.userData = {
+      freq: Math.random() * 0.5 + 0.1,
+      phase: Math.random() * Math.PI * 2,
+      radius: r,
+      targetX: particle.position.x,
+      targetY: particle.position.y,
+      targetZ: particle.position.z,
+      speed: Math.random() * 0.03 + 0.005
+    };
+    
+    scene.add(particle);
+    particles.push(particle);
+  }
+
+  // Create a central emitter with dynamic light pulses
+  const emitterGeometry = new THREE.SphereGeometry(1, 16, 16);
+  const emitterMaterial = new THREE.MeshBasicMaterial({ 
+    color: 0x84f2ff,
+    transparent: true,
+    opacity: 0.9
+  });
+  
+  const emitter = new THREE.Mesh(emitterGeometry, emitterMaterial);
+  scene.add(emitter);
+
+  // Create a glow effect around the central source using points
+  const pointCount = 100;
+  const pointPositions = [];
+  for (let i = 0; i < pointCount; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const radius = Math.random() * 3 + 1;
+    pointPositions.push(
+      Math.cos(angle) * radius,
+      Math.sin(angle) * radius,
+      Math.random() * 2 - 1
+    );
+  }
+
+  const pointGeometry = new THREE.BufferGeometry();
+  pointGeometry.setAttribute('position', new THREE.Float32BufferAttribute(pointPositions, 3));
+  
+  const pointMaterial = new THREE.PointsMaterial({ 
+    color: 0x84f2ff,
+    size: 0.15,
+    transparent: true,
+    opacity: 0.6
+  });
+  
+  const glowPoints = new THREE.Points(pointGeometry, pointMaterial);
+  scene.add(glowPoints);
+
+  // Create a dynamic grid of lines representing quantum interference patterns
+  const lineCount = 20;
+  const lineMaterials = [];
+  for (let i = 0; i < lineCount; i++) {
+    const material = new THREE.LineBasicMaterial({ 
+      color: Math.random() * 0x4488ff + 0x113377,
+      transparent: true,
+      opacity: 0.2
+    });
+    lineMaterials.push(material);
+  }
+  
+  const lines = [];
+  for (let i = 0; i < lineCount; i++) {
+    const points = [
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(0, 0, 0)
+    ];
+    
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const line = new THREE.Line(geometry, lineMaterials[i]);
+    scene.add(line);
+    lines.push(line);
+  }
+
+  // Create a dynamic particle system for energy waves
+  const waveParticleCount = 50;
+  const waveParticles = [];
+  
+  for (let i = 0; i < waveParticleCount; i++) {
+    const geometry = new THREE.SphereGeometry(0.1, 8, 8);
+    const material = new THREE.MeshBasicMaterial({ 
+      color: Math.random() * 0x44ffff + 0x4488ff,
+      transparent: true,
+      opacity: 0.5
+    });
+    
+    const particle = new THREE.Mesh(geometry, material);
+    particle.position.set(0, 0, 0);
+    
+    particle.userData = {
+      radius: Math.random() * 10 + 20,
+      angle: Math.random() * Math.PI * 2,
+      speed: Math.random() * 0.1 + 0.05,
+      phase: Math.random() * Math.PI * 2
+    };
+    
+    scene.add(particle);
+    waveParticles.push(particle);
+  }
+
+  // Create a shimmering background effect with particles
+  const bgParticleCount = 300;
+  const bgParticles = [];
+  
+  for (let i = 0; i < bgParticleCount; i++) {
+    const geometry = new THREE.SphereGeometry(0.05, 8, 8);
+    const material = new THREE.MeshBasicMaterial({ 
+      color: Math.random() * 0x44ffff + 0x113377,
+      transparent: true,
+      opacity: 0.2
+    });
+    
+    const particle = new THREE.Mesh(geometry, material);
+    particle.position.set(
+      (Math.random() - 0.5) * 50,
+      (Math.random() - 0.5) * 50,
+      (Math.random() - 0.5) * 50
+    );
+    
+    particle.userData = {
+      speed: Math.random() * 0.1 + 0.02,
+      directionX: Math.random() - 0.5,
+      directionY: Math.random() - 0.5,
+      directionZ: Math.random() - 0.5
+    };
+    
+    scene.add(particle);
+    bgParticles.push(particle);
+  }
+
+  // Light sources for depth and atmosphere
+  const ambientLight = new THREE.AmbientLight(0x333366, 0.3);
+  scene.add(ambientLight);
+  
+  const directionalLight1 = new THREE.DirectionalLight(0x84f2ff, 0.5);
+  directionalLight1.position.set(1, 1, 1).normalize();
+  scene.add(directionalLight1);
+  
+  const directionalLight2 = new THREE.DirectionalLight(0xff84f2, 0.3);
+  directionalLight2.position.set(-1, -1, 1).normalize();
+  scene.add(directionalLight2);
+
+  // Animation loop
+  let time = 0;
+  function animate() {
+    requestAnimationFrame(animate);
+    
+    time += 0.01;
+    
+    // Update emitter glow and pulsing effect
+    const pulseFactor = Math.sin(time * 0.5) * 0.3 + 0.7;
+    emitter.material.opacity = 0.8 + Math.sin(time * 2) * 0.1;
+    emitter.scale.set(pulseFactor, pulseFactor, pulseFactor);
+    
+    // Update glow points radius and opacity
+    for (let i = 0; i < pointPositions.length; i += 3) {
+      const index = Math.floor(i / 3);
+      pointPositions[i] = Math.cos(time * 2 + index * 0.5) * (1 + Math.sin(time * 0.7)) * 3;
+      pointPositions[i+1] = Math.sin(time * 2 + index * 0.5) * (1 + Math.sin(time * 0.7)) * 3;
+      pointPositions[i+2] = Math.sin(time * 1.5 + index * 0.8) * 0.5; 
+    }
+    
+    pointGeometry.attributes.position.needsUpdate = true;
+    
+    // Update quantum particle oscillations
+    particles.forEach(particle => {
+      const data = particle.userData;
+      
+      // Make the particle move toward its target position with smooth interpolation
+      if (Math.random() < 0.2) {
+        data.targetX += (Math.random() - 0.5) * 3;
+        data.targetY += (Math.random() - 0.5) * 3;
+        data.targetZ += (Math.random() - 0.5) * 3;
+      }
+      
+      // Smooth interpolation toward target
+      particle.position.x += (data.targetX - particle.position.x) * data.speed;
+      particle.position.y += (data.targetY - particle.position.y) * data.speed;
+      particle.position.z += (data.targetZ - particle.position.z) * data.speed;
+      
+      // Add oscillation based on the frequency and phase
+      const oscillation = Math.sin(time * data.freq + data.phase) * 0.5;
+      particle.material.opacity = 0.7 + oscillation * 0.3;
+      particle.material.color.setHSL(
+        (time * 0.01) % 1,
+        0.8,
+        0.6
+      );
+    });
+    
+    // Update interference lines with wave patterns
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const material = line.material;
+      const freq = 0.2 + Math.sin(time * 0.3) * 0.1;
+      
+      // Create a sine wave pattern
+      const p0 = line.geometry.attributes.position.array[0] - Math.cos(time * 0.5 + i * 0.3) * 10;
+      const p1 = line.geometry.attributes.position.array[1] - Math.sin(time * 0.7 + i * 0.2) * 8;
+      
+      line.geometry.attributes.position.setXYZ(0, p0, p1, 0);
+      line.geometry.attributes.position.setXYZ(1, p0, p1, 0);
+      line.geometry.attributes.position.needsUpdate = true;
+      
+      // Vary the color based on time and position
+      material.color.setHSL(
+        (time * 0.03 + i * 0.02) % 1,
+        0.9,
+        0.6 + Math.sin(time * 0.5 + i) * 0.2
+      );
+    }
+    
+    // Update energy waves
+    waveParticles.forEach(particle => {
+      const data = particle.userData;
+      
+      // Move in a circular path with expanding radius and pulsing effect
+      data.angle += data.speed;
+      data.radius += Math.sin(time * 0.5 + data.phase) * 0.1;
+      
+      particle.position.x = Math.cos(data.angle) * data.radius;
+      particle.position.y = Math.sin(data.angle) * data.radius;
+      particle.position.z = Math.sin(time * 0.7 + data.phase) * 2;
+      
+      // Add pulsing opacity
+      const pulseOpacity = 0.1 + Math.abs(Math.sin(time * 2 + data.phase)) * 0.4;
+      particle.material.opacity = pulseOpacity;
+    });
+    
+    // Update background particles with slow drift
+    bgParticles.forEach(particle => {
+      const data = particle.userData;
+      
+      // Move slowly in random directions
+      if (Math.random() < 0.1) {
+        data.directionX = Math.random() - 0.5;
+        data.directionY = Math.random() - 0.5;
+        data.directionZ = Math.random() - 0.5;
+      }
+      
+      particle.position.x += data.directionX * data.speed;
+      particle.position.y += data.directionY * data.speed;
+      particle.position.z += data.directionZ * data.speed;
+      
+      // Wrap around when out of bounds
+      if (Math.abs(particle.position.x) > 40 || Math.abs(particle.position.y) > 40 || Math.abs(particle.position.z) > 40) {
+        const radius = Math.random() * 20 + 10;
+        particle.position.set(
+          (Math.random() - 0.5) * 30,
+          (Math.random() - 0.5) * 30,
+          (Math.random() - 0.5) * 30
+        );
+      }
+      
+      // Add subtle color changes over time
+      particle.material.color.setHSL(
+        (time * 0.01 + Math.sin(time * 0.2)) % 1,
+        0.7,
+        0.4
+      );
+    });
+    
+    // Camera movement - slow orbit around center with slight zooming effect
+    camera.position.x = Math.sin(time) * 35;
+    camera.position.y = Math.cos(time) * 20;
+    camera.position.z = Math.cos(time) * 30 + Math.sin(time * 0.8) * 10;
+    
+    // Look at center of the scene
+    camera.lookAt(0, 0, 0);
+    
+    renderer.render(scene, camera);
+  }
+
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  animate();
+</script>
+</body>
+</html>

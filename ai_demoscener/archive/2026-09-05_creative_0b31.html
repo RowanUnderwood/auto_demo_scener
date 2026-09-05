@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Hypercube Bloom</title>
+<style>
+*{margin:0;padding:0}
+body{overflow:hidden;background:#000}
+canvas{display:block}
+</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 100);
+camera.position.set(0, 0, 5);
+const renderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+// Glow texture
+function makeGlowTexture(size=64){
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const ctx = c.getContext('2d');
+  const g = ctx.createRadialGradient(size/2,size/2,0,size/2,size/2,size/2);
+  g.addColorStop(0,'rgba(255,255,255,1)');
+  g.addColorStop(0.2,'rgba(255,255,255,0.8)');
+  g.addColorStop(0.5,'rgba(255,255,255,0.2)');
+  g.addColorStop(1,'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0,0,size,size);
+  return new THREE.CanvasTexture(c);
+}
+const glowTex = makeGlowTexture();
+
+// 4D hypercube vertices (16)
+const verts4D = [];
+for(let i=0;i<16;i++){
+  verts4D.push([
+    (i&1)?1:-1, (i&2)?1:-1, (i&4)?1:-1, (i&8)?1:-1
+  ]);
+}
+
+// 4D edges (32) - pairs differing in exactly one bit
+const edges = [];
+for(let i=0;i<16;i++){
+  for(let j=i+1;j<16;j++){
+    const diff = i^j;
+    if(diff&(diff-1)===0) edges.push([i,j]);
+  }
+}
+
+// 4D rotation
+function rotate4D(vec, angle, plane){
+  const [a,b] = plane;
+  const c = Math.cos(angle), s = Math.sin(angle);
+  const v = [...vec];
+  v[a] = c*vec[a] - s*vec[b];
+  v[b] = s*vec[a] + c*vec[b];
+  return v;
+}
+
+// 4D to 3D perspective projection
+function project4D(vec){
+  const d = 3.5; // camera distance in 4D
+  const scale = d / (d - vec[3]);
+  return new THREE.Vector3(vec[0]*scale, vec[1]*scale, vec[2]*scale);
+}
+
+// State
+let time = 0;
+const trails = [];
+const TRAIL_LEN = 40;
+for(let i=0;i<16;i++) trails.push([]);
+
+// Edge lines
+const edgeGeometry = new THREE.BufferGeometry();
+const edgePositions = new Float32Array(32*6);
+const edgeColors = new Float32Array(32*6);
+edgeGeometry.setAttribute('position', new THREE.BufferAttribute(edgePositions, 3));
+edgeGeometry.setAttribute('color', new THREE.BufferAttribute(edgeColors, 3));
+const edgeMat = new THREE.LineBasicMaterial({vertexColors:true, transparent:true, opacity:0.7, blending:THREE.AdditiveBlending});
+const edgeLines = new THREE.LineSegments(edgeGeometry, edgeMat);
+scene.add(edgeLines);
+
+// Vertex sprites
+const vertexSprites = [];
+for(let i=0;i<16;i++){
+  const mat = new THREE.SpriteMaterial({map:glowTex, color:0xffffff, transparent:true, blending:THREE.AdditiveBlending, depthWrite:false});
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(0.4, 0.4, 1);
+  scene.add(sprite);
+  vertexSprites.push(sprite);
+}
+
+// 3-sphere particle field
+const SPHERE_N = 3000;
+const sphereData = [];
+for(let i=0;i<SPHERE_N;i++){
+  // Random point on 3-sphere
+  let v = [Math.random()*2-1, Math.random()*2-1, Math.random()*2-1, Math.random()*2-1];
+  let len = Math.sqrt(v[0]**2+v[1]**2+v[2]**2+v[3]**2);
+  v = v.map(x=>x/len);
+  const radius = 2.2 + Math.random()*0.3;
+  sphereData.push({
+    v: v.map(x=>x*radius),
+    speed: 0.3 + Math.random()*0.5,
+    phase: Math.random()*Math.PI*2
+  });
+}
+const sphereGeom = new THREE.BufferGeometry();
+const spherePos = new Float32Array(SPHERE_N*3);
+const sphereCol = new Float32Array(SPHERE_N*3);
+sphereGeom.setAttribute('position', new THREE.BufferAttribute(spherePos, 3));
+sphereGeom.setAttribute('color', new THREE.BufferAttribute(sphereCol, 3));
+const sphereMat = new THREE.PointsMaterial({size:0.03, map:glowTex, transparent:true, blending:THREE.AdditiveBlending, depthWrite:false, vertexColors:true});
+const spherePoints = new THREE.Points(sphereGeom, sphereMat);
+scene.add(spherePoints);
+
+// Bloom particles
+const BLOOM_N = 500;
+const bloomData = [];
+for(let i=0;i<BLOOM_N;i++){
+  bloomData.push({
+    pos: new THREE.Vector3(),
+    vel: new THREE.Vector3(),
+    life: 0,
+    maxLife: 0,
+    active: false
+  });
+}
+const bloomGeom = new THREE.BufferGeometry();
+const bloomPos = new Float32Array(BLOOM_N*3);
+const bloomCol = new Float32Array(BLOOM_N*3);
+bloomGeom.setAttribute('position', new THREE.BufferAttribute(bloomPos, 3));
+bloomGeom.setAttribute('color', new THREE.BufferAttribute(bloomCol, 3));
+const bloomMat = new THREE.PointsMaterial({size:0.08, map:glowTex, transparent:true, blending:THREE.AdditiveBlending, depthWrite:false, vertexColors:true});
+const bloomPoints = new THREE.Points(bloomGeom, bloomMat);
+scene.add(bloomPoints);
+
+// Background stars
+const STAR_N = 800;
+const starGeom = new THREE.BufferGeometry();
+const starPos = new Float32Array(STAR_N*3);
+for(let i=0;i<STAR_N;i++){
+  const theta = Math.random()*Math.PI*2;
+  const phi = Math.acos(Math.random()*2-1);
+  const r = 20 + Math.random()*30;
+  starPos[i*3] = r*Math.sin(phi)*Math.cos(theta);
+  starPos[i*3+1] = r*Math.sin(phi)*Math.sin(theta);
+  starPos[i*3+2] = r*Math.cos(phi);
+}
+starGeom.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+const starMat = new THREE.PointsMaterial({size:0.05, color:0x4466aa, transparent:true, opacity:0.6});
+scene.add(new THREE.Points(starGeom, starMat));
+
+function hsl(h,s,l){
+  const c = new THREE.Color();
+  c.setHSL(h%1, s, l);
+  return c;
+}
+
+function spawnBloom(pos, color){
+  let spawned = 0;
+  for(let i=0;i<BLOOM_N;i++){
+    if(!bloomData[i].active && spawned<20){
+      const d = bloomData[i];
+      d.pos.copy(pos);
+      const dir = new THREE.Vector3(Math.random()-0.5, Math.random()-0.5, Math.random()-0.5).normalize();
+      d.vel.copy(dir).multiplyScalar(0.5+Math.random()*1.5);
+      d.life = 1;
+      d.maxLife = 0.8+Math.random()*0.6;
+      d.active = true;
+      d.color = color;
+      spawned++;
+    }
+  }
+}
+
+let lastBloomTime = 0;
+
+function animate(){
+  requestAnimationFrame(animate);
+  const dt = 0.016;
+  time += dt;
+
+  // 4D rotations
+  const a1 = time * 0.4;
+  const a2 = time * 0.27;
+  const a3 = time * 0.13;
+
+  // Transform vertices
+  const proj3D = [];
+  const w4D = [];
+  for(let i=0;i<16;i++){
+    let v = [...verts4D[i]];
+    v = rotate4D(v, a1, [0,1]);
+    v = rotate4D(v, a2, [2,3]);
+    v = rotate4D(v, a3, [0,3]);
+    w4D.push(v[3]);
+    proj3D.push(project4D(v));
+  }
+
+  // Update trails
+  for(let i=0;i<16;i++){
+    trails[i].unshift(proj3D[i].clone());
+    if(trails[i].length > TRAIL_LEN) trails[i].pop();
+  }
+
+  // Update vertex sprites
+  for(let i=0;i<16;i++){
+    vertexSprites[i].position.copy(proj3D[i]);
+    const w = (w4D[i]+1)/2; // 0 to 1
+    const hue = (w*0.8 + time*0.1)%1;
+    const col = hsl(hue, 0.9, 0.5 + w*0.3);
+    vertexSprites[i].material.color.copy(col);
+    const sc = 0.2 + w*0.3;
+    vertexSprites[i].scale.set(sc, sc, 1);
+  }
+
+  // Update edges
+  for(let e=0;e<edges.length;e++){
+    const [i,j] = edges[e];
+    const pi = proj3D[i], pj = proj3D[j];
+    edgePositions[e*6] = pi.x; edgePositions[e*6+1] = pi.y; edgePositions[e*6+2] = pi.z;
+    edgePositions[e*6+3] = pj.x; edgePositions[e*6+4] = pj.y; edgePositions[e*6+5] = pj.z;
+    const wi = (w4D[i]+1)/2, wj = (w4D[j]+1)/2;
+    const hue1 = (wi*0.8+time*0.1)%1, hue2 = (wj*0.8+time*0.1)%1;
+    const c1 = hsl(hue1, 0.7, 0.3), c2 = hsl(hue2, 0.7, 0.3);
+    edgeColors[e*6] = c1.r; edgeColors[e*6+1] = c1.g; edgeColors[e*6+2] = c1.b;
+    edgeColors[e*6+3] = c2.r; edgeColors[e*6+4] = c2.g; edgeColors[e*6+5] = c2.b;
+  }
+  edgeGeometry.attributes.position.needsUpdate = true;
+  edgeGeometry.attributes.color.needsUpdate = true;
+
+  // Update 3-sphere
+  for(let i=0;i<SPHERE_N;i++){
+    const sd = sphereData[i];
+    let v = [...sd.v];
+    v = rotate4D(v, time*sd.speed, [0,1]);
+    v = rotate4D(v, time*sd.speed*0.7, [2,3]);
+    const proj = project4D(v);
+    spherePos[i*3] = proj.x;
+    spherePos[i*3+1] = proj.y;
+    spherePos[i*3+2] = proj.z;
+    const w = (v[3]/2.5+1)/2;
+    const hue = (w*0.6 + 0.55 + time*0.05)%1;
+    const c = hsl(hue, 0.5, 0.15+w*0.2);
+    sphereCol[i*3] = c.r; sphereCol[i*3+1] = c.g; sphereCol[i*3+2] = c.b;
+  }
+  sphereGeom.attributes.position.needsUpdate = true;
+  sphereGeom.attributes.color.needsUpdate = true;
+
+  // Bloom trigger
+  if(time - lastBloomTime > 0.4){
+    lastBloomTime = time;
+    const idx = Math.floor(Math.random()*16);
+    const w = (w4D[idx]+1)/2;
+    const hue = (w*0.8+time*0.1)%1;
+    spawnBloom(proj3D[idx], hsl(hue, 1.0, 0.7));
+  }
+
+  // Update bloom particles
+  for(let i=0;i<BLOOM_N;i++){
+    const d = bloomData[i];
+    if(!d.active){
+      bloomPos[i*3] = 9999; bloomPos[i*3+1] = 9999; bloomPos[i*3+2] = 9999;
+      bloomCol[i*3]=0; bloomCol[i*3+1]=0; bloomCol[i*3+2]=0;
+      continue;
+    }
+    d.life -= dt/d.maxLife;
+    if(d.life <= 0){ d.active = false; continue; }
+    d.pos.add(d.vel.clone().multiplyScalar(dt));
+    d.vel.multiplyScalar(0.96);
+    bloomPos[i*3] = d.pos.x; bloomPos[i*3+1] = d.pos.y; bloomPos[i*3+2] = d.pos.z;
+    const fade = d.life*d.life;
+    bloomCol[i*3] = d.color.r*fade; bloomCol[i*3+1] = d.color.g*fade; bloomCol[i*3+2] = d.color.b*fade;
+  }
+  bloomGeom.attributes.position.needsUpdate = true;
+  bloomGeom.attributes.color.needsUpdate = true;
+
+  // Subtle camera orbit
+  camera.position.x = Math.sin(time*0.1)*0.5;
+  camera.position.y = Math.cos(time*0.13)*0.3;
+  camera.lookAt(0,0,0);
+
+  renderer.render(scene, camera);
+}
+animate();
+
+window.addEventListener('resize', ()=>{
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+*{margin:0;padding:0}
+body{overflow:hidden;background:#000}
+canvas{display:block}
+#info{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);color:rgba(255,200,150,0.4);font:12px monospace;pointer-events:none;letter-spacing:2px}
+</style>
+</head>
+<body>
+<div id="info">CHRONO BLOOM</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 100);
+camera.position.set(0, 0, 12);
+
+const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+const FLOWER_COUNT = 15000;
+const HALO_COUNT = 12000;
+const TOTAL = FLOWER_COUNT + HALO_COUNT;
+const GOLDEN = Math.PI * (3 - Math.sqrt(5));
+
+// Build particle data
+const positions = new Float32Array(TOTAL * 3);
+const aData = new Float32Array(TOTAL * 4); // seed, index, type(0=flower,1=halo), angle
+const aSpeed = new Float32Array(TOTAL);
+
+for (let i = 0; i < FLOWER_COUNT; i++) {
+    const idx = i / FLOWER_COUNT;
+    const angle = i * GOLDEN;
+    const r = Math.sqrt(idx) * 4.0;
+    const y = (Math.random() - 0.5) * 0.3 * (1 - idx * 0.5);
+    positions[i*3] = r * Math.cos(angle);
+    positions[i*3+1] = y;
+    positions[i*3+2] = r * Math.sin(angle);
+    aData[i*4] = Math.random();
+    aData[i*4+1] = idx;
+    aData[i*4+2] = 0;
+    aData[i*4+3] = angle;
+    aSpeed[i] = 0.5 + Math.random() * 0.5;
+}
+
+for (let i = FLOWER_COUNT; i < TOTAL; i++) {
+    const j = i - FLOWER_COUNT;
+    const idx = j / HALO_COUNT;
+    const angle = j * GOLDEN * 0.7 + 1.5;
+    const r = 5.0 + idx * 8.0;
+    const y = (Math.random() - 0.5) * 2.0 * idx;
+    positions[i*3] = r * Math.cos(angle);
+    positions[i*3+1] = y;
+    positions[i*3+2] = r * Math.sin(angle);
+    aData[i*4] = Math.random();
+    aData[i*4+1] = idx;
+    aData[i*4+2] = 1;
+    aData[i*4+3] = angle;
+    aSpeed[i] = 0.3 + Math.random() * 0.7;
+}
+
+const geo = new THREE.BufferGeometry();
+geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+geo.setAttribute('aData', new THREE.BufferAttribute(aData, 4));
+geo.setAttribute('aSpeed', new THREE.BufferAttribute(aSpeed, 1));
+
+const vertShader = `
+uniform float uTime;
+uniform float uBloom;
+attribute vec4 aData;
+attribute float aSpeed;
+varying float vLife;
+varying float vType;
+varying float vSeed;
+
+void main() {
+    float seed = aData.x;
+    float idx = aData.y;
+    float type = aData.z;
+    float baseAngle = aData.w;
+
+    vec3 pos = position;
+
+    if (type < 0.5) {
+        // Flower particle: bloom/unbloom
+        float t = uTime * 0.4 * aSpeed;
+        float bloomPhase = uBloom * 0.6 + 0.4;
+        float r = length(pos.xz);
+        float newR = r * (0.3 + 0.9 * bloomPhase) + sin(t + seed * 6.28) * 0.15;
+        float angle = baseAngle + sin(uTime * 0.3 + seed * 3.0) * 0.05;
+        pos.x = newR * cos(angle);
+        pos.z = newR * sin(angle);
+        pos.y += sin(uTime * 0.8 + seed * 12.0) * 0.15 * bloomPhase;
+        // Petal curl
+        float petalWave = sin(baseAngle * 5.0 + uTime * 0.5) * 0.4;
+        pos.y += petalWave * idx * 0.5 * bloomPhase;
+        vLife = 1.0 - idx * 0.3;
+    } else {
+        // Halo: orbiting spiral
+        float t = uTime * 0.25 * aSpeed;
+        float angle = baseAngle + t;
+        float r = 5.0 + idx * 8.0 + sin(uTime * 0.5 + seed * 6.28) * 0.5;
+        pos.x = r * cos(angle);
+        pos.z = r * sin(angle);
+        pos.y = sin(angle * 2.0 + uTime * 0.3) * 0.8 * (0.5 + idx);
+        pos.y += sin(uTime * 0.6 + seed * 10.0) * 0.2;
+        vLife = 0.6 - idx * 0.4;
+    }
+
+    vLife = clamp(vLife, 0.0, 1.0);
+    vType = type;
+    vSeed = seed;
+
+    vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
+    gl_Position = projectionMatrix * mvPos;
+
+    float size = (type < 0.5) ? (3.0 + 5.0 * (1.0 - idx)) : (1.5 + 3.0 * (1.0 - idx));
+    size *= (0.8 + 0.4 * sin(uTime * 2.0 + seed * 6.28));
+    gl_PointSize = size * (1.0 / -mvPos.z) * 120.0;
+}
+`;
+
+const fragShader = `
+varying float vLife;
+varying float vType;
+varying float vSeed;
+uniform float uTime;
+
+void main() {
+    vec2 uv = gl_PointCoord - 0.5;
+    float d = length(uv);
+    if (d > 0.5) discard;
+    float alpha = smoothstep(0.5, 0.0, d);
+    alpha *= alpha;
+
+    vec3 warm = vec3(1.0, 0.6, 0.15);
+    vec3 mid = vec3(0.9, 0.2, 0.5);
+    vec3 cool = vec3(0.2, 0.3, 0.9);
+    vec3 deep = vec3(0.05, 0.05, 0.3);
+
+    vec3 col;
+    if (vType < 0.5) {
+        col = mix(warm, mid, 1.0 - vLife);
+        col = mix(col, cool, (1.0 - vLife) * 0.5);
+    } else {
+        col = mix(mid, cool, 1.0 - vLife);
+        col = mix(col, deep, (1.0 - vLife) * 0.6);
+    }
+
+    // Pulse
+    float pulse = 0.7 + 0.3 * sin(uTime * 3.0 + vSeed * 6.28);
+    col *= pulse;
+
+    gl_FragColor = vec4(col, alpha * 0.85);
+}
+`;
+
+const mat = new THREE.ShaderMaterial({
+    vertexShader: vertShader,
+    fragmentShader: fragShader,
+    uniforms: {
+        uTime: { value: 0 },
+        uBloom: { value: 1.0 }
+    },
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+});
+
+const points = new THREE.Points(geo, mat);
+scene.add(points);
+
+// Background stars
+const starCount = 2000;
+const starGeo = new THREE.BufferGeometry();
+const starPos = new Float32Array(starCount * 3);
+for (let i = 0; i < starCount; i++) {
+    starPos[i*3] = (Math.random()-0.5) * 60;
+    starPos[i*3+1] = (Math.random()-0.5) * 60;
+    starPos[i*3+2] = -10 - Math.random() * 40;
+}
+starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+const starMat = new THREE.PointsMaterial({ color: 0x334466, size: 0.05, transparent: true, opacity: 0.6 });
+scene.add(new THREE.Points(starGeo, starMat));
+
+// Core glow sphere
+const coreGeo = new THREE.SphereGeometry(0.4, 32, 32);
+const coreMat = new THREE.MeshBasicMaterial({ color: 0xffaa33, transparent: true, opacity: 0.3 });
+const core = new THREE.Mesh(coreGeo, coreMat);
+scene.add(core);
+
+// Mouse
+let mx = 0, my = 0, tmx = 0, tmy = 0;
+document.addEventListener('mousemove', e => {
+    tmx = (e.clientX / innerWidth - 0.5) * 2;
+    tmy = (e.clientY / innerHeight - 0.5) * 2;
+});
+
+// Resize
+window.addEventListener('resize', () => {
+    camera.aspect = innerWidth / innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+});
+
+// Animate
+const clock = new THREE.Clock();
+function animate() {
+    requestAnimationFrame(animate);
+    const t = clock.getElapsedTime();
+
+    mat.uniforms.uTime.value = t;
+    mat.uniforms.uBloom.value = 0.5 + 0.5 * Math.sin(t * 0.5);
+
+    // Core pulse
+    const cp = 0.3 + 0.3 * Math.sin(t * 1.5);
+    coreMat.opacity = cp;
+    core.scale.setScalar(1.0 + 0.3 * Math.sin(t * 1.5));
+    coreMat.color.setHSL(0.08 + 0.03 * Math.sin(t * 0.3), 0.9, 0.5);
+
+    // Camera orbit + mouse
+    mx += (tmx - mx) * 0.02;
+    my += (tmy - my) * 0.02;
+    const ca = t * 0.08;
+    camera.position.x = Math.sin(ca) * 12 + mx * 2;
+    camera.position.y = Math.cos(ca * 0.7) * 2 - my * 2;
+    camera.position.z = Math.cos(ca) * 12;
+    camera.lookAt(0, 0, 0);
+
+    // Rotate points group
+    points.rotation.y = t * 0.05;
+
+    renderer.render(scene, camera);
+}
+animate();
+</script>
+</body>
+</html>

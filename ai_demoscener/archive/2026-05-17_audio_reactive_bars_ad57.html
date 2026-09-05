@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frequency Analyzer</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/OrbitControls.js"></script>
+    <script>
+        // Scene setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Controls
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        camera.position.z = 10;
+
+        // Bars setup
+        const bars = [];
+        const glowSprites = [];
+        const barCount = 64;
+        const spacing = 2;
+        for (let i = 0; i < barCount; i++) {
+            const geometry = new THREE.BoxGeometry(0.8, 0.8, 1);
+            const material = new THREE.MeshPhongMaterial({ color: 0xffffff });
+            const bar = new THREE.Mesh(geometry, material);
+            bar.position.x = - (barCount / 2) * spacing + i * spacing;
+            scene.add(bar);
+            bars.push(bar);
+
+            // Glow sprite
+            const glowTexture = new THREE.TextureLoader().load('https://threejs.org/examples/textures/sprites/canvas_sprite.png');
+            const glowMaterial = new THREE.SpriteMaterial({ map: glowTexture, color: 0xffffff });
+            const glowSprite = new THREE.Sprite(glowMaterial);
+            glowSprite.scale.set(1.2, 3, 1);
+            glowSprite.position.copy(bar.position).add(new THREE.Vector3(0, -0.4, 0));
+            scene.add(glowSprite);
+            glowSprites.push(glowSprite);
+
+            // Color bars by hue
+            const hue = i / barCount;
+            material.color.setHSL(hue, 1, 0.5);
+        }
+
+        // Lights
+        const ambientLight = new THREE.AmbientLight(0x404040);
+        scene.add(ambientLight);
+
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(1, 1, 1);
+        scene.add(directionalLight);
+
+        // Animate bars
+        let time = 0;
+        function animate() {
+            requestAnimationFrame(animate);
+            time += 0.05;
+
+            for (let i = 0; i < barCount; i++) {
+                const frequency1 = 0.2 + i * 0.1;
+                const frequency2 = 0.3 + i * 0.15;
+                const frequency3 = 0.4 + i * 0.08;
+                const frequency4 = 0.5 + i * 0.12;
+
+                const phaseShift1 = time * frequency1;
+                const phaseShift2 = time * frequency2 + Math.PI / 2;
+                const phaseShift3 = time * frequency3 + Math.PI;
+                const phaseShift4 = time * frequency4 + Math.PI * 1.5;
+
+                const scaleY = Math.abs(
+                    Math.sin(phaseShift1) +
+                    Math.cos(phaseShift2) +
+                    Math.sin(phaseShift3) +
+                    Math.cos(phaseShift4)
+                ) / 8 + 0.1;
+
+                bars[i].scale.y = scaleY;
+                glowSprites[i].scale.set(1.2, scaleY * 2.5, 1);
+            }
+
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Synthwave</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { overflow: hidden; background: #000; }
+canvas { display: block; }
+</style>
+</head>
+<body>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+// --- Setup ---
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x3a0845, 0.008);
+
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
+camera.position.set(0, 1.7, 8);
+camera.lookAt(0, 3, -100);
+
+// --- Sky Gradient Sphere ---
+const skyGeo = new THREE.SphereGeometry(950, 32, 32);
+const skyMat = new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    uniforms: {},
+    vertexShader: `
+        varying vec3 vWorldPos;
+        void main() {
+            vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `,
+    fragmentShader: `
+        varying vec3 vWorldPos;
+        void main() {
+            float h = normalize(vWorldPos).y;
+            vec3 top = vec3(0.06, 0.0, 0.15);
+            vec3 mid = vec3(0.75, 0.0, 0.45);
+            vec3 horizon = vec3(1.0, 0.35, 0.0);
+            float t = smoothstep(-0.2, 0.6, h);
+            vec3 col;
+            if (h < 0.0) {
+                col = mix(horizon, mid, smoothstep(0.0, -0.15, h));
+                col = mix(col, top, smoothstep(-0.15, -0.4, h));
+            } else {
+                col = mix(horizon, mid, smoothstep(0.0, 0.25, h));
+                col = mix(col, top, smoothstep(0.25, 0.8, h));
+            }
+            // Add some banding for retro feel
+            float band = sin(vWorldPos.y * 0.01 + vWorldPos.x * 0.003) * 0.02;
+            col += band;
+            gl_FragColor = vec4(col, 1.0);
+        }
+    `
+});
+const skyMesh = new THREE.Mesh(skyGeo, skyMat);
+scene.add(skyMesh);
+
+// --- Stars ---
+const starCount = 2000;
+const starPositions = new Float32Array(starCount * 3);
+const starSizes = new Float32Array(starCount);
+const starOpacities = new Float32Array(starCount);
+for (let i = 0; i < starCount; i++) {
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(Math.random() * 0.8 - 0.2); // biased upward
+    const r = 900;
+    starPositions[i*3] = r * Math.sin(phi) * Math.cos(theta);
+    starPositions[i*3+1] = r * Math.cos(phi);
+    starPositions[i*3+2] = r * Math.sin(phi) * Math.sin(theta);
+    starSizes[i] = Math.random() * 3.0 + 0.5;
+    starOpacities[i] = (starPositions[i*3+1] > 0) ? 1.0 : 0.0;
+}
+const starGeo = new THREE.BufferGeometry();
+starGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+starGeo.setAttribute('size', new THREE.BufferAttribute(starSizes, 1));
+
+const starMat = new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    uniforms: {
+        uTime: { value: 0 }
+    },
+    vertexShader: `
+        attribute float size;
+        varying float vOpacity;
+        uniform float uTime;
+        void main() {
+            vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+            gl_PointSize = size * (200.0 / -mvPos.z);
+            gl_Position = projectionMatrix * mvPos;
+            float h = normalize(position).y;
+            vOpacity = smoothstep(0.05, 0.6, h) * (0.7 + 0.3 * sin(uTime * 0.5 + position.x * 0.1));
+        }
+    `,
+    fragmentShader: `
+        varying float vOpacity;
+        void main() {
+            float d = length(gl_PointCoord - vec2(0.5));
+            if (d > 0.5) discard;
+            float alpha = smoothstep(0.5, 0.1, d) * vOpacity;
+            gl_FragColor = vec4(1.0, 1.0, 1.0, alpha);
+        }
+    `
+});
+
+const stars = new THREE.Points(starGeo, starMat);
+scene.add(stars);
+
+// --- Scrolling Wireframe Grid ---
+const gridSize = 600;
+const gridSpacing = 8;
+const gridLines = [];
+let gridOffsetZ = 0;
+
+function createGrid() {
+    const linePositions = new Float32Array(gridSize * gridSpacing * 2 * 4); // pairs of lines in both directions
+    let idx = 0;
+
+    for (let i = -gridSize/2; i <= gridSize/2; i += gridSpacing) {
+        // Lines along X axis (running toward camera)
+        linePositions[idx++] = -gridSize/2;
+        linePositions[idx++] = 0.01;
+        linePositions[idx++] = i;
+        linePositions[idx++] = gridSize/2;
+        linePositions[idx++] = 0.01;
+        linePositions[idx++] = i;
+
+        // Lines along Z axis (across the scene)
+        linePositions[idx++] = i;
+        linePositions[idx++] = 0.01;
+        linePositions[idx++] = -gridSize/2;
+        linePositions[idx++] = i;
+        linePositions[idx++] = 0.01;
+        linePositions[idx++] = gridSize/2;
+    }
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(linePositions, 3));
+
+    const mat = new THREE.LineBasicMaterial({
+        color: new THREE.Color(1.0, 0.0, 0.8),
+        transparent: true,
+        opacity: 0.75,
+        blending: THREE.AdditiveBlending,
+    });
+
+    const grid = new THREE.LineSegments(geo, mat);
+    scene.add(grid);
+    return { mesh: grid, spacing: gridSpacing };
+}
+
+const gridObj = createGrid();
+
+function updateGrid(dt) {
+    const speed = 30.0; // units per second
+    gridOffsetZ += speed * dt;
+    if (gridOffsetZ >= gridObj.spacing) {
+        gridOffsetZ -= gridObj.spacing;
+    }
+    gridObj.mesh.position.z = -gridOffsetZ;
+}
+
+// --- Sun ---
+const sunGroup = new THREE.Group();
+sunGroup.position.set(0, 12, -350);
+scene.add(sunGroup);
+
+const barCount = 40;
+const sunWidth = 180;
+const sunHeightTotal = 70;
+const barGap = 1.5;
+const barHeight = (sunHeightTotal - barGap * (barCount + 1)) / barCount;
+
+for (let i = 0; i < barCount; i++) {
+    const y = -sunHeightTotal/2 + barGap + i * (barHeight + barGap);
+
+    // Create a thin horizontal plane for each bar with gradient texture
+    const canvas = document.createElement('canvas');
+    canvas.width = 4;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+
+    const grad = ctx.createLinearGradient(0, 0, 0, 128);
+    // Bottom = magenta/pink, Top = yellow
+    grad.addColorStop(0.0, '#ff00aa');
+    grad.addColorStop(0.3, '#ff2266');
+    grad.addColorStop(0.5, '#ff4444');
+    grad.addColorStop(0.7, '#ffaa00');
+    grad.addColorStop(1.0, '#ffee44');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 4, 128);
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.ClampToEdgeWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.x = sunWidth / 16; // stretch horizontally
+
+    const barGeo = new THREE.PlaneGeometry(sunWidth, barHeight);
+    const barMat = new THREE.MeshBasicMaterial({
+        map: tex,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+    });
+
+    const bar = new THREE.Mesh(barGeo, barMat);
+    bar.position.y = y;
+    sunGroup.add(bar);
+}
+
+// Sun glow behind it
+const glowGeo = new THREE.PlaneGeometry(sunWidth + 60, sunHeightTotal + 40);
+const glowCanvas = document.createElement('canvas');
+glowCanvas.width = 256;
+glowCanvas.height = 256;
+const gctx = glowCanvas.getContext('2d');
+const gGrad = gctx.createRadialGradient(128, 128, 30, 128, 128, 128);
+gGrad.addColorStop(0.0, 'rgba(255, 68, 68, 0.6)');
+gGrad.addColorStop(0.3, 'rgba(255, 20, 100, 0.3)');
+gGrad.addColorStop(0.7, 'rgba(180, 0, 120, 0.1)');
+gGrad.addColorStop(1.0, 'rgba(60, 0, 40, 0.0)');
+gctx.fillStyle = gGrad;
+gctx.fillRect(0, 0, 256, 256);
+
+const glowTex = new THREE.CanvasTexture(glowCanvas);
+const glowMat = new THREE.MeshBasicMaterial({
+    map: glowTex,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+});
+const glowMesh = new THREE.Mesh(glowGeo, glowMat);
+glowMesh.position.y = 0;
+sunGroup.add(glowMesh);
+
+// --- Post Processing (Bloom) ---
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+const bloomPass = new UnrealBloomPass(
+    new THREE.Vector2(window.innerWidth, window.innerHeight),
+    1.8,   // strength
+    0.6,   // radius
+    0.4    // threshold
+);
+composer.addPass(bloomPass);
+
+// --- Animation Loop ---
+const clock = new THREE.Clock();
+
+function animate() {
+    requestAnimationFrame(animate);
+
+    const dt = Math.min(clock.getDelta(), 0.05);
+    const elapsed = clock.elapsedTime;
+
+    updateGrid(dt);
+
+    // Subtle sun pulse
+    const pulse = 1.0 + 0.02 * Math.sin(elapsed * 0.8);
+    sunGroup.scale.set(pulse, pulse, pulse);
+
+    // Stars twinkle via uniform
+    starMat.uniforms.uTime.value = elapsed;
+
+    composer.render();
+}
+
+animate();
+
+// --- Resize ---
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    composer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>

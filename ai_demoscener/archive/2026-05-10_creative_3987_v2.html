@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EMBER LATTICE</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #140a08; font-family: "Courier New", monospace; }
+        canvas { display: block; }
+        #ui {
+            position: absolute; bottom: 22px; left: 24px;
+            color: #f4c78a; pointer-events: none;
+            text-shadow: 0 0 10px rgba(255,150,60,.6);
+            letter-spacing: 3px; font-size: 11px;
+            text-transform: uppercase; opacity: .85;
+        }
+        #title {
+            position: absolute; top: 24px; right: 26px;
+            color: #ffb877; pointer-events: none;
+            text-shadow: 0 0 12px rgba(255,120,40,.5);
+            letter-spacing: 6px; font-size: 13px; font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div id="title">EMBER&nbsp;LATTICE</div>
+    <div id="ui">recursive lattice // warm spectrum</div>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer({ antialias: false });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                u_time: { value: 0 },
+                u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+                u_mouse: { value: new THREE.Vector2(0.5, 0.5) }
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                precision highp float;
+                uniform float u_time;
+                uniform vec2 u_resolution;
+                uniform vec2 u_mouse;
+                varying vec2 vUv;
+
+                #define MAX_STEPS 56
+                #define SURF_DIST .002
+                #define MAX_DIST 22.0
+
+                float hash(vec2 p){
+                    p = fract(p * vec2(123.34, 456.21));
+                    p += dot(p, p + 45.32);
+                    return fract(p.x * p.y);
+                }
+                float noise(vec2 p){
+                    vec2 i = floor(p), f = fract(p);
+                    f = f * f * (3.0 - 2.0 * f);
+                    float a = hash(i), b = hash(i + vec2(1,0));
+                    float c = hash(i + vec2(0,1)), d = hash(i + vec2(1,1));
+                    return mix(mix(a,b,f.x), mix(c,d,f.x), f.y);
+                }
+                float fbm(vec2 p){
+                    float s = 0.0, a = 0.5;
+                    for(int i=0;i<4;i++){ s += a*noise(p); p *= 2.0; a *= 0.5; }
+                    return s;
+                }
+
+                mat2 rot(float a){ float s = sin(a), c = cos(a); return mat2(c,-s,s,c); }
+
+                float smin(float a, float b, float k){
+                    float h = clamp(0.5 + 0.5*(b-a)/k, 0.0, 1.0);
+                    return mix(b, a, h) - k*h*(1.0-h);
+                }
+
+                float map(vec3 p){
+                    p.z += u_time * 0.45;
+
+                    // 5-fold kaleidoscope
+                    float a = atan(p.y, p.x);
+                    float r = length(p.xy);
+                    float fold = 6.28318 / 5.0;
+                    a = abs(mod(a, fold) - fold * 0.5);
+                    p.xy = vec2(cos(a), sin(a)) * r;
+
+                    // mouse influences the recursive swirl
+                    float m1 = u_mouse.x * 3.14159;
+                    float m2 = u_mouse.y * 3.14159;
+
+                    for(int i=0;i<2;i++){
+                        p = abs(p) - 0.42;
+                        p.xz *= rot(u_time * 0.08 + float(i) * 1.7 + m1);
+                        p.yz *= rot(u_time * 0.12 + m2);
+                    }
+
+                    // organic ember cores
+                    float s1 = length(p - vec3(0.0, 0.15, 0.35)) - 0.32;
+                    float s2 = length(p - vec3(0.0, -0.15, -0.35)) - 0.28;
+                    float box = length(max(abs(p) - 0.28, 0.0)) - 0.06;
+                    return smin(smin(s1, s2, 0.5), box, 0.35);
+                }
+
+                vec3 calcNormal(vec3 p){
+                    vec2 e = vec2(0.008, 0.0);
+                    return normalize(vec3(
+                        map(p - e.xyy) - map(p + e.xyy),
+                        map(p - e.yxy) - map(p + e.yxy),
+                        map(p - e.yyx) - map(p + e.yyx)
+                    ));
+                }
+
+                vec3 palette(float t){
+                    // deep maroon -> ember orange -> gold -> cream
+                    vec3 a = vec3(0.55, 0.30, 0.22);
+                    vec3 b = vec3(0.55, 0.35, 0.25);
+                    vec3 c = vec3(1.0);
+                    vec3 d = vec3(0.0, 0.15, 0.45);
+                    return a + b * cos(6.28318 * (c * t + d));
+                }
+
+                void main(){
+                    vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / min(u_resolution.y, u_resolution.x);
+
+                    float zoom = 1.0 + sin(u_time * 0.15) * 0.35;
+                    vec2 uvz = uv * zoom;
+                    uvz *= rot(u_time * 0.05);
+
+                    vec3 ro = vec3(0.0, 0.0, -3.2);
+                    vec3 rd = normalize(vec3(uv, 1.0));
+
+                    float dO = 0.0;
+                    float dS = 0.0;
+                    vec3 p = ro;
+                    bool hit = false;
+
+                    for(int i=0;i<MAX_STEPS;i++){
+                        p = ro + rd * dO;
+                        dS = map(p);
+                        dO += dS * 0.92;
+                        if(dO > MAX_DIST){ break; }
+                        if(abs(dS) < SURF_DIST){ hit = true; break; }
+                    }
+
+                    vec3 color = vec3(0.0);
+                    vec3 lightDir = normalize(vec3(0.6, 0.9, -0.5));
+
+                    if(hit){
+                        vec3 n = calcNormal(p);
+                        float diff = clamp(dot(n, lightDir), 0.0, 1.0);
+                        float fres = pow(1.0 - clamp(dot(n, -rd), 0.0, 1.0), 3.0);
+
+                        float band = p.z * 0.15 + length(p.xy) * 0.4;
+                        vec3 base = palette(band + u_time * 0.03);
+
+                        color = base * (0.18 + diff * 0.95);
+                        color += vec3(1.0, 0.7, 0.4) * fres * 0.7;
+
+                        vec3 ref = reflect(rd, n);
+                        float spec = pow(max(dot(ref, lightDir), 0.0), 40.0);
+                        color += vec3(1.0, 0.85, 0.6) * spec;
+
+                        // warm volumetric fade
+                        color *= exp(-0.13 * dO);
+                        color = mix(vec3(0.08, 0.03, 0.02), color, exp(-0.05 * dO));
+                    } else {
+                        // drifting ember plasma background
+                        vec2 bp = uvz * 1.4 + vec2(u_time * 0.02, u_time * 0.015);
+                        float n1 = fbm(bp);
+                        float n2 = fbm(bp * 1.7 - n1 * 0.5 + u_time * 0.03);
+                        vec3 bg = mix(vec3(0.10, 0.03, 0.02), vec3(0.55, 0.22, 0.08), smoothstep(0.2, 0.9, n1));
+                        bg = mix(bg, vec3(0.95, 0.6, 0.3), smoothstep(0.7, 1.0, n2) * 0.5);
+                        // faint warm star dust
+                        float st = pow(hash(floor(uv * 220.0)), 40.0);
+                        color = bg * 0.7 + st * vec3(1.0, 0.7, 0.4) * 0.5;
+                    }
+
+                    // vignette
+                    float vig = smoothstep(1.6, 0.35, length(uv));
+                    color *= vig;
+
+                    // subtle warm grain
+                    color += (hash(gl_FragCoord.xy + u_time) - 0.5) * 0.045;
+
+                    // gentle tonemap
+                    color = color / (1.0 + color * 0.6);
+                    color = pow(max(color, 0.0), vec3(0.92));
+
+                    gl_FragColor = vec4(color, 1.0);
+                }
+            `
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        const clock = new THREE.Clock();
+        const mouse = new THREE.Vector2(0.5, 0.5);
+
+        window.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX / window.innerWidth;
+            mouse.y = e.clientY / window.innerHeight;
+        });
+        window.addEventListener('touchmove', (e) => {
+            if (e.touches[0]) {
+                mouse.x = e.touches[0].clientX / window.innerWidth;
+                mouse.y = e.touches[0].clientY / window.innerHeight;
+            }
+        }, { passive: true });
+
+        window.addEventListener('resize', () => {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            material.uniforms.u_resolution.value.set(window.innerWidth, window.innerHeight);
+        });
+
+        function animate(){
+            requestAnimationFrame(animate);
+            material.uniforms.u_time.value = clock.getElapsedTime();
+            material.uniforms.u_mouse.value.lerp(mouse, 0.05);
+            renderer.render(scene, camera);
+        }
+        animate();
+    </script>
+</body>
+</html>

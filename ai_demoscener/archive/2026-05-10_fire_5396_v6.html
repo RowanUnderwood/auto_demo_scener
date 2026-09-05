@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Three.js Cold Flame</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #04030a; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+        #hint {
+            position: fixed; bottom: 18px; left: 0; right: 0;
+            text-align: center; font-family: 'Courier New', monospace;
+            font-size: 11px; letter-spacing: 3px; color: #6fd8ff;
+            opacity: 0.55; text-transform: uppercase; pointer-events: none;
+            text-shadow: 0 0 12px rgba(80,200,255,0.6);
+        }
+    </style>
+</head>
+<body>
+<div id="hint">move to disturb the aether</div>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+</script>
+<script type="module">
+    import * as THREE from 'three';
+
+    // ---- Flame quad shader (cold plasma, domain-warped) ----
+    const vertexShader = `
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `;
+
+    const fragmentShader = `
+        precision highp float;
+        uniform float uTime;
+        uniform vec2 uResolution;
+        uniform vec2 uMouse;
+        varying vec2 vUv;
+
+        vec2 hash2(vec2 p){
+            p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
+            return fract(sin(p) * 43758.5453123);
+        }
+        float vnoise(vec2 p){
+            vec2 i = floor(p);
+            vec2 f = fract(p);
+            vec2 u = f*f*(3.0-2.0*f);
+            float a = dot(hash2(i), vec2(1.0,1.0)) * 0.5;
+            float b = dot(hash2(i+vec2(1.0,0.0)), vec2(1.0,1.0)) * 0.5;
+            float c = dot(hash2(i+vec2(0.0,1.0)), vec2(1.0,1.0)) * 0.5;
+            float d = dot(hash2(i+vec2(1.0,1.0)), vec2(1.0,1.0)) * 0.5;
+            return mix(mix(a,b,u.x), mix(c,d,u.x), u.y);
+        }
+        float fbm(vec2 p){
+            float v = 0.0;
+            float amp = 0.5;
+            mat2 m = mat2(1.6,1.2,-1.2,1.6);
+            for (int i = 0; i < 5; i++){
+                v += amp * vnoise(p);
+                p = m * p;
+                amp *= 0.5;
+            }
+            return v;
+        }
+
+        // cold aether palette
+        vec3 palette(float t){
+            vec3 deep = vec3(0.02, 0.02, 0.18);
+            vec3 indigo = vec3(0.18, 0.10, 0.65);
+            vec3 blue = vec3(0.10, 0.55, 0.95);
+            vec3 cyan = vec3(0.35, 0.95, 1.00);
+            vec3 white = vec3(0.92, 1.0, 1.0);
+            t = clamp(t, 0.0, 1.0);
+            if (t < 0.25) return mix(deep, indigo, t/0.25);
+            if (t < 0.5)  return mix(indigo, blue, (t-0.25)/0.25);
+            if (t < 0.8)  return mix(blue, cyan, (t-0.5)/0.3);
+            return mix(cyan, white, (t-0.8)/0.2);
+        }
+
+        void main(){
+            vec2 uv = vUv;
+            float aspect = uResolution.x / uResolution.y;
+            vec2 p = (uv - 0.5) * vec2(aspect, 1.0);
+
+            // mouse distortion of the base
+            float sway = (uMouse.x - 0.5) * 0.5;
+            p.x += sway * (1.0 - uv.y) * 0.6;
+
+            // flame domain coordinates rising upward
+            vec2 q = p * vec2(2.2, 4.0);
+            q.y -= uTime * 0.9;
+            q.x += sway * (1.0 - uv.y) * 2.0;
+
+            // domain warping for liquid plasma feel
+            float t = uTime * 0.25;
+            vec2 a = vec2(fbm(q + t), fbm(q + vec2(5.2, 1.3) + t));
+            vec2 b = vec2(fbm(q + a*1.4 + vec2(1.7, 9.2) + t),
+                          fbm(q + a*1.4 + vec2(8.3, 2.8) + t));
+            float f = fbm(q + b*1.6);
+
+            // flame shape mask: hot at bottom-center, tapering up
+            float center = 1.0 - smoothstep(0.0, 0.34, abs(p.x));
+            float vMask = smoothstep(0.0, 0.12, uv.y) * (1.0 - smoothstep(0.55, 1.0, uv.y));
+            float mask = center * vMask;
+
+            float intensity = f * f * mask * 1.6;
+
+            // hot white core
+            float core = smoothstep(0.55, 0.95, intensity) * mask;
+
+            vec3 color = palette(intensity * 0.9 + core * 0.4);
+            color += core * vec3(0.5, 0.8, 1.0) * 0.6;
+
+            // deep background gradient
+            vec3 bg = mix(vec3(0.01, 0.01, 0.04), vec3(0.05, 0.04, 0.12), uv.y);
+            color = bg + color;
+
+            // glow halo
+            color += vec3(0.08, 0.25, 0.4) * (intensity * 0.25);
+
+            // vignette
+            float vig = smoothstep(1.15, 0.3, length(p * vec2(1.0, 1.2)));
+            color *= vig;
+
+            gl_FragColor = vec4(color, 1.0);
+        }
+    `;
+
+    // ---- Ember particle shader ----
+    const pointVertex = `
+        attribute float aSeed;
+        uniform float uTime;
+        uniform vec2 uMouse;
+        varying float vAlpha;
+        void main(){
+            float speed = 0.25 + aSeed * 0.5;
+            float life = fract(uTime * 0.12 * speed + aSeed * 10.0);
+            float x = (aSeed - 0.5) * 0.7;
+            x += sin(uTime * 1.3 + aSeed * 40.0) * 0.06 * life;
+            x += (uMouse.x - 0.5) * 0.3 * life;
+            float y = life * 1.4 - 0.15;
+            vec3 pos = vec3(x, y, -0.5 - aSeed);
+            vAlpha = (1.0 - life) * smoothstep(0.0, 0.08, life);
+            vec4 mv = modelViewMatrix * vec4(pos, 1.0);
+            gl_PointSize = (6.0 + aSeed * 14.0) * (1.0 - life * 0.5) * (300.0 / -mv.z);
+            gl_Position = projectionMatrix * mv;
+        }
+    `;
+    const pointFragment = `
+        varying float vAlpha;
+        void main(){
+            vec2 d = gl_PointCoord - 0.5;
+            float r = length(d);
+            float a = smoothstep(0.5, 0.0, r) * vAlpha;
+            vec3 col = mix(vec3(0.3, 0.7, 1.0), vec3(0.9, 1.0, 1.0), smoothstep(0.3, 0.0, r));
+            gl_FragColor = vec4(col, a);
+        }
+    `;
+
+    let scene, camera, renderer, material, points;
+    const mouse = { x: 0.5, y: 0.5 };
+
+    function init(){
+        scene = new THREE.Scene();
+        camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+                uMouse: { value: new THREE.Vector2(0.5, 0.5) }
+            },
+            vertexShader,
+            fragmentShader
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.renderOrder = 0;
+        scene.add(mesh);
+
+        // embers
+        const COUNT = 260;
+        const pos = new Float32Array(COUNT * 3);
+        const seed = new Float32Array(COUNT);
+        for (let i = 0; i < COUNT; i++){
+            pos[i*3] = 0; pos[i*3+1] = 0; pos[i*3+2] = 0;
+            seed[i] = Math.random();
+        }
+        const pg = new THREE.BufferGeometry();
+        pg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+        pg.setAttribute('aSeed', new THREE.BufferAttribute(seed, 1));
+        const pm = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uMouse: { value: new THREE.Vector2(0.5, 0.5) }
+            },
+            vertexShader: pointVertex,
+            fragmentShader: pointFragment,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+        });
+        points = new THREE.Points(pg, pm);
+        points.renderOrder = 1;
+        scene.add(points);
+
+        window.addEventListener('resize', onWindowResize, false);
+        window.addEventListener('mousemove', e => {
+            mouse.x = e.clientX / window.innerWidth;
+            mouse.y = e.clientY / window.innerHeight;
+        });
+        window.addEventListener('touchmove', e => {
+            mouse.x = e.touches[0].clientX / window.innerWidth;
+            mouse.y = e.touches[0].clientY / window.innerHeight;
+        }, { passive: true });
+    }
+
+    function onWindowResize(){
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        material.uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+    }
+
+    let clock = new THREE.Clock();
+    function animate(){
+        requestAnimationFrame(animate);
+        const t = clock.getElapsedTime();
+        material.uniforms.uTime.value = t;
+        material.uniforms.uMouse.value.lerp(new THREE.Vector2(mouse.x, mouse.y), 0.05);
+        points.material.uniforms.uTime.value = t;
+        points.material.uniforms.uMouse.value.copy(material.uniforms.uMouse.value);
+        renderer.render(scene, camera);
+    }
+
+    init();
+    animate();
+</script>
+</body>
+</html>

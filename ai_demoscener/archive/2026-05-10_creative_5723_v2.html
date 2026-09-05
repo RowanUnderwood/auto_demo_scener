@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>EMBER_RESONANCE</title>
+    <style>
+        html, body { margin: 0; height: 100%; overflow: hidden; background: #050308; font-family: 'Courier New', monospace; }
+        #ui {
+            position: absolute; top: 24px; left: 26px; color: #ffb060;
+            pointer-events: none; text-shadow: 0 0 10px rgba(255,120,40,.8);
+            letter-spacing: 2px; font-size: 12px; line-height: 1.7;
+        }
+        #ui b { color: #ffe6a8; }
+        #vignette {
+            position: absolute; inset: 0; pointer-events: none;
+            background: radial-gradient(ellipse at center, transparent 40%, rgba(8,3,2,.85) 100%);
+        }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <b>EMBER//RESONANCE</b><br>
+        PHASE&nbsp;: <span id="phase">CALIBRATING</span><br>
+        FLUX&nbsp;&nbsp;: <span id="flux">0.00</span><br>
+        THERMAL : <span id="therm">3000K</span>
+    </div>
+    <div id="vignette"></div>
+
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        /*  EMBER_RESONANCE
+            A molten "living core" — a raymarched twisted box-fold crystal
+            bathed in heat, wrapped by a rising column of drifting embers.
+            A true ping-pong feedback buffer gives long thermal ghosting. */
+
+        let renderer, scene, camera, clock;
+        let fractalMat;
+        let particles, pGeo;
+        let rtScene, trailA, trailB, trailRead, trailWrite;
+        let feedbackMat, displayMat;
+
+        const params = {
+            decay: 0.86,
+            timeSpeed: 0.5,
+            particleCount: 14000,
+            twist: 1.4
+        };
+
+        const PR = Math.min(window.devicePixelRatio, 2);
+
+        const quadVert = `
+            varying vec2 vUv;
+            void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }
+        `;
+
+        // ---------- Fractal core ----------
+        const fractalFrag = `
+            precision highp float;
+            uniform float uTime;
+            uniform vec2 uRes;
+            uniform vec3 uColA;
+            uniform vec3 uColB;
+            varying vec2 vUv;
+
+            mat2 rot(float a){ float c=cos(a), s=sin(a); return mat2(c,-s,s,c); }
+            vec3 twist(vec3 p, float a){
+                float r = length(p.xy);
+                float ang = a * (1.0/(r+0.25));
+                p.xy *= rot(ang);
+                p.yz *= rot(ang*0.6);
+                return p;
+            }
+
+            float map(vec3 p){
+                p = twist(p, uTime*0.35 + 1.0);
+                p.xy *= rot(uTime*0.12);
+                p.xz *= rot(uTime*0.2);
+                float d = 0.0;
+                float s = 1.0;
+                for(int i=0;i<5;i++){
+                    vec3 q = abs(p) - 0.5;
+                    if(q.x<q.y) q.xy=q.yx;
+                    if(q.x<q.z) q.xz=q.zx;
+                    if(q.y<q.z) q.yz=q.zy;
+                    q *= 1.55;
+                    q.yz *= rot(uTime*0.15 + float(i)*0.4);
+                    s *= 1.55;
+                    d = max(d, (length(q)-0.5)/s);
+                }
+                return d;
+            }
+
+            void main(){
+                vec2 uv = (vUv*2.0-1.0);
+                uv.x *= uRes.x/uRes.y;
+                vec3 ro = vec3(0.0,0.0,2.6);
+                vec3 rd = normalize(vec3(uv, -1.35));
+                float t=0.0, glow=0.0;
+                vec3 p=ro;
+                for(int i=0;i<80;i++){
+                    p = ro + rd*t;
+                    float d = map(p);
+                    glow += exp(-d*6.0)*0.02;
+                    if(d < 0.0015 || t > 12.0) break;
+                    t += d*0.9;
+                }
+                vec3 col = vec3(0.0);
+                if(t < 12.0){
+                    vec3 n;
+                    vec2 e = vec2(0.0025,0.0);
+                    float m0 = map(p);
+                    vec3 px = p - vec3(e.x,0.0,0.0);
+                    vec3 py = p - vec3(0.0,e.x,0.0);
+                    vec3 pz = p - vec3(0.0,0.0,e.x);
+                    n = normalize(vec3(
+                        (map(px)-m0)/e.x,
+                        (map(py)-m0)/e.x,
+                        (map(pz)-m0)/e.x));
+                    vec3 lightDir = normalize(vec3(0.6,1.0,-0.4));
+                    float diff = max(dot(n,lightDir),0.0);
+                    float fres = pow(1.0-max(dot(n,-rd),0.0), 3.0);
+                    vec3 base = mix(uColA, uColB, diff*0.7 + fres*0.5);
+                    vec3 spec = pow(max(dot(reflect(-lightDir,n),rd),0.0), 24.0) * vec3(1.0,0.9,0.6);
+                    col = base * (0.15 + diff) + spec;
+                }
+                col += glow * mix(uColA, vec3(1.0,0.5,0.15), 0.5);
+                col = pow(col, vec3(0.9));
+                gl_FragColor = vec4(col, 1.0);
+            }
+        `;
+
+        // ---------- Feedback composite ----------
+        const feedbackFrag = `
+            precision highp float;
+            uniform sampler2D uPrev, uScene;
+            uniform float uDecay;
+            varying vec2 vUv;
+            void main(){
+                vec4 a = texture2D(uPrev, vUv);
+                vec4 b = texture2D(uScene, vUv);
+                vec3 col = a.rgb * uDecay + b.rgb;
+                gl_FragColor = vec4(col, 1.0);
+            }
+        `;
+
+        // ---------- Display ----------
+        const displayFrag = `
+            precision highp float;
+            uniform sampler2D uTex;
+            varying vec2 vUv;
+            void main(){
+                vec3 col = texture2D(uTex, vUv).rgb;
+                vec2 c = vUv - 0.5;
+                float vig = smoothstep(0.95, 0.25, length(c));
+                col *= vig;
+                col = pow(col, vec3(1.0/1.1));
+                gl_FragColor = vec4(col, 1.0);
+            }
+        `;
+
+        function makeTarget(){
+            return new THREE.WebGLRenderTarget(
+                window.innerWidth*PR, window.innerHeight*PR,
+                { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat });
+        }
+
+        function init(){
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setPixelRatio(PR);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.1, 100);
+            camera.position.z = 0;
+            clock = new THREE.Clock();
+
+            // Fractal fullscreen plane (rendered into rtScene)
+            fractalMat = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: { value: 0 },
+                    uRes: { value: new THREE.Vector2(window.innerWidth*PR, window.innerHeight*PR) },
+                    uColA: { value: new THREE.Color(0x5a0a02) },
+                    uColB: { value: new THREE.Color(0xffcf5a) }
+                },
+                vertexShader: `
+                    varying vec2 vUv;
+                    void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }
+                `,
+                fragmentShader: fractalFrag
+            });
+            const fractalPlane = new THREE.Mesh(new THREE.PlaneGeometry(2,2), fractalMat);
+            fractalPlane.position.z = -5;
+            scene.add(fractalPlane);
+
+            // Ember particles
+            pGeo = new THREE.BufferGeometry();
+            const pos = new Float32Array(params.particleCount*3);
+            const dat = new Float32Array(params.particleCount*2); // angle, speed
+            for(let i=0;i<params.particleCount;i++){
+                const r = 0.4 + Math.pow(Math.random(),0.6)*2.6;
+                const a = Math.random()*Math.PI*2;
+                pos[i*3]   = Math.cos(a)*r;
+                pos[i*3+1] = (Math.random()-0.5)*7.0;
+                pos[i*3+2] = Math.sin(a)*r - 3.0;
+                dat[i*2]   = a;
+                dat[i*2+1] = 0.3 + Math.random()*1.2;
+            }
+            pGeo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+            particles = new THREE.Points(pGeo, new THREE.PointsMaterial({
+                size: 0.03, color: 0xffb347, vertexColors: false,
+                transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending,
+                depthWrite: false
+            }));
+            scene.add(particles);
+
+            // Targets
+            rtScene = makeTarget();
+            trailA = makeTarget();
+            trailB = makeTarget();
+            trailRead = trailA;
+            trailWrite = trailB;
+
+            const fbScene = new THREE.Scene();
+            const fbCam = new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+            feedbackMat = new THREE.ShaderMaterial({
+                uniforms: { uPrev:{value:null}, uScene:{value:null}, uDecay:{value:params.decay} },
+                vertexShader: quadVert, fragmentShader: feedbackFrag, depthTest:false, depthWrite:false
+            });
+            fbScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2,2), feedbackMat));
+
+            const dispScene = new THREE.Scene();
+            displayMat = new THREE.ShaderMaterial({
+                uniforms: { uTex:{value:null} },
+                vertexShader: quadVert, fragmentShader: displayFrag, depthTest:false, depthWrite:false
+            });
+            dispScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2,2), displayMat));
+
+            window._fbScene = fbScene;
+            window._dispScene = dispScene;
+            window._fbCam = fbCam;
+
+            window.addEventListener('resize', onResize);
+        }
+
+        function onResize(){
+            camera.aspect = window.innerWidth/window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            fractalMat.uniforms.uRes.value.set(window.innerWidth*PR, window.innerHeight*PR);
+            const s = { width: window.innerWidth*PR, height: window.innerHeight*PR };
+            [rtScene, trailA, trailB].forEach(t=>t.setSize(s.width, s.height));
+        }
+
+        function animate(){
+            requestAnimationFrame(animate);
+            const dt = Math.min(clock.getDelta(), 0.05);
+            const t = clock.getElapsedTime();
+
+            fractalMat.uniforms.uTime.value = t * params.timeSpeed;
+            const hue = 0.05 + 0.04*Math.sin(t*0.2);
+            fractalMat.uniforms.uColA.value.setHSL(hue-0.03, 1.0, 0.22);
+            fractalMat.uniforms.uColB.value.setHSL(hue+0.05, 1.0, 0.6);
+
+            // Embers rise & swirl
+            const p = pGeo.attributes.position.array;
+            for(let i=0;i<params.particleCount;i++){
+                const j = i*3;
+                let x = p[j], y = p[j+1], z = p[j+2];
+                const r = Math.sqrt(x*x + z*z) + 0.0001;
+                const ang = (t * 0.4) / r;
+                const ca = Math.cos(ang), sa = Math.sin(ang);
+                const nx = x*ca - z*sa;
+                const nz = x*sa + z*ca;
+                x = nx; z = nz;
+                y += dt * (0.6 + (1.0 - r/3.0)) * 0.9;
+                // slight pull inward
+                x -= x*0.0015; z -= z*0.0015;
+                if(y > 3.5 || r < 0.05){
+                    const rr = 0.4 + Math.pow(Math.random(),0.6)*2.6;
+                    const aa = Math.random()*Math.PI*2;
+                    x = Math.cos(aa)*rr; z = Math.sin(aa)*rr - 3.0; y = -3.5;
+                }
+                p[j]=x; p[j+1]=y; p[j+2]=z;
+            }
+            pGeo.attributes.position.needsUpdate = true;
+
+            // Camera breath
+            camera.position.x = Math.sin(t*0.3)*0.15;
+            camera.position.y = Math.cos(t*0.23)*0.15;
+            camera.lookAt(0,0,-4);
+
+            renderer.autoClear = true;
+
+            // 1. scene -> rtScene
+            renderer.setRenderTarget(rtScene);
+            renderer.render(scene, camera);
+
+            // 2. feedback composite trailRead + scene -> trailWrite
+            feedbackMat.uniforms.uPrev.value = trailRead.texture;
+            feedbackMat.uniforms.uScene.value = rtScene.texture;
+            renderer.setRenderTarget(trailWrite);
+            renderer.render(window._fbScene, window._fbCam);
+
+            // 3. display trailWrite -> screen
+            displayMat.uniforms.uTex.value = trailWrite.texture;
+            renderer.setRenderTarget(null);
+            renderer.render(window._dispScene, window._fbCam);
+
+            // swap
+            const tmp = trailRead; trailRead = trailWrite; trailWrite = tmp;
+
+            // UI
+            document.getElementById('phase').textContent =
+                ['CALIBRATING','IGNITION','RESONANCE','FLUX LOCK'][Math.floor(t*0.2)%4];
+            document.getElementById('flux').textContent = (0.5+0.5*Math.sin(t*0.6)).toFixed(2);
+            document.getElementById('therm').textContent = Math.round(3000 + 1500*(0.5+0.5*Math.sin(t*0.4))) + 'K';
+        }
+
+        init();
+        animate();
+    </script>
+</body>
+</html>

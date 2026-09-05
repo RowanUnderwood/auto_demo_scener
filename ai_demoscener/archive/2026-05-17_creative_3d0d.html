@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Neural Bloom</title>
+  <style>
+    body { margin: 0; overflow: hidden; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// Neural Bloom - A dynamic, biologically inspired particle system
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0a1a);
+
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+camera.position.z = 30;
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
+document.body.appendChild(renderer.domElement);
+
+// Create neural network structure
+const particles = [];
+const particleCount = 150;
+const colors = [0xff6b8c, 0x8cf7ff, 0xc3ff6b];
+
+for (let i = 0; i < particleCount; i++) {
+  const geometry = new THREE.SphereGeometry(0.2 + Math.random() * 0.5);
+  const material = new THREE.MeshLambertMaterial({ 
+    color: colors[Math.floor(Math.random() * colors.length)],
+    emissive: 0x111111,
+    emissiveIntensity: 1
+  });
+  const particle = new THREE.Mesh(geometry, material);
+  
+  // Random initial position within a sphere around origin
+  const angle = Math.random() * Math.PI * 2;
+  const tilt = Math.random() * Math.PI;
+  const radius = 8 + Math.random() * 15;
+  
+  particle.position.x = radius * Math.sin(tilt) * Math.cos(angle);
+  particle.position.y = radius * Math.sin(tilt) * Math.sin(angle);
+  particle.position.z = radius * Math.cos(tilt);
+  
+  // Random velocity
+  particle.vx = (Math.random() - 0.5) * 0.1;
+  particle.vy = (Math.random() - 0.5) * 0.1;
+  particle.vz = (Math.random() - 0.5) * 0.1;
+  
+  // Neural network connections
+  particle.connections = [];
+  
+  scene.add(particle);
+  particles.push(particle);
+}
+
+// Create light sources that mimic synapses
+const ambientLight = new THREE.AmbientLight(0x444444);
+scene.add(ambientLight);
+
+const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
+directionalLight.position.set(1, 1, 1).normalize();
+scene.add(directionalLight);
+
+// Create neural connections
+function createConnections() {
+  const lineMaterial = new THREE.LineBasicMaterial({ color: 0x66ffff, transparent: true, opacity: 0.4 });
+  
+  for (let i = 0; i < particles.length; i++) {
+    for (let j = i + 1; j < particles.length; j++) {
+      const p1 = particles[i];
+      const p2 = particles[j];
+      
+      // Calculate distance - if within connection range, create line
+      const dx = p2.position.x - p1.position.x;
+      const dy = p2.position.y - p1.position.y;
+      const dz = p2.position.z - p1.position.z;
+      const distance = Math.sqrt(dx*dx + dy*dy + dz*dz);
+      
+      // Connection probability based on proximity
+      if (distance < 6) {
+        const connectionGeometry = new THREE.BufferGeometry().setFromPoints([
+          p1.position.clone(),
+          p2.position.clone()
+        ]);
+        
+        const line = new THREE.Line(connectionGeometry, lineMaterial);
+        scene.add(line);
+        particles[i].connections.push({ target: j, line: line });
+      }
+    }
+  }
+}
+
+createConnections();
+
+// Animation loop
+function animate() {
+  requestAnimationFrame(animate);
+  
+  // Update particle positions with neural network dynamics
+  for (let i = 0; i < particles.length; i++) {
+    const p = particles[i];
+    
+    // Apply velocity
+    p.position.x += p.vx;
+    p.position.y += p.vy;
+    p.position.z += p.vz;
+    
+    // Add some random fluctuation to mimic neural activity
+    p.position.x += (Math.random() - 0.5) * 0.02;
+    p.position.y += (Math.random() - 0.5) * 0.02;
+    p.position.z += (Math.random() - 0.5) * 0.02;
+    
+    // Repulsion from origin to prevent collapse
+    const distanceFromOrigin = Math.sqrt(p.position.x*p.position.x + 
+                                       p.position.y*p.position.y + 
+                                       p.position.z*p.position.z);
+    if (distanceFromOrigin > 20) {
+      const forceFactor = 0.01;
+      const repulsionX = -p.position.x / distanceFromOrigin * forceFactor;
+      const repulsionY = -p.position.y / distanceFromOrigin * forceFactor;
+      const repulsionZ = -p.position.z / distanceFromOrigin * forceFactor;
+      
+      p.vx += repulsionX;
+      p.vy += repulsionY;
+      p.vz += repulsionZ;
+    }
+    
+    // Damping
+    p.vx *= 0.98;
+    p.vy *= 0.98;
+    p.vz *= 0.98;
+    
+    // Keep particles within bounds
+    if (p.position.x > 25 || p.position.x < -25) p.vx *= -0.5;
+    if (p.position.y > 25 || p.position.y < -25) p.vy *= -0.5;
+    if (p.position.z > 25 || p.position.z < -25) p.vz *= -0.5;
+    
+    // Update connections
+    for (let j = 0; j < p.connections.length; j++) {
+      const conn = p.connections[j];
+      const targetParticle = particles[conn.target];
+      
+      if (!targetParticle || !conn.line) continue;
+      
+      // Update connection line positions
+      const point1 = new THREE.Vector3(p.position.x, p.position.y, p.position.z);
+      const point2 = new THREE.Vector3(targetParticle.position.x, 
+                                       targetParticle.position.y, 
+                                       targetParticle.position.z);
+      
+      conn.line.geometry.setFromPoints([point1, point2]);
+      conn.line.geometry.verticesNeedUpdate = true;
+      conn.line.geometry.colorsNeedUpdate = true;
+    }
+  }
+  
+  // Update camera to follow the neural network
+  camera.lookAt(0, 0, 0);
+  camera.position.x += (Math.sin(Date.now() * 0.0005) * 1.5 + Math.cos(Date.now() * 0.0003) * 2) * 0.01;
+  camera.position.y += (Math.sin(Date.now() * 0.0007) * 1.8 - Math.cos(Date.now() * 0.0004) * 1.5) * 0.01;
+  
+  renderer.render(scene, camera);
+}
+
+// Handle window resize
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+animate();
+</script>
+</body>
+</html>

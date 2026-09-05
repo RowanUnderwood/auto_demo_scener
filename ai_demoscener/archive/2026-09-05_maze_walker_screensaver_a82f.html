@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Maze Walk</title>
+<style>html,body{margin:0;height:100%;overflow:hidden;background:#0a1428}</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+  const N = 16;
+  const CELL = 1, WALL_H = 2.6, WALL_T = 0.12, EYE = 1.5;
+  const FOG_COLOR = 0x0a1428;
+
+  // ---------- Maze generation: recursive backtracking (iterative) ----------
+  // bit 1=N, 2=E, 4=S, 8=W
+  const walls = new Array(N*N).fill(15);
+  const visited = new Array(N*N).fill(false);
+  const path = [[0,0]];
+  let cur = [0,0];
+  visited[0] = true;
+  const stack = [[0,0]];
+
+  while (stack.length) {
+    const [x,z] = stack[stack.length-1];
+    const opts = [];
+    if (z>0     && !visited[z*N+x])   opts.push([x,z-1,1,4]);
+    if (x<N-1   && !visited[z*N+x+1]) opts.push([x+1,z,2,8]);
+    if (z<N-1   && !visited[(z+1)*N+x])opts.push([x,z+1,4,1]);
+    if (x>0     && !visited[z*N+x-1]) opts.push([x-1,z,8,2]);
+    if (opts.length) {
+      const [nx,nz,wb,wb2] = opts[(Math.random()*opts.length)|0];
+      walls[z*N+x] &= ~wb;
+      walls[nz*N+nx] &= ~wb2;
+      visited[nz*N+nx] = true;
+      stack.push([nx,nz]);
+      path.push([nx,nz]);
+    } else {
+      stack.pop();
+      if (stack.length > 0) {
+        const [bx,bz] = stack[stack.length-1];
+        if (bx!==undefined) path.push([bx,bz]);
+      }
+    }
+  }
+
+  // ---------- Procedural textures ----------
+  function makeBrickTexture(){
+    const c = document.createElement('canvas'); c.width=c.height=256;
+    const g = c.getContext('2d');
+    g.fillStyle = '#8f8f8d'; g.fillRect(0,0,256,256);
+    const bw=32, bh=64;
+    for (let row=0; row<256/bh; row++){
+      for (let col=0; col<256/bw+1; col++){
+        const off = (row%2)? bw/2 : 0;
+        const shade = 128 + (Math.random()*36-18)|0;
+        g.fillStyle = `rgb(${shade},${shade},${shade-4})`;
+        g.fillRect(col*bw-off+2, row*bh+2, bw-4, bh-4);
+        for (let i=0;i<26;i++){
+          const s = (Math.random()*30-15)|0;
+          g.fillStyle = `rgba(${120+s},${120+s},${118+s},0.35)`;
+          g.fillRect(col*bw-off+2+Math.random()*(bw-4), row*bh+2+Math.random()*(bh-4), 2, 2);
+        }
+      }
+    }
+    g.strokeStyle = '#6f6f6d'; g.lineWidth = 4;
+    for (let y=0;y<=256;y+=bh){ g.beginPath(); g.moveTo(0,y); g.lineTo(256,y); g.stroke(); }
+    for (let row=0; row<256/bh; row++){
+      const off = (row%2)? bw/2 : 0;
+      for (let x=-bw;x<=256+bw;x+=bw){ g.beginPath(); g.moveTo(x-off,row*bh); g.lineTo(x-off,(row+1)*bh); g.stroke(); }
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.anisotropy = 4;
+    return t;
+  }
+  function makeFloorTexture(){
+    const c = document.createElement('canvas'); c.width=c.height=256;
+    const g = c.getContext('2d');
+    const ts = 64;
+    for (let r=0;r<4;r++) for (let cc=0;cc<4;cc++){
+      const v = (Math.random()*24-12)|0;
+      g.fillStyle = `rgb(${138+v},${92+v*0.6|0},${52+v*0.4|0})`;
+      g.fillRect(cc*ts, r*ts, ts, ts);
+      for (let i=0;i<40;i++){
+        const s = (Math.random()*40-20)|0;
+        g.fillStyle = `rgba(${120+s},${80+s},${45+s},0.3)`;
+        g.fillRect(cc*ts+Math.random()*ts, r*ts+Math.random()*ts, 3, 3);
+      }
+    }
+    g.strokeStyle = '#3d2717'; g.lineWidth = 5;
+    for (let i=0;i<=4;i++){
+      g.beginPath(); g.moveTo(i*ts,0); g.lineTo(i*ts,256); g.stroke();
+      g.beginPath(); g.moveTo(0,i*ts); g.lineTo(256,i*ts); g.stroke();
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(N, N);
+    t.anisotropy = 4;
+    return t;
+  }
+
+  // ---------- Scene ----------
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(FOG_COLOR);
+  scene.fog = new THREE.FogExp2(FOG_COLOR, 0.22);
+
+  const camera = new THREE.PerspectiveCamera(70, innerWidth/innerHeight, 0.05, 60);
+  const renderer = new THREE.WebGLRenderer({antialias:true});
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  document.body.appendChild(renderer.domElement);
+
+  // Materials
+  const brickTex = makeBrickTexture();
+  const brickTexH = brickTex.clone(); brickTexH.repeat.set(1,1); brickTexH.needsUpdate = true;
+  const brickTexV = brickTex.clone(); brickTexV.repeat.set(1,1); brickTexV.needsUpdate = true;
+  const matWall = new THREE.MeshStandardMaterial({map:brickTexV, roughness:0.95, metalness:0.0});
+  const matWallH = new THREE.MeshStandardMaterial({map:brickTexH, roughness:0.95, metalness:0.0});
+  const geoWallV = new THREE.BoxGeometry(WALL_T, WALL_H, CELL);
+  const geoWallH = new THREE.BoxGeometry(CELL, WALL_H, WALL_T);
+
+  // Walls
+  const wallGroup = new THREE.Group();
+  for (let z=0; z<N; z++) for (let x=0; x<N; x++){
+    const w = walls[z*N+x];
+    if (w & 2) {
+      const m = new THREE.Mesh(geoWallV, matWall);
+      m.position.set(x+1, WALL_H/2, z+0.5);
+      wallGroup.add(m);
+    }
+    if (w & 4) {
+      const m = new THREE.Mesh(geoWallH, matWallH);
+      m.position.set(x+0.5, WALL_H/2, z+1);
+      wallGroup.add(m);
+    }
+  }
+  scene.add(wallGroup);
+
+  // Floor & ceiling
+  const floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(N, N),
+    new THREE.MeshStandardMaterial({map: makeFloorTexture(), roughness:0.9})
+  );
+  floor.rotation.x = -Math.PI/2;
+  floor.position.set(N/2, 0, N/2);
+  scene.add(floor);
+
+  const ceil = new THREE.Mesh(
+    new THREE.PlaneGeometry(N, N),
+    new THREE.MeshStandardMaterial({color:0x0c0c0f, roughness:1})
+  );
+  ceil.rotation.x = Math.PI/2;
+  ceil.position.set(N/2, WALL_H, N/2);
+  scene.add(ceil);
+
+  // Lights
+  scene.add(new THREE.AmbientLight(0x223344, 0.35));
+  const torch = new THREE.PointLight(0xffaa44, 2.2, 14, 2);
+  scene.add(torch);
+
+  // ---------- Walk state ----------
+  const SPEED = 2.0;
+  const TURN_TIME = 0.5;
+  const dirs = { E:{x:1,z:0}, W:{x:-1,z:0}, S:{x:0,z:1}, N:{x:0,z:-1} };
+
+  function resetWalk(){
+    pos.set(0.5, EYE, 0.5);
+    curDir = dirs.E;
+    yaw = Math.atan2(1,0);
+    stepIdx = 1;
+    turning = false; turnT = 0; startYaw = 0; targetYaw = 0; pendingDir = null;
+  }
+
+  const pos = new THREE.Vector3();
+  let yaw, curDir, stepIdx, turning, turnT, startYaw, targetYaw, pendingDir;
+  resetWalk();
+
+  function lerpAngle(a,b,t){
+    let d = b - a;
+    while (d >  Math.PI) d -= Math.PI*2;
+    while (d < -Math.PI) d += Math.PI*2;
+    return a + d * t;
+  }
+  const ease = t => t<0.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2;
+
+  const clock = new THREE.Clock();
+  function animate(){
+    requestAnimationFrame(animate);
+    const dt = Math.min(clock.getDelta(), 0.05);
+    const time = clock.elapsedTime;
+
+    if (turning) {
+      turnT += dt / TURN_TIME;
+      if (turnT >= 1) {
+        turning = false;
+        yaw = targetYaw;
+        curDir = pendingDir;
+      } else {
+        yaw = lerpAngle(startYaw, targetYaw, ease(turnT));
+      }
+    } else {
+      const step = SPEED * dt;
+      pos.x += curDir.x * step;
+      pos.z += curDir.z * step;
+      const tx = path[stepIdx][0] + 0.5, tz = path[stepIdx][1] + 0.5;
+      if ((curDir.x > 0 && pos.x >= tx) || (curDir.x < 0 && pos.x <= tx) ||
+          (curDir.z > 0 && pos.z >= tz) || (curDir.z < 0 && pos.z <= tz)) {
+        pos.x = tx; pos.z = tz;
+        stepIdx++;
+        if (stepIdx >= path.length) {
+          resetWalk();
+        } else {
+          const dx = path[stepIdx][0] - path[stepIdx-1][0];
+          const dz = path[stepIdx][1] - path[stepIdx-1][1];
+          const nd = (dx===1)?dirs.E:(dx===-1)?dirs.W:(dz===1)?dirs.S:dirs.N;
+          if (nd !== curDir) {
+            turning = true; turnT = 0;
+            startYaw = yaw; targetYaw = Math.atan2(nd.x, nd.z);
+            pendingDir = nd;
+          }
+        }
+      }
+    }
+
+    const bob = turning ? 0 : Math.sin(time*7) * 0.03;
+    camera.position.set(pos.x, EYE + bob, pos.z);
+    camera.rotation.set(0,0,0);
+    camera.rotateY(yaw);
+
+    const flick = 2.0 + Math.sin(time*11)*0.15 + Math.sin(time*23.7)*0.1;
+    torch.intensity = flick;
+    torch.position.set(pos.x + curDir.x*0.4, EYE + 0.25 + Math.sin(time*2)*0.02, pos.z + curDir.z*0.4);
+
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  addEventListener('resize', () => {
+    camera.aspect = innerWidth/innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+  });
+})();
+</script>
+</body>
+</html>

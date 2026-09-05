@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tube Geometry Along CatmullRomCurve3</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+    // Initialize scene, camera, and renderer
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x000000);
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 5, 10);
+    camera.lookAt(0, 0, 0);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    document.body.appendChild(renderer.domElement);
+
+    // Create a CatmullRomCurve3 with 12 control points
+    const curve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(-10, 0, 0),
+        new THREE.Vector3(-8, 2, 0),
+        new THREE.Vector3(-6, -1, 0),
+        new THREE.Vector3(-4, 3, 0),
+        new THREE.Vector3(-2, 0, 0),
+        new THREE.Vector3(0, 2, 0),
+        new THREE.Vector3(2, -1, 0),
+        new THREE.Vector3(4, 3, 0),
+        new THREE.Vector3(6, 0, 0),
+        new THREE.Vector3(8, -2, 0),
+        new THREE.Vector3(10, 1, 0),
+        new THREE.Vector3(8, 0, 0)
+    ]);
+    curve.closed = true; // Make the curve loop
+
+    // Create a tube geometry along the curve
+    const tubeGeometry = new THREE.TubeGeometry(curve, 200, 1, 16, false);
+    
+    // Create a material with a repeating canvas texture
+    const canvas = document.createElement('canvas');
+    canvas.width = 100;
+    canvas.height = 100;
+    const ctx = canvas.getContext('2d');
+    
+    // Draw alternating bright magenta and cyan stripes
+    ctx.fillStyle = 'magenta';
+    ctx.fillRect(0, 0, 50, 100);
+    ctx.fillStyle = 'cyan';
+    ctx.fillRect(50, 0, 50, 100);
+    
+    // Create texture
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(1, 1);
+    texture.offset.set(0, 0);
+    
+    // Create material
+    const material = new THREE.MeshBasicMaterial({
+        map: texture,
+        side: THREE.DoubleSide
+    });
+    
+    // Create mesh
+    const tube = new THREE.Mesh(tubeGeometry, material);
+    scene.add(tube);
+
+    // Add a soft black vignette at the far end of the tunnel
+    const vignetteMaterial = new THREE.MeshBasicMaterial({
+        color: 0x000000,
+        transparent: true,
+        opacity: 0.3
+    });
+
+    // Create a plane for the vignette
+    const vignettePlane = new THREE.Mesh(
+        new THREE.PlaneGeometry(200, 200),
+        vignetteMaterial
+    );
+    vignettePlane.rotation.x = -Math.PI / 2;
+    vignettePlane.position.set(0, 0, 0);
+    vignettePlane.scale.set(2, 2, 1);
+    scene.add(vignettePlane);
+
+    // Animation loop
+    const clock = new THREE.Clock();
+    const animate = function () {
+        const time = clock.getElapsedTime();
+        
+        // Update texture offset
+        texture.offset.x = time * 0.5;
+        
+        // Move camera along the curve
+        const t = (time * 0.05) % 1;
+        const point = curve.getPointAt(t);
+        camera.position.copy(point);
+        camera.lookAt(curve.getPointAt(t + 0.05));
+        
+        // Rotate the camera to follow the curve direction
+        const tangent = curve.getTangentAt(t);
+        const normal = new THREE.Vector3().copy(tangent).normalize();
+        const binormal = new THREE.Vector3().crossVectors(normal, new THREE.Vector3(0, 1, 0));
+        const up = binormal.clone().cross(normal);
+        
+        camera.up.copy(up);
+        
+        // Render
+        renderer.render(scene, camera);
+        
+        // Request next frame
+        requestAnimationFrame(animate);
+    };
+
+    // Handle window resize
+    window.addEventListener('resize', function () {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // Start animation
+    animate();
+</script>
+</body>
+</html>

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Noise Terrain Grid</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b1020; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ---- Simple 2D value noise with smooth interpolation ----
+function makeNoise2D(seed) {
+  // hash
+  function hash(x, y) {
+    let n = x * 374761393 + y * 668265263 + seed * 1442695041;
+    n = (n ^ (n >> 13)) * 1274126177;
+    n = n ^ (n >> 16);
+    return (n & 0x7fffffff) / 0x7fffffff; // 0..1
+  }
+  function smooth(t) { return t * t * (3 - 2 * t); }
+  function noise2D(x, y) {
+    const xi = Math.floor(x), yi = Math.floor(y);
+    const xf = x - xi, yf = y - yi;
+    const u = smooth(xf), v = smooth(yf);
+    const a = hash(xi, yi), b = hash(xi + 1, yi);
+    const c = hash(xi, yi + 1), d = hash(xi + 1, yi + 1);
+    const top = a + (b - a) * u;
+    const bot = c + (d - c) * u;
+    return (top + (bot - top) * v) * 2 - 1; // -1..1
+  }
+  return noise2D;
+}
+
+const noise2D = makeNoise2D(1337);
+
+function heightAt(x, z) {
+  // a couple of octaves for a bit more interest
+  let n = noise2D(x * 0.1, z * 0.1);
+  n += 0.4 * noise2D(x * 0.25 + 40.3, z * 0.25 + 17.9);
+  n *= 0.7;
+  return Math.floor(n * 8);
+}
+
+// ---- Scene ----
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0x0b1020, 80, 160);
+
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 500);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+dir.position.set(40, 60, 25);
+scene.add(dir);
+
+// ---- Instanced grid ----
+const N = 64;
+const COUNT = N * N;
+const geo = new THREE.BoxGeometry(1, 1, 1);
+const mat = new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0.1 });
+const mesh = new THREE.InstancedMesh(geo, mat, COUNT);
+mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+
+const dummy = new THREE.Object3D();
+const color = new THREE.Color();
+const blue = new THREE.Color(0x1a4fd6);
+const green = new THREE.Color(0x2ecc71);
+const white = new THREE.Color(0xffffff);
+
+const minH = -8, maxH = 8;
+let i = 0;
+for (let x = 0; x < N; x++) {
+  for (let z = 0; z < N; z++) {
+    const h = heightAt(x - N / 2, z - N / 2);
+
+    dummy.position.set(x - N / 2, h, z - N / 2);
+    dummy.scale.set(1, Math.max(0.001, 1), 1);
+    dummy.rotation.set(0, 0, 0);
+    dummy.updateMatrix();
+    mesh.setMatrixAt(i, dummy.matrix);
+
+    const t = (h - minH) / (maxH - minH); // 0..1
+    if (t < 0.5) {
+      color.copy(blue).lerp(green, t * 2);
+    } else {
+      color.copy(green).lerp(white, (t - 0.5) * 2);
+    }
+    mesh.setColorAt(i, color);
+    i++;
+  }
+}
+mesh.instanceMatrix.needsUpdate = true;
+mesh.instanceColor.needsUpdate = true;
+scene.add(mesh);
+
+// subtle ground plane below
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(400, 400),
+  new THREE.MeshBasicMaterial({ color: 0x0b1020 })
+);
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -9;
+scene.add(ground);
+
+// ---- Camera orbit ----
+const radius = 70;
+const heightY = 35;
+let angle = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+  angle += 0.0015;
+  camera.position.set(Math.cos(angle) * radius, heightY, Math.sin(angle) * radius);
+  camera.lookAt(0, 0, 0);
+  renderer.render(scene, camera);
+}
+animate();
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

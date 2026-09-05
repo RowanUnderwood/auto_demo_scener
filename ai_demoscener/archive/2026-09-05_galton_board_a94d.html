@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Galton Board — three.js</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #232528; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function () {
+  // ---------- constants ----------
+  const ROWS      = 15;
+  const SP        = 1.5;          // spacing between pegs
+  const PEG_R     = 0.28;
+  const BALL_R    = 0.26;
+  const SUM_R     = PEG_R + BALL_R;
+  const TOP_Y     = (ROWS - 1) * SP / 2;
+  const LAST_Y    = TOP_Y - (ROWS - 1) * SP;
+  const BASE_Y    = LAST_Y - SP;
+  const NUM_BINS  = ROWS + 1;
+  const GRAV      = -26;
+  const MAX_BALLS = 500;
+  const rowY = r => TOP_Y - r * SP;
+  const binX = b => (b - NUM_BINS / 2) * SP;
+
+  // ---------- scene ----------
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x232528);
+  scene.fog = new THREE.Fog(0x232528, 60, 110);
+
+  const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 200);
+  camera.position.set(0, -0.5, 44);
+  camera.lookAt(0, -1.5, 0);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  document.body.appendChild(renderer.domElement);
+
+  // ---------- lights ----------
+  scene.add(new THREE.AmbientLight(0x9099a5, 0.75));
+  const key = new THREE.DirectionalLight(0xffffff, 0.9);
+  key.position.set(6, 12, 18);
+  scene.add(key);
+  const rim = new THREE.DirectionalLight(0x88aaff, 0.25);
+  rim.position.set(-10, -6, 10);
+  scene.add(rim);
+
+  // ---------- pegs (triangular grid, soft grey) ----------
+  const pegGeo = new THREE.SphereGeometry(PEG_R, 14, 12);
+  const pegMat = new THREE.MeshStandardMaterial({ color: 0x9aa0a6, roughness: 0.85, metalness: 0.05 });
+  const pegCount = ROWS * (ROWS + 1) / 2;
+  const pegs = new THREE.InstancedMesh(pegGeo, pegMat, pegCount);
+  const m = new THREE.Matrix4();
+  let p = 0;
+  for (let r = 0; r < ROWS; r++) {
+    for (let i = 0; i <= r; i++) {
+      m.setPosition((i - r / 2) * SP, rowY(r), 0);
+      pegs.setMatrixAt(p++, m);
+    }
+  }
+  pegs.instanceMatrix.needsUpdate = true;
+  scene.add(pegs);
+
+  // subtle bin guides at the bottom
+  const guideMat = new THREE.MeshBasicMaterial({ color: 0x3a3d42, transparent: true, opacity: 0.6 });
+  for (let b = 0; b < NUM_BINS; b++) {
+    const g = new THREE.Mesh(new THREE.PlaneGeometry(SP * 0.9, 0.06), guideMat);
+    g.position.set(binX(b), BASE_Y - BALL_R * 2.2, -0.4);
+    scene.add(g);
+  }
+
+  // ---------- balls ----------
+  const ballGeo = new THREE.SphereGeometry(BALL_R, 14, 12);
+  const balls = [];
+  const binCount = new Array(NUM_BINS).fill(0);
+
+  function spawn() {
+    const mat = new THREE.MeshStandardMaterial({ color: 0xd7d7d7, roughness: 0.45, metalness: 0.1 });
+    const mesh = new THREE.Mesh(ballGeo, mat);
+    const ball = {
+      mesh,
+      x: (Math.random() - 0.5) * 0.35,   // tiny random horizontal nudge
+      y: TOP_Y + 2.2,
+      vx: (Math.random() - 0.5) * 1.4,
+      vy: 0,
+      passedRow: 0,
+      settled: false,
+      bin: -1
+    };
+    mesh.position.set(ball.x, ball.y, 0);
+    scene.add(mesh);
+    balls.push(ball);
+  }
+
+  function recycleOldest() {
+    for (let i = 0; i < balls.length; i++) {
+      if (balls[i].settled) {
+        const b = balls[i];
+        scene.remove(b.mesh);
+        b.mesh.material.dispose();
+        binCount[b.bin] = Math.max(0, binCount[b.bin] - 1);
+        balls.splice(i, 1);
+        return;
+      }
+    }
+  }
+
+  function update(dt) {
+    for (let idx = balls.length - 1; idx >= 0; idx--) {
+      const ball = balls[idx];
+      if (ball.settled) continue;
+
+      ball.vy += GRAV * dt;
+      ball.x += ball.vx * dt;
+      ball.y += ball.vy * dt;
+
+      // soft side walls
+      if (Math.abs(ball.x) > 13) ball.vx *= -0.4;
+
+      // row-by-row deflection: exactly one bounce per peg row
+      const candRow = Math.min(ROWS - 1, Math.floor((TOP_Y - ball.y) / SP));
+      for (let r = ball.passedRow; r <= candRow; r++) {
+        if (ball.y <= rowY(r)) {
+          // nearest peg in this row
+          let bestD = 1e9;
+          for (let i = 0; i <= r; i++) {
+            const dx = Math.abs(ball.x - (i - r / 2) * SP);
+            if (dx < bestD) bestD = dx;
+          }
+          const nearPeg = bestD < SUM_R && ball.y > rowY(r) - SUM_R - 0.35;
+          // 50/50 left-or-right deflection with small random offset
+          const dir = Math.random() < 0.5 ? -1 : 1;
+          ball.vx = dir * (1.9 + Math.random() * 0.9) + (Math.random() - 0.5) * 0.4;
+          if (nearPeg) ball.y = rowY(r) - SUM_R - 0.02; // small positional offset
+          ball.passedRow = r + 1;
+          break;
+        }
+      }
+
+      // reached the bins
+      if (ball.y < BASE_Y + 0.15) {
+        let bin = Math.round(ball.x / SP + NUM_BINS / 2);
+        bin = Math.max(0, Math.min(NUM_BINS - 1, bin));
+        const targetY = BASE_Y + binCount[bin] * BALL_R * 1.85;
+        ball.x = binX(bin);
+        ball.y = targetY;
+        // warm-to-cool palette by final bin: red -> yellow -> green -> cyan
+        const hue = (bin / (NUM_BINS - 1)) * 0.5;
+        ball.mesh.material.color.setHSL(hue, 0.9, 0.55);
+        ball.settled = true;
+        ball.bin = bin;
+        binCount[bin]++;
+      }
+
+      ball.mesh.position.set(ball.x, ball.y, 0);
+    }
+  }
+
+  // ---------- loop ----------
+  const clock = new THREE.Clock();
+  function animate() {
+    requestAnimationFrame(animate);
+    const dt = Math.min(clock.getDelta(), 0.033);
+
+    spawn();                              // one new ball each frame
+    if (balls.length > MAX_BALLS) recycleOldest();
+
+    update(dt);
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  addEventListener('resize', () => {
+    camera.aspect = innerWidth / innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+  });
+})();
+</script>
+</body>
+</html>

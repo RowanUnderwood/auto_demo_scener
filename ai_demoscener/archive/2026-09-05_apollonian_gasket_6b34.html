@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Descartes Circle Packing</title>
+<style>
+  html,body{margin:0;height:100%;background:#05070d;overflow:hidden}
+  canvas{display:block}
+</style>
+</head>
+<body>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+(function(){
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x05070d);
+
+  const frustum = 6;
+  const camera = new THREE.OrthographicCamera(-frustum, frustum, frustum, -frustum, 0.1, 100);
+  camera.position.set(0,0,10);
+
+  const renderer = new THREE.WebGLRenderer({antialias:true});
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+  document.body.appendChild(renderer.domElement);
+
+  const group = new THREE.Group();
+  scene.add(group);
+
+  function depthColor(depth, maxDepth){
+    const t = depth / maxDepth;
+    const hue = 0.5 + t*0.32;
+    const light = 0.72 - t*0.18;
+    return new THREE.Color().setHSL(hue % 1, 0.85, light);
+  }
+
+  const MAX_DEPTH = 6;
+  const SEG = 64;
+
+  function addCircle(x, y, r, depth){
+    const color = depthColor(depth, MAX_DEPTH);
+    const ringWidth = Math.max(r * 0.06, 0.004);
+    const innerR = Math.max(0.001, r - ringWidth);
+    const geo = new THREE.RingGeometry(innerR, r, SEG);
+    const mat = new THREE.MeshBasicMaterial({color: color, side: THREE.DoubleSide, transparent: true, opacity: 0.92});
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(x, y, 0);
+    mesh.frustumCulled = false;
+    group.add(mesh);
+  }
+
+  function newCircle(a,b,c){
+    const k = a.k + b.k + c.k + 2*Math.sqrt(a.k*b.k + b.k*c.k + c.k*a.k);
+    const r4 = 1/k;
+    const ra = 1/a.k, rb = 1/b.k, rc = 1/c.k;
+    const da = ra + r4, db = rb + r4;
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const d = Math.hypot(dx,dy);
+    const A2 = (da*da - db*db + d*d)/(2*d);
+    const h = Math.sqrt(Math.max(0, da*da - A2*A2));
+    const mx = a.x + A2*dx/d, my = a.y + A2*dy/d;
+    const px = -dy/d, py = dx/d;
+    const p1 = {x:mx + h*px, y:my + h*py};
+    const p2 = {x:mx - h*px, y:my - h*py};
+    const target = rc + r4;
+    const e1 = Math.abs(Math.hypot(p1.x-c.x, p1.y-c.y) - target);
+    const e2 = Math.abs(Math.hypot(p2.x-c.x, p2.y-c.y) - target);
+    const p = (e1 < e2) ? p1 : p2;
+    return {x:p.x, y:p.y, k:k, r:r4};
+  }
+
+  const A = {x:0,     y:0,              k:1, r:1};
+  const B = {x:2,     y:0,              k:1, r:1};
+  const C = {x:1,     y:Math.sqrt(3),   k:1, r:1};
+  [A,B,C].forEach(c => addCircle(c.x, c.y, c.r, 0));
+
+  function recurse(a, b, c, depth){
+    if(depth >= MAX_DEPTH) return;
+    const D = newCircle(a,b,c);
+    if(D.r < 0.0001) return;
+    addCircle(D.x, D.y, D.r, depth);
+    recurse(D,a,b, depth+1);
+    recurse(D,b,c, depth+1);
+    recurse(D,c,a, depth+1);
+  }
+
+  recurse(A,B,C, 0);
+
+  group.position.set(-1, -(Math.sqrt(3)/2), 0);
+
+  let t = 0;
+  function animate(){
+    requestAnimationFrame(animate);
+    t += 0.016;
+    group.rotation.z = t * 0.08;
+    const breathe = 1 + 0.12*Math.sin(t*0.6);
+    group.scale.setScalar(breathe);
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  window.addEventListener('resize', ()=>{
+    const w = window.innerWidth, h = window.innerHeight;
+    const aspect = w/h;
+    if(aspect >= 1){
+      camera.left = -frustum; camera.right = frustum;
+      camera.top = frustum/aspect; camera.bottom = -frustum/aspect;
+    } else {
+      camera.top = frustum; camera.bottom = -frustum;
+      camera.left = -frustum*aspect; camera.right = frustum*aspect;
+    }
+    camera.updateProjectionMatrix();
+    renderer.setSize(w, h);
+  });
+})();
+</script>
+</body>
+</html>

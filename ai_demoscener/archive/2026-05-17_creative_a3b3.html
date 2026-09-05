@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Quantum Lattice</title>
+  <style>
+    body { margin: 0; overflow: hidden; }
+    canvas { display: block; }
+    #info {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: rgba(255,255,255,0.7);
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      pointer-events: none;
+      text-shadow: 1px 1px 2px #000;
+    }
+  </style>
+</head>
+<body>
+  <div id="info">Quantum Lattice | Mouse to explore | Press R to reset</div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script>
+    // Scene setup
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setClearColor(0x000000, 1);
+    document.body.appendChild(renderer.domElement);
+
+    // Lighting
+    const ambientLight = new THREE.AmbientLight(0x404040);
+    scene.add(ambientLight);
+    
+    const pointLight = new THREE.PointLight(0xffffff, 2, 300);
+    pointLight.position.set(10, 10, 10);
+    scene.add(pointLight);
+
+    // Quantum lattice
+    const latticeSize = 50;
+    const spacing = 2.5;
+    const particles = [];
+    const particleGeometry = new THREE.SphereGeometry(0.08, 8, 8);
+    
+    for (let x = -latticeSize; x <= latticeSize; x += spacing) {
+      for (let y = -latticeSize; y <= latticeSize; y += spacing) {
+        for (let z = -latticeSize; z <= latticeSize; z += spacing) {
+          const particle = new THREE.Mesh(particleGeometry, 
+            new THREE.MeshPhongMaterial({ 
+              color: 0x6a89cc,
+              transparent: true,
+              opacity: 0.3,
+              emissive: 0x2f5eaf,
+              emissiveIntensity: 1
+            })
+          );
+          
+          particle.position.set(x, y, z);
+          particle.userData = {
+            baseX: x,
+            baseY: y,
+            baseZ: z,
+            phase: Math.random() * Math.PI * 2,
+            speed: (Math.random() * 0.5 + 0.5) / 10
+          };
+          
+          scene.add(particle);
+          particles.push(particle);
+        }
+      }
+    }
+
+    // Mouse interaction
+    const mouse = new THREE.Vector2();
+    let isMouseDown = false;
+    
+    window.addEventListener('mousemove', (event) => {
+      mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+      
+      if (isMouseDown) {
+        // Rotate camera
+        const rotSpeed = 0.005;
+        camera.position.x += (mouse.x - camera.position.x) * rotSpeed;
+        camera.position.z += (mouse.y - camera.position.z) * rotSpeed;
+      }
+    });
+
+    window.addEventListener('mousedown', () => { isMouseDown = true; });
+    window.addEventListener('mouseup', () => { isMouseDown = false; });
+
+    // Reset
+    document.addEventListener('keydown', (event) => {
+      if (event.key.toLowerCase() === 'r') {
+        particles.forEach(particle => {
+          particle.userData.phase = Math.random() * Math.PI * 2;
+        });
+      }
+    });
+
+    // Animation loop
+    const clock = new THREE.Clock();
+    
+    function animate() {
+      requestAnimationFrame(animate);
+      
+      const time = clock.getElapsedTime();
+
+      // Update each particle with quantum wave interference
+      particles.forEach(particle => {
+        const { baseX, baseY, baseZ } = particle.userData;
+        const distanceFromCenter = Math.sqrt(baseX*baseX + baseY*baseY + baseZ*baseZ);
+        
+        // Wave propagation through the lattice
+        const waveFactor = 0.5 * Math.sin(time * 2 + distanceFromCenter / 10) +
+                          0.3 * Math.cos(time * 3 - distanceFromCenter / 8);
+        
+        particle.scale.setScalar(1 + waveFactor * 0.6);
+        particle.material.opacity = 0.2 + (waveFactor + 1) * 0.4;
+        particle.material.emissiveIntensity = 0.5 + waveFactor * 0.8;
+        
+        // Add subtle movement
+        const phaseOffset = time * particle.userData.speed;
+        const offsetX = Math.sin(time * 0.7 + baseX * 0.1) * 0.3;
+        const offsetY = Math.cos(time * 0.5 + baseY * 0.1) * 0.3;
+        const offsetZ = Math.sin(time * 0.6 + baseZ * 0.1) * 0.3;
+        
+        particle.position.x = baseX + offsetX;
+        particle.position.y = baseY + offsetY;
+        particle.position.z = baseZ + offsetZ;
+      });
+
+      // Camera follow
+      camera.lookAt(0, 0, 0);
+      
+      renderer.render(scene, camera);
+    }
+
+    // Handle window resize
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+
+    // Initial camera position
+    camera.position.set(0, 0, 150);
+  </script>
+</body>
+</html>

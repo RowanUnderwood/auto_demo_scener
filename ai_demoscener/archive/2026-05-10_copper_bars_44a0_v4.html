@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ember Equalizer</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #0a0305; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+        #hint {
+            position: fixed; bottom: 16px; left: 0; right: 0;
+            text-align: center; font-family: monospace; font-size: 11px;
+            letter-spacing: 3px; color: rgba(255,150,80,0.35);
+            pointer-events: none; text-transform: uppercase;
+        }
+    </style>
+</head>
+<body>
+    <div id="hint">move cursor &nbsp;·&nbsp; shift the fire</div>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const uniforms = {
+            u_time: { value: 0 },
+            u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+            u_mouse: { value: new THREE.Vector2(0.5, 0.5) },
+            u_bloom: { value: 1.0 }
+        };
+
+        const material = new THREE.ShaderMaterial({
+            uniforms,
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                precision highp float;
+                uniform float u_time;
+                uniform vec2 u_resolution;
+                uniform vec2 u_mouse;
+                uniform float u_bloom;
+                varying vec2 vUv;
+
+                float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
+
+                vec3 emberPalette(float t){
+                    vec3 dark = vec3(0.14, 0.03, 0.04);
+                    vec3 red  = vec3(0.78, 0.12, 0.02);
+                    vec3 orange=vec3(1.0, 0.48, 0.10);
+                    vec3 gold = vec3(1.0, 0.87, 0.62);
+                    if(t < 0.4)  return mix(dark,  red,    t/0.4);
+                    if(t < 0.75) return mix(red,   orange, (t-0.4)/0.35);
+                    return mix(orange, gold, (t-0.75)/0.25);
+                }
+
+                void main(){
+                    vec2 uv = vUv;
+                    float aspect = u_resolution.x / u_resolution.y;
+                    vec2 p = vec2(uv.x * aspect, uv.y);
+
+                    float energy = 0.55 + 0.55 * u_mouse.x;   // cursor drives intensity
+                    float hueBias = u_mouse.y;                // cursor tilts the palette
+                    float H = 0.14;                            // horizon line
+                    float N = 24.0;                            // number of bars
+
+                    // --- background: smoky vertical gradient ---
+                    float bgT = smoothstep(0.0, 1.0, uv.y) * 0.35;
+                    vec3 col = mix(vec3(0.045, 0.015, 0.02), vec3(0.16, 0.05, 0.05), bgT);
+                    col += emberPalette(0.05 + 0.25*hueBias) * (0.05 * (1.0-uv.y));
+
+                    float barGlow = 0.0;
+
+                    for(int i = 0; i < 24; i++){
+                        float fi = float(i);
+                        float cx = (fi + 0.5) / N;
+                        float halfW = 0.5 / N * 0.62;
+                        float dx = abs(uv.x - cx) * aspect;
+
+                        // pseudo-random per-bar character
+                        float rnd = hash(vec2(fi, 1.3));
+                        float speed = 0.6 + 1.6 * rnd;
+                        float phase = fi * 0.55 + rnd * 6.2831;
+
+                        // layered motion to fake an audio signal
+                        float s1 = sin(u_time * speed + phase);
+                        float s2 = sin(u_time * 0.7 + fi * 0.31 + 1.7);
+                        float s3 = sin(u_time * 2.2 + fi * 0.17);
+                        float val = 0.35
+                                  + 0.30 * (0.5 + 0.5 * s1)
+                                  + 0.15 * (0.5 + 0.5 * s2)
+                                  + 0.10 * (0.5 + 0.5 * s3);
+                        val *= energy;
+                        float top = H + val * 0.82;
+
+                        // mirror coordinate for reflection below horizon
+                        float y = uv.y;
+                        float refl = 1.0;
+                        if(y < H){
+                            y = H + (H - y) * 0.55;
+                            refl = smoothstep(0.0, H*1.6, H - uv.y) * 0.55;
+                        }
+
+                        if(dx < halfW){
+                            float edge = smoothstep(halfW, halfW*0.15, dx);
+                            if(y < top){
+                                float hNorm = clamp((y - H) / max(top - H, 1e-3), 0.0, 1.0);
+                                vec3 barCol = emberPalette(0.12 + 0.85 * (val) * (0.4 + 0.6*hNorm) + 0.15*hueBias);
+                                barCol += emberPalette(0.9) * (0.4 * (1.0 - hNorm)); // brighter at top
+                                float core = edge * refl;
+                                col = mix(col, barCol, core * 0.9);
+                                barGlow += core * (0.3 + 0.7 * hNorm);
+                            }
+                            // hot cap / halo at the very top of the bar
+                            float cap = exp(-abs(y - top) * 22.0) * edge * refl;
+                            col += emberPalette(0.95) * cap * 0.8;
+                            barGlow += cap * 0.9;
+                        }
+                    }
+
+                    // soft additive bloom around the equalizer
+                    col += emberPalette(0.5 + 0.3*hueBias) * barGlow * 0.25 * u_bloom;
+
+                    // faint perspective floor grid
+                    float gy = uv.y - H;
+                    float grid = smoothstep(0.02, 0.0, abs(fract((uv.x*aspect)*18.0) - 0.5) - 0.48);
+                    col += vec3(0.4, 0.12, 0.05) * grid * (1.0 - smoothstep(0.0, 0.3, abs(gy))) * 0.10 * step(H, uv.y);
+
+                    // subtle scanlines
+                    col *= 0.97 + 0.03 * sin(uv.y * u_resolution.y * 1.2);
+
+                    // film grain
+                    float g = hash(uv * u_resolution.xy + fract(u_time));
+                    col += (g - 0.5) * 0.05;
+
+                    // vignette
+                    float d = length(uv - 0.5);
+                    col *= 1.0 - smoothstep(0.55, 0.95, d) * 0.55;
+
+                    // gentle breathing
+                    col *= 0.92 + 0.08 * sin(u_time * 0.8);
+
+                    // tonemap-ish
+                    col = col / (1.0 + col * 0.4);
+                    col = pow(col, vec3(0.92));
+
+                    gl_FragColor = vec4(col, 1.0);
+                }
+            `
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        const targetMouse = new THREE.Vector2(0.5, 0.5);
+        window.addEventListener('pointermove', (e) => {
+            targetMouse.set(
+                e.clientX / window.innerWidth,
+                e.clientY / window.innerHeight
+            );
+        });
+
+        function animate(time){
+            uniforms.u_time.value = time * 0.001;
+            // ease the cursor for a smoky, weighted feel
+            uniforms.u_mouse.value.lerp(targetMouse, 0.05);
+            uniforms.u_bloom.value = 0.9 + 0.25 * Math.sin(time * 0.0004);
+            renderer.render(scene, camera);
+            requestAnimationFrame(animate);
+        }
+
+        window.addEventListener('resize', () => {
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            uniforms.u_resolution.value.set(window.innerWidth, window.innerHeight);
+        });
+
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>

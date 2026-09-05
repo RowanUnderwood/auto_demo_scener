@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>COSMIC DRIFT // Ethereal Flow</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #0a0515; } /* Deep indigo/black space */
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<script id="vertexShader" type="x-shader/x-vertex">
+uniform float time;
+varying vec3 vNormal;
+void main() {
+    vNormal = normalize(normalMatrix * normal);
+    vec3 newPosition = position;
+
+    // Organic, fluid displacement using higher frequency, lower amplitude noise (Perlin-like motion)
+    float flowX = sin(position.y * 4.0 + time * 1.5) * cos(position.z * 2.0 - time * 0.8);
+    float flowY = cos(position.x * 3.5 - time * 2.0) * sin(position.z * 4.5 + time * 1.2);
+    
+    // Combine flows for a complex, drifting effect
+    newPosition.x += flowX * 0.1;
+    newPosition.y += flowY * 0.1;
+    newPosition.z += sin(position.x * 5.0 + time * 0.5) * 0.05;
+
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(newPosition, 1.0);
+}
+</script>
+
+<script id="fragmentShader" type="x-shader/x-fragment">
+uniform float time;
+varying vec3 vNormal;
+void main() {
+    // Base palette: Deep violet and emerald green
+    vec3 colorPrimary = vec3(0.2, 0.7, 0.5); // Emerald Green
+    vec3 colorSecondary = vec3(0.6, 0.1, 1.0); // Deep Violet
+
+    // Calculate subtle noise based on position and time for texture/color shifting
+    float noiseA = sin(vNormal.x * 20.0 + time * 3.0) * 0.5 + 0.5;
+    float noiseB = cos(vNormal.y * 15.0 - time * 4.0) * 0.5 + 0.5;
+
+    // Determine blend factor: higher magnitude of interaction leads to more 'energy'
+    float energyLevel = abs(noiseA - noiseB);
+
+    // Transition between primary and secondary colors based on the calculated energy/flow
+    vec3 finalColor = mix(colorPrimary, colorSecondary, energyLevel * 0.8);
+
+    // Add a subtle ambient glow / bloom effect using time modulation
+    float bloomIntensity = sin(time * 0.5) * 0.1 + 0.9; // Keeps intensity high but pulses subtly
+    finalColor *= bloomIntensity;
+    
+    // Output color with full opacity for maximum blending effect
+    gl_FragColor = vec4(finalColor, 1.0);
+}
+</script>
+
+<script>
+    let scene, camera, renderer, material;
+    const container = document.body;
+    let geometry;
+    let uniforms;
+    let startTime = Date.now();
+
+    function init() {
+        // Scene Setup
+        scene = new THREE.Scene();
+        camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 200); // Wider FOV for cosmic feel
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        container.appendChild(renderer.domElement);
+
+        // --- Geometry and Shaders Setup (The Core Concept) ---
+        // Using a high-resolution sphere for an organic, gaseous feel
+        geometry = new THREE.IcosahedronGeometry(10, 96); 
+
+        // Load Shader Code
+        const vertexShader = document.getElementById('vertexShader').textContent;
+        const fragmentShader = document.getElementById('fragmentShader').textContent;
+
+        uniforms = {
+            time: { value: 0.0 }
+        };
+
+        material = new THREE.ShaderMaterial({
+            uniforms: uniforms,
+            vertexShader: vertexShader,
+            fragmentShader: fragmentShader,
+            side: THREE.DoubleSide, 
+            transparent: true,
+            blending: THREE.AdditiveBlending, // Essential for the ethereal glow effect
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        camera.position.z = 25;
+
+        // Event Listeners
+        window.addEventListener('resize', onWindowResize, false);
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+
+        const elapsed = (Date.now() - startTime) / 1000;
+        uniforms.time.value = elapsed;
+
+        // Slow, drifting camera movement for a meditative feel
+        camera.position.x = Math.sin(elapsed * 0.02) * 5;
+        camera.position.y = Math.cos(elapsed * 0.03) * 3;
+        camera.lookAt(new THREE.Vector3(0, 0, 0));
+
+        renderer.render(scene, camera);
+    }
+
+    function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    init();
+    animate();
+</script>
+
+</body>
+</html>

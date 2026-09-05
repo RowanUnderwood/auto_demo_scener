@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bioluminescent Coral Reef</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #040c23; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+</script>
+<script type="module">
+    import * as THREE from 'three';
+
+    const PARTICLE_COUNT = 5000;
+    const TUNNEL_RADIUS = 25;
+    const DEPTH = 400;
+    const SPEED = 0.6;
+    const COLORS = [
+        new THREE.Color(0x1a8b9d), // Sea Green
+        new THREE.Color(0x3e7ca7), // Ocean Blue
+        new THREE.Color(0x5ac6e3), // Aqua
+        new THREE.Color(0x7bcbe2)  // Light Cyan
+    ];
+
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x040c23, 0.01);
+
+    const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    const createGlowTexture = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 64;
+        canvas.height = 64;
+        const ctx = canvas.getContext('2d');
+        const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+        gradient.addColorStop(0, 'rgba(0, 150, 200, 1)');
+        gradient.addColorStop(0.2, 'rgba(0, 100, 170, 0.5)');
+        gradient.addColorStop(0.5, 'rgba(0, 60, 140, 0.2)');
+        gradient.addColorStop(1, 'rgba(0, 30, 90, 0)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 64, 64);
+        return new THREE.CanvasTexture(canvas);
+    };
+
+    const glowTexture = createGlowTexture();
+
+    const geometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(PARTICLE_COUNT * 3);
+    const colors = new Float32Array(PARTICLE_COUNT * 3);
+    const sizes = new Float32Array(PARTICLE_COUNT);
+    const spiralFactors = new Float32Array(PARTICLE_COUNT);
+
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+        resetParticle(i, positions, colors, sizes, spiralFactors);
+    }
+
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+    const material = new THREE.PointsMaterial({
+        size: 0.6,
+        map: glowTexture,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        vertexColors: true,
+        depthWrite: false,
+        sizeAttenuation: true
+    });
+
+    const points = new THREE.Points(geometry, material);
+    scene.add(points);
+
+    function resetParticle(i, pos, col, siz, spiral) {
+        const idx = i * 3;
+        const angle = Math.random() * Math.PI * 2;
+        const radius = Math.pow(Math.random(), 0.7) * TUNNEL_RADIUS;
+
+        pos[idx] = Math.cos(angle) * radius;
+        pos[idx + 1] = Math.sin(angle) * radius;
+        pos[idx + 2] = -(Math.random() * DEPTH);
+
+        const colorBase = COLORS[Math.floor(Math.random() * COLORS.length)];
+        col[idx] = colorBase.r;
+        col[idx + 1] = colorBase.g;
+        col[idx + 2] = colorBase.b;
+
+        siz[i] = Math.random() * 3.0 + 1.5;
+        spiral[i] = Math.random() * 0.4 + 0.6; // Spiral tightness
+    }
+
+    let time = 0;
+
+    function animate() {
+        requestAnimationFrame(animate);
+        time += 0.008;
+
+        const posAttr = geometry.attributes.position;
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+            const idx = i * 3;
+            const zPos = posAttr.array[idx + 2];
+            
+            // Move forward through Z
+            posAttr.array[idx + 2] += SPEED;
+
+            // Create spiral effect based on depth and position
+            const depthFactor = (zPos + DEPTH) / DEPTH;
+            const swirlSpeed = 0.015 * depthFactor;
+            const angleStep = swirlSpeed * time * spiralFactors[i];
+            
+            // Apply rotation around Y axis with depth variation
+            const currentX = posAttr.array[idx];
+            const currentY = posAttr.array[idx + 1];
+            
+            posAttr.array[idx]     = currentX * Math.cos(angleStep) - currentY * Math.sin(angleStep);
+            posAttr.array[idx + 1] = currentX * Math.sin(angleStep) + currentY * Math.cos(angleStep);
+
+            // Respawn particles when they exit the tunnel
+            if (zPos > DEPTH / 2) {
+                resetParticle(i, posAttr.array, geometry.attributes.color.array, 
+                            geometry.attributes.size.array, spiralFactors);
+            }
+        }
+
+        posAttr.needsUpdate = true;
+        geometry.attributes.color.needsUpdate = true;
+
+        // Gentle camera motion
+        camera.position.x = Math.sin(time * 0.2) * 3;
+        camera.position.y = Math.cos(time * 0.15) * 2.5;
+        camera.lookAt(0, 0, -40);
+
+        // Subtle rotation of the whole particle system
+        points.rotation.z += 0.0008;
+
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+</script>
+</body>
+</html>
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quantum Nebula Drift</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #0a0f24; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+</script>
+<script type="module">
+    import * as THREE from 'three';
+
+    /** 
+     * CONFIGURATION
+     */
+    const PARTICLE_COUNT = 5000;
+    const NEBULA_RADIUS = 25;
+    const DEPTH = 300;
+    const SPEED = 1.8;
+    const COLORS = [
+        new THREE.Color(0x6a1b9a), // Deep Purple
+        new THREE.Color(0x4a148c), // Dark Violet
+        new THREE.Color(0x283593), // Royal Blue
+        new THREE.Color(0x0d47a1)  // Navy
+    ];
+
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x0a0f24, 0.01);
+
+    const camera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // Create a procedural nebula texture for the particles
+    const createNebulaTexture = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 64;
+        canvas.height = 64;
+        const ctx = canvas.getContext('2d');
+        const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+        gradient.addColorStop(0, 'rgba(158, 171, 246, 0.8)');
+        gradient.addColorStop(0.4, 'rgba(99, 94, 213, 0.5)');
+        gradient.addColorStop(0.7, 'rgba(72, 57, 161, 0.3)');
+        gradient.addColorStop(1, 'rgba(10, 10, 30, 0)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 64, 64);
+        return new THREE.CanvasTexture(canvas);
+    };
+
+    const nebulaTexture = createNebulaTexture();
+
+    // Geometry setup
+    const geometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(PARTICLE_COUNT * 3);
+    const colors = new Float32Array(PARTICLE_COUNT * 3);
+    const sizes = new Float32Array(PARTICLE_COUNT);
+    const phaseOffsets = new Float32Array(PARTICLE_COUNT);
+
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+        resetParticle(i, positions, colors, sizes, phaseOffsets);
+    }
+
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+    const material = new THREE.PointsMaterial({
+        size: 0.8,
+        map: nebulaTexture,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        vertexColors: true,
+        depthWrite: false,
+        sizeAttenuation: true
+    });
+
+    const points = new THREE.Points(geometry, material);
+    scene.add(points);
+
+    function resetParticle(i, pos, col, siz, phase) {
+        const idx = i * 3;
+        // Distribute in a spherical nebula shape
+        const angle = Math.random() * Math.PI * 2;
+        const radius = Math.pow(Math.random(), 0.4) * NEBULA_RADIUS; // Density higher towards center
+        
+        pos[idx] = Math.cos(angle) * radius;
+        pos[idx + 1] = Math.sin(angle) * radius * 0.7;
+        pos[idx + 2] = -(Math.random() * DEPTH);
+
+        // Color assignment
+        const colorBase = COLORS[Math.floor(Math.random() * COLORS.length)];
+        col[idx] = colorBase.r;
+        col[idx + 1] = colorBase.g;
+        col[idx + 2] = colorBase.b;
+
+        // Size and individual phase offset for the ripple effect
+        siz[i] = Math.random() * 3.5 + 0.8;
+        phase[i] = Math.random() * Math.PI * 2;
+    }
+
+    let time = 0;
+
+    function animate() {
+        requestAnimationFrame(animate);
+        time += 0.015;
+
+        const posAttr = geometry.attributes.position;
+        const colAttr = geometry.attributes.color;
+        const sizAttr = geometry.attributes.size;
+
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+            const idx = i * 3;
+
+            // Move forward through Z
+            posAttr.array[idx + 2] += SPEED;
+
+            // Apply a quantum ripple effect: oscillate in X and Y
+            // The frequency depends on depth to create a sense of distance
+            const rippleFrequency = 0.015;
+            const depthFactor = (posAttr.array[idx + 2] / DEPTH) * 0.7 + 0.3;
+            
+            const oscillationX = Math.sin(time * rippleFrequency + phaseOffsets[i]) * 0.4;
+            const oscillationY = Math.cos(time * rippleFrequency + phaseOffsets[i]) * 0.3;
+            
+            posAttr.array[idx]     += oscillationX;
+            posAttr.array[idx + 1] += oscillationY;
+
+            // Respawn if they fly past the camera
+            if (posAttr.array[idx + 2] > 15) {
+                resetParticle(i, posAttr.array, colAttr.array, sizAttr.array, phaseOffsets); 
+            }
+        }
+
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+            const idx = i * 3;
+            if (posAttr.array[idx + 2] > 15) {
+                const angle = Math.random() * Math.PI * 2;
+                const radius = Math.pow(Math.random(), 0.4) * NEBULA_RADIUS;
+                posAttr.array[idx]     = Math.cos(angle) * radius;
+                posAttr.array[idx + 1] = Math.sin(angle) * radius * 0.7;
+                posAttr.array[idx + 2] = -DEPTH;
+
+                const colorBase = COLORS[Math.floor(Math.random() * COLORS.length)];
+                colAttr.array[idx]     = colorBase.r;
+                colAttr.array[idx + 1] = colorBase.g;
+                colAttr.array[idx + 2] = colorBase.b;
+            }
+        }
+
+        posAttr.needsUpdate = true;
+        colAttr.needsUpdate = true;
+
+        // Organic camera movement
+        camera.position.x = Math.sin(time * 0.4) * 3.5;
+        camera.position.y = Math.cos(time * 0.6) * 2.8;
+        camera.lookAt(0, 0, -60);
+
+        // Subtle rotation of the whole system for cosmic feel
+        points.rotation.z += 0.0015;
+
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+</script>
+</body>
+</html>

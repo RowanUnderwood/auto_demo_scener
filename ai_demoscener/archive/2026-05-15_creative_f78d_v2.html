@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chrono Weave</title>
+<style>
+html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #0a0a0a; }
+canvas { display: block; width: 100%; height: 100%; }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x0a0a0a, 0.05);
+
+const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 100);
+camera.position.set(0, 0, 5);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.CineonToneMapping;
+renderer.toneMappingExposure = 1.1;
+document.body.appendChild(renderer.domElement);
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 1.5, 0.4, 0.8);
+composer.addPass(bloom);
+
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+const masterGain = audioCtx.createGain();
+masterGain.gain.value = 0.1;
+masterGain.connect(audioCtx.destination);
+
+const BPM = 120;
+const beatInterval = 60 / BPM;
+let beatTime = -beatInterval;
+
+function triggerBeat(t) {
+  const now = audioCtx.currentTime;
+  const kick = audioCtx.createOscillator();
+  const kGain = audioCtx.createGain();
+  kick.type = 'sine';
+  kick.frequency.setValueAtTime(150, now);
+  kick.frequency.exponentialRampToValueAtTime(0.01, now + 0.15);
+  kGain.gain.setValueAtTime(1.0, now);
+  kGain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+  kick.connect(kGain).connect(masterGain);
+  kick.start(now);
+  kick.stop(now + 0.16);
+
+  if (Math.random() > 0.3) {
+    const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.04, audioCtx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * 0.12;
+    const src = audioCtx.createBufferSource();
+    src.buffer = buf;
+    const hGain = audioCtx.createGain();
+    hGain.gain.value = 0.35;
+    src.connect(hGain).connect(masterGain);
+    src.start(now);
+  }
+}
+
+const ribbonVert = `
+uniform float uTime;
+varying vec2 vUv;
+varying vec3 vNormal;
+varying vec3 vViewPos;
+void main() {
+  vUv = uv;
+  vec3 pos = position;
+  float twist = sin(pos.x * 3.5 + uTime * 1.2) * 0.28;
+  pos.y += twist;
+  pos.z += cos(pos.x * 2.2 + uTime * 2.4) * 0.16;
+  vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
+  vViewPos = mvPos.xyz;
+  vNormal = normalize(normalMatrix * normal);
+  gl_Position = projectionMatrix * mvPos;
+}`;
+
+const ribbonFrag = `
+uniform float uTime;
+varying vec2 vUv;
+varying vec3 vNormal;
+varying vec3 vViewPos;
+void main() {
+  vec3 viewDir = normalize(-vViewPos);
+  float fresnel = pow(1.0 - max(dot(viewDir, vNormal), 0.0), 2.8);
+  float pattern = sin(vUv.x * 32.0 + uTime * 3.5) * 0.5 + 0.5;
+  vec3 col1 = vec3(0.8, 0.1, 0.9);
+  vec3 col2 = vec3(0.1, 0.5, 0.2);
+  vec3 col3 = vec3(0.6, 0.2, 0.7);
+  vec3 col = mix(col1, col2, pattern);
+  col = mix(col, col3, fresnel);
+  gl_FragColor = vec4(col, 1.0);
+}`;
+
+const geometry = new THREE.PlaneGeometry(20, 20);
+const material = new THREE.ShaderMaterial({
+  vertexShader: ribbonVert,
+  fragmentShader: ribbonFrag,
+  uniforms: {
+    uTime: { value: 0 }
+  },
+  side: THREE.DoubleSide
+});
+const ribbon = new THREE.Mesh(geometry, material);
+scene.add(ribbon);
+
+function animate() {
+  requestAnimationFrame(animate);
+  const time = performance.now() * 0.001;
+  ribbon.material.uniforms.uTime.value = time;
+  if (time > beatTime + beatInterval) {
+    beatTime = time;
+    triggerBeat(time);
+  }
+  composer.render();
+}
+
+animate();
+</script>
+</body>
+</html>

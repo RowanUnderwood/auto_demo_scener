@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Neural Bloom</title>
+<style>
+*{margin:0;padding:0;overflow:hidden}
+body{background:#000}
+canvas{display:block}
+#info{position:fixed;bottom:12px;left:50%;transform:translateX(-50%);color:rgba(180,255,240,0.4);font:11px monospace;pointer-events:none;text-transform:uppercase;letter-spacing:3px}
+</style>
+</head>
+<body>
+<div id="info">neural bloom</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+const W=innerWidth,H=innerHeight;
+const renderer=new THREE.WebGLRenderer({antialias:true,alpha:false});
+renderer.setSize(W,H);
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setClearColor(0x020810);
+document.body.appendChild(renderer.domElement);
+
+const scene=new THREE.Scene();
+scene.fog=new THREE.FogExp2(0x020810,0.018);
+const camera=new THREE.PerspectiveCamera(60,W/H,0.1,500);
+camera.position.set(0,8,42);
+
+// --- Nodes ---
+const NODE_COUNT=120;
+const nodes=[];
+const nodeGeos=[];
+const nodeMats=[];
+const nodeBaseScale=[];
+const nodeEnergy=new Float32Array(NODE_COUNT);
+const nodeBloom=new Float32Array(NODE_COUNT);
+
+const nodeGeo=new THREE.IcosahedronGeometry(0.35,2);
+for(let i=0;i<NODE_COUNT;i++){
+  const r=12+Math.random()*28;
+  const theta=Math.random()*Math.PI*2;
+  const phi=Math.acos(2*Math.random()-1);
+  const x=r*Math.sin(phi)*Math.cos(theta);
+  const y=r*Math.sin(phi)*Math.sin(theta)*0.6;
+  const z=r*Math.cos(phi);
+  const mat=new THREE.MeshBasicMaterial({color:new THREE.Color().setHSL(0.45+Math.random()*0.3,0.8,0.35),transparent:true,opacity:0.9});
+  const mesh=new THREE.Mesh(nodeGeo,mat);
+  mesh.position.set(x,y,z);
+  const s=0.5+Math.random()*1.2;
+  mesh.scale.setScalar(s);
+  scene.add(mesh);
+  nodes.push(mesh);
+  nodeBaseScale.push(s);
+  nodeMats.push(mat);
+}
+
+// --- Connections ---
+const conns=[];
+const connLines=[];
+function dist(a,b){return a.distanceTo(b)}
+for(let i=0;i<NODE_COUNT;i++){
+  const near=[];
+  for(let j=0;j<NODE_COUNT;j++){
+    if(i===j)continue;
+    const d=dist(nodes[i].position,nodes[j].position);
+    if(d<14)near.push({j,d});
+  }
+  near.sort((a,b)=>a.d-b.d);
+  const links=near.slice(0,Math.min(3,near.length));
+  for(const l of links){
+    if(l.j<i)continue;
+    const geo=new THREE.BufferGeometry();
+    const pts=[];
+    const segs=24;
+    for(let s=0;s<=segs;s++){
+      const t=s/segs;
+      const p=new THREE.Vector3().lerpVectors(nodes[i].position,nodes[l.j].position,t);
+      p.x+=Math.sin(t*Math.PI)*0.8*Math.sin(i*7.3);
+      p.y+=Math.cos(t*Math.PI)*0.8*Math.cos(l.j*4.1);
+      pts.push(p.x,p.y,p.z);
+    }
+    geo.setAttribute('position',new THREE.Float32BufferAttribute(pts,3));
+    const mat=new THREE.LineBasicMaterial({color:0x0a3d3d,transparent:true,opacity:0.3});
+    const line=new THREE.Line(geo,mat);
+    scene.add(line);
+    connLines.push(line);
+    conns.push({from:i,to:l.j,mat});
+  }
+}
+
+// --- Petal Particles ---
+const PETAL_COUNT=6000;
+const petalGeo=new THREE.BufferGeometry();
+const petalPos=new Float32Array(PETAL_COUNT*3);
+const petalVel=new Float32Array(PETAL_COUNT*3);
+const petalLife=new Float32Array(PETAL_COUNT);
+const petalMaxLife=new Float32Array(PETAL_COUNT);
+const petalColor=new Float32Array(PETAL_COUNT*3);
+const petalSize=new Float32Array(PETAL_COUNT);
+for(let i=0;i<PETAL_COUNT;i++){
+  petalLife[i]=0;
+  petalPos[i*3]=0;petalPos[i*3+1]=0;petalPos[i*3+2]=0;
+  petalSize[i]=1;
+}
+petalGeo.setAttribute('position',new THREE.BufferAttribute(petalPos,3));
+petalGeo.setAttribute('color',new THREE.BufferAttribute(petalColor,3));
+petalGeo.setAttribute('size',new THREE.BufferAttribute(petalSize,1));
+
+const petalMat=new THREE.ShaderMaterial({
+  transparent:true,
+  depthWrite:false,
+  blending:THREE.AdditiveBlending,
+  uniforms:{uTime:{value:0}},
+  vertexShader:`
+    attribute float size;
+    attribute vec3 color;
+    varying vec3 vColor;
+    varying float vAlpha;
+    void main(){
+      vColor=color;
+      vec4 mv=modelViewMatrix*vec4(position,1.0);
+      gl_PointSize=size*(200.0/(-mv.z));
+      gl_Position=projectionMatrix*mv;
+      vAlpha=1.0;
+    }
+  `,
+  fragmentShader:`
+    varying vec3 vColor;
+    varying float vAlpha;
+    void main(){
+      float d=length(gl_PointCoord-0.5);
+      if(d>0.5)discard;
+      float a=smoothstep(0.5,0.1,d)*vAlpha;
+      gl_FragColor=vec4(vColor,a);
+    }
+  `
+});
+const petalPoints=new THREE.Points(petalGeo,petalMat);
+scene.add(petalPoints);
+let petalIdx=0;
+
+function emitPetals(pos,count,baseHue){
+  for(let c=0;c<count;c++){
+    const i=petalIdx;
+    petalIdx=(petalIdx+1)%PETAL_COUNT;
+    petalPos[i*3]=pos.x;
+    petalPos[i*3+1]=pos.y;
+    petalPos[i*3+2]=pos.z;
+    const th=Math.random()*Math.PI*2;
+    const ph=Math.acos(2*Math.random()-1);
+    const sp=1+Math.random()*3;
+    petalVel[i*3]=sp*Math.sin(ph)*Math.cos(th);
+    petalVel[i*3+1]=sp*Math.sin(ph)*Math.sin(th);
+    petalVel[i*3+2]=sp*Math.cos(ph);
+    petalLife[i]=1;
+    petalMaxLife[i]=1.5+Math.random()*2;
+    const hue=baseHue+Math.random()*0.15;
+    const col=new THREE.Color().setHSL(hue,0.9,0.55+Math.random()*0.3);
+    petalColor[i*3]=col.r;petalColor[i*3+1]=col.g;petalColor[i*3+2]=col.b;
+  }
+}
+
+// --- Energy Pulses ---
+const pulses=[];
+const PULSE_MAX=30;
+function spawnPulse(){
+  if(pulses.length>=PULSE_MAX)return;
+  const from=Math.floor(Math.random()*NODE_COUNT);
+  const targets=[];
+  for(const c of conns){
+    if(c.from===from||c.to===from)targets.push(c);
+  }
+  if(targets.length===0)return;
+  const conn=targets[Math.floor(Math.random()*targets.length)];
+  const to=conn.from===from?conn.to:conn.from;
+  const hue=0.45+Math.random()*0.35;
+  pulses.push({conn,t:0,speed:0.4+Math.random()*0.8,from,to,hue});
+}
+
+// --- Ambient dust ---
+const DUST=3000;
+const dustGeo=new THREE.BufferGeometry();
+const dustPos=new Float32Array(DUST*3);
+for(let i=0;i<DUST;i++){
+  dustPos[i*3]=(Math.random()-0.5)*120;
+  dustPos[i*3+1]=(Math.random()-0.5)*70;
+  dustPos[i*3+2]=(Math.random()-0.5)*120;
+}
+dustGeo.setAttribute('position',new THREE.BufferAttribute(dustPos,3));
+const dustMat=new THREE.PointsMaterial({color:0x1a4a5a,size:0.15,transparent:true,opacity:0.4,blending:THREE.AdditiveBlending,depthWrite:false});
+const dust=new THREE.Points(dustGeo,dustMat);
+scene.add(dust);
+
+// --- Bloom flower meshes ---
+const flowerGeo=new THREE.BufferGeometry();
+(function(){
+  const verts=[],cols=[],idx=[];
+  const petals=8,rings=6;
+  for(let p=0;p<petals;p++){
+    const a0=p/petals*Math.PI*2;
+    const a1=(p+1)/petals*Math.PI*2;
+    const am=(a0+a1)/2;
+    for(let r=0;r<rings;r++){
+      const t=r/(rings-1);
+      const rad=0.3+t*1.5;
+      const w=Math.sin(t*Math.PI)*0.5;
+      const aa=a0+(a1-a0)*(0.3+w);
+      const ab=a0+(a1-a0)*(0.7-w);
+      const i0=p*rings+r;
+      verts.push(Math.cos(aa)*rad,Math.sin(aa)*rad*0.4,Math.sin(t*3)*0.3);
+      verts.push(Math.cos(ab)*rad,Math.sin(ab)*rad*0.4,Math.cos(t*3)*0.3);
+      const c=new THREE.Color().setHSL(0.5+t*0.3,0.8,0.4+t*0.3);
+      cols.push(c.r,c.g,c.b,c.r,c.g,c.b);
+      if(r<rings-1){
+        const i1=i0+petals;
+        idx.push(i0,i1,i0+1,i1,i1+1,i0+1);
+      }
+    }
+  }
+  flowerGeo.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));
+  flowerGeo.setAttribute('color',new THREE.Float32BufferAttribute(cols,3));
+  flowerGeo.setIndex(idx);
+  flowerGeo.computeVertexNormals();
+})();
+const flowerMats=[];
+const flowers=[];
+for(let i=0;i<40;i++){
+  const mat=new THREE.MeshBasicMaterial({vertexColors:true,transparent:true,opacity:0,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,depthWrite:false});
+  const m=new THREE.Mesh(flowerGeo,mat);
+  m.visible=false;
+  scene.add(m);
+  flowerMats.push(mat);
+  flowers.push(m);
+}
+let flowerIdx=0;
+
+// --- Lights (subtle) ---
+const amb=new THREE.AmbientLight(0x0a1520,1);
+scene.add(amb);
+const pt1=new THREE.PointLight(0x00ffcc,0.6,80);
+pt1.position.set(0,15,0);
+scene.add(pt1);
+const pt2=new THREE.PointLight(0xff44aa,0.3,60);
+pt2.position.set(-20,-10,10);
+scene.add(pt2);
+
+// --- Animate ---
+const clock=new THREE.Clock();
+let pulseTimer=0;
+const tmpV=new THREE.Vector3();
+
+function animate(){
+  requestAnimationFrame(animate);
+  const dt=Math.min(clock.getDelta(),0.05);
+  const t=clock.elapsedTime;
+
+  // camera orbit
+  const ca=t*0.08;
+  camera.position.x=Math.sin(ca)*42;
+  camera.position.z=Math.cos(ca)*42;
+  camera.position.y=8+Math.sin(t*0.15)*5;
+  camera.lookAt(0,0,0);
+  dust.rotation.y=t*0.01;
+
+  // spawn pulses
+  pulseTimer+=dt;
+  if(pulseTimer>0.15){
+    pulseTimer=0;
+    spawnPulse();
+    if(Math.random()>0.5)spawnPulse();
+  }
+
+  // update pulses
+  for(let i=pulses.length-1;i>=0;i--){
+    const p=pulses[i];
+    p.t+=dt*p.speed;
+    if(p.t>=1){
+      // hit target
+      const target=nodes[p.to];
+      nodeEnergy[p.to]=Math.min(nodeEnergy[p.to]+1,1.5);
+      nodeBloom[p.to]=1;
+      emitPetals(target.position,40+p.hue*40,p.hue);
+      // spawn flower
+      const f=flowers[flowerIdx];
+      flowerIdx=(flowerIdx+1)%flowers.length;
+      f.position.copy(target.position);
+      f.visible=true;
+      f.userData.life=1;
+      f.rotation.set(Math.random()*Math.PI,Math.random()*Math.PI,Math.random()*Math.PI);
+      pulses.splice(i,1);
+      continue;
+    }
+    // color the connection
+    p.conn.mat.color.setHSL(p.hue,0.9,0.2+p.t*0.5);
+    p.conn.mat.opacity=0.3+p.t*0.6;
+  }
+
+  // decay node energy
+  for(let i=0;i<NODE_COUNT;i++){
+    nodeEnergy[i]=Math.max(nodeEnergy[i]-dt*0.8,0);
+    nodeBloom[i]=Math.max(nodeBloom[i]-dt*0.6,0);
+    const n=nodes[i];
+    const s=nodeBaseScale[i]*(1+nodeBloom[i]*0.8);
+    n.scale.setScalar(s);
+    const m=nodeMats[i];
+    const hue=0.45+nodeEnergy[i]*0.3;
+    const lum=0.3+nodeEnergy[i]*0.5;
+    m.color.setHSL(hue,0.8,lum);
+    m.opacity=0.6+nodeBloom[i]*0.4;
+    n.rotation.x+=dt*(0.2+nodeEnergy[i]);
+    n.rotation.y+=dt*(0.3+nodeEnergy[i]*0.5);
+    // subtle breathing
+    const breathe=Math.sin(t*1.5+i*0.7)*0.05;
+    n.position.y+=breathe*dt;
+  }
+
+  // decay connection colors
+  for(const c of conns){
+    if(!pulses.find(p=>p.conn===c)){
+      c.mat.color.lerp(new THREE.Color(0x0a3d3d),dt*2);
+      c.mat.opacity+=(0.3-c.mat.opacity)*dt*2;
+    }
+  }
+
+  // update flowers
+  for(const f of flowers){
+    if(!f.visible)continue;
+    f.userData.life-=dt*0.7;
+    if(f.userData.life<=0){f.visible=false;continue;}
+    const l=f.userData.life;
+    const sc=Math.sin(l*Math.PI);
+    f.scale.setScalar(sc*1.5);
+    f.material.opacity=sc*0.7;
+    f.rotation.x+=dt*0.5;
+    f.rotation.y+=dt*0.3;
+  }
+
+  // update petals
+  for(let i=0;i<PETAL_COUNT;i++){
+    if(petalLife[i]<=0){
+      petalSize[i]=0;
+      continue;
+    }
+    petalLife[i]-=dt/petalMaxLife[i];
+    if(petalLife[i]<0)petalLife[i]=0;
+    petalPos[i*3]+=petalVel[i*3]*dt;
+    petalPos[i*3+1]+=petalVel[i*3+1]*dt;
+    petalPos[i*3+2]+=petalVel[i*3+2]*dt;
+    // spiral
+    const px=petalPos[i*3],pz=petalPos[i*3+2];
+    const ang=dt*2;
+    const cx=px*Math.cos(ang)-pz*Math.sin(ang);
+    const cz=px*Math.sin(ang)+pz*Math.cos(ang);
+    petalPos[i*3]=cx;petalPos[i*3+2]=cz;
+    petalVel[i*3+1]-=dt*0.5;
+    petalSize[i]=petalLife[i]*2.5;
+    const fade=petalLife[i];
+    petalColor[i*3]*=0.995;petalColor[i*3+1]*=0.995;petalColor[i*3+2]*=0.995;
+  }
+  petalGeo.attributes.position.needsUpdate=true;
+  petalGeo.attributes.color.needsUpdate=true;
+  petalGeo.attributes.size.needsUpdate=true;
+
+  // light pulse
+  pt1.intensity=0.4+Math.sin(t*2)*0.2;
+  pt2.intensity=0.2+Math.sin(t*1.7+1)*0.15;
+
+  renderer.render(scene,camera);
+}
+animate();
+
+addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+})();
+</script>
+</body>
+</html>

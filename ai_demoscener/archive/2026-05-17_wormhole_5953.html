@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Procedural Tube Tunnel</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #111; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    
+    <!-- Import Three.js as an ES module -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        // --- 1. Setup Scene ---
+        const scene = new THREE.Scene();
+        
+        // Fog for atmosphere
+        scene.fog = new THREE.FogExp2(0x050505, 0.02);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // --- 2. Procedural Texture Generation ---
+        function createStripeTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 1024;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            for (let i = 0; i < canvas.width; i += 64) {
+                const isMagenta = (i / 64) % 2 === 0;
+                ctx.fillStyle = isMagenta ? '#ff00ff' : '#00ffff'; 
+                ctx.fillRect(i, 0, 32, canvas.height);
+            }
+
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.wrapT = THREE.RepeatWrapping;
+            texture.repeat.set(1.5, 1); 
+            return texture;
+        }
+
+        const stripeTexture = createStripeTexture();
+
+        // --- 3. Generate Curve and Geometry ---
+        
+        function createSpiralPoints() {
+            const points = [];
+            const count = 20; 
+            
+            for (let i = 0; i < count; i++) {
+                const t = i / (count - 1);
+                const radius = Math.sin(t * 3) * 5 + 4; // Ensure positive radius
+                const y = Math.cos(t * 6) * 8;        
+                const x = radius * Math.sin(t * 10);    
+                const z = radius * Math.cos(t * 10);    
+                points.push(new THREE.Vector3(x, y, z));
+            }
+            return points;
+        }
+
+        const curvePoints = createSpiralPoints();
+        const curve = new THREE.CatmullRomCurve3(curvePoints);
+        
+        const tubeGeometry = new THREE.TubeGeometry(
+            curve, 
+            200,      
+            1.5,       // Increased thickness slightly for better visibility
+            8,       
+            true      
+        );
+
+        const tubeMaterial = new THREE.MeshStandardMaterial({
+            color: 0x333333,
+            roughness: 0.4,
+            metalness: 0.8,
+            map: stripeTexture,
+            side: THREE.DoubleSide 
+        });
+
+        const tubeMesh = new THREE.Mesh(tubeGeometry, tubeMaterial);
+        scene.add(tubeMesh);
+
+        // --- 4. Add Lighting (Crucial for Standard Material) ---
+        const ambientLight = new THREE.AmbientLight(0x404040, 2); 
+        scene.add(ambientLight);
+
+        const pointLight = new THREE.PointLight(0xffffff, 50, 50); // Strong light attached to camera
+        scene.add(pointLight);
+
+
+        // --- 5. The "Far End" Vignette Plane ---
+        
+        const vignetPlaneGeo = new THREE.PlaneGeometry(500, 300);
+        
+        const deepVignette = {
+            uniforms: { time: { value: 0.0 } },
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                varying vec2 vUv;
+                uniform float time;
+                void main() {
+                    vec2 center = vec2(0.5, 0.5); 
+                    float dist = distance(vUv, center);
+                    
+                    float alpha = smoothstep(0.4, 0.9, dist);
+                    gl_FragColor = vec4(0.0, 0.0, 0.0, alpha); 
+                }
+            `
+        };
+
+        const vignetteMaterial = new THREE.ShaderMaterial({
+            uniforms: deepVignette.uniforms,
+            vertexShader: deepVignette.vertexShader,
+            fragmentShader: deepVignette.fragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.NormalBlending,
+            side: THREE.DoubleSide,
+            polygonOffset: true,
+            polygonOffsetFactor: 1.0
+        });
+
+        const vignettePlane = new THREE.Mesh(vignetPlaneGeo, vignetteMaterial);
+        scene.add(vignettePlane);
+
+
+        // --- 6. Animation Loop ---
+        
+        let clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const time = clock.getElapsedTime();
+            
+            // Move the light attached to camera
+            pointLight.position.copy(camera.position);
+
+            const t = (time * 0.05) % 1; 
+            
+            // Update Camera Position along curve
+            camera.position.copy(curve.getPointAt(t));
+            
+            // Calculate Look Direction
+            const tangent = curve.getTangentAt(t);
+            const lookTarget = curve.getPointAt(t + 0.05);
+            
+            // Fix: Use lookAt instead of setting up vector, which prevents orientation issues
+            camera.lookAt(lookTarget);
+
+            // Vignette Plane logic fix
+            vignettePlane.position.copy(camera.position);
+            vignettePlane.lookAt(lookTarget); // Look in the same direction as camera
+            
+            vignetteMaterial.uniforms.time.value = time;
+
+            renderer.render(scene, camera);
+        }
+
+        // Handle Resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

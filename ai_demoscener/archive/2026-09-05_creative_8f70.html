@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Neural Constellation</title>
+<style>
+* { margin: 0; padding: 0; }
+body { overflow: hidden; background: #000; }
+canvas { display: block; }
+#info {
+position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+color: rgba(180, 140, 255, 0.6); font-family: monospace; font-size: 11px;
+letter-spacing: 3px; text-transform: uppercase; pointer-events: none;
+}
+</style>
+</head>
+<body>
+<div id="info">neural constellation</div>
+<script type="importmap">
+{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x000011, 0.0018);
+const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 2000);
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+const NEURONS = 3000;
+const FIRING_PARTICLES = 4000;
+
+// Neuron positions - clustered in organic blobs
+const positions = new Float32Array(NEURONS * 3);
+const sizes = new Float32Array(NEURONS);
+const phases = new Float32Array(NEURONS);
+const clusterCenters = [];
+for (let i = 0; i < 8; i++) {
+  clusterCenters.push(new THREE.Vector3(
+    (Math.random()-0.5)*300, (Math.random()-0.5)*300, (Math.random()-0.5)*300
+  ));
+}
+for (let i = 0; i < NEURONS; i++) {
+  const c = clusterCenters[i % clusterCenters.length];
+  const spread = 80 + Math.random()*120;
+  const theta = Math.random()*Math.PI*2;
+  const phi = Math.acos(2*Math.random()-1);
+  const r = Math.pow(Math.random(), 0.6)*spread;
+  positions[i*3] = c.x + r*Math.sin(phi)*Math.cos(theta);
+  positions[i*3+1] = c.y + r*Math.sin(phi)*Math.sin(theta);
+  positions[i*3+2] = c.z + r*Math.cos(phi);
+  sizes[i] = 1.5 + Math.random()*3.0;
+  phases[i] = Math.random()*Math.PI*2;
+}
+
+// Custom shader for neurons
+const neuronMat = new THREE.ShaderMaterial({
+  uniforms: { uTime: { value: 0 }, uActivity: { value: 0 } },
+  vertexShader: `
+    attribute float aSize;
+    attribute float aPhase;
+    uniform float uTime;
+    varying float vGlow;
+    varying float vPhase;
+    void main() {
+      vec3 p = position;
+      float breathe = sin(uTime*0.3 + aPhase)*2.0;
+      p += normalize(p)*breathe;
+      vGlow = 0.5+0.5*sin(uTime*2.0+aPhase*3.0);
+      vPhase = aPhase;
+      vec4 mv = modelViewMatrix*vec4(p,1.0);
+      gl_PointSize = aSize*(1.0+vGlow*0.5)*(200.0/-mv.z);
+      gl_Position = projectionMatrix*mv;
+    }
+  `,
+  fragmentShader: `
+    uniform float uActivity;
+    varying float vGlow;
+    varying float vPhase;
+    void main() {
+      float d = length(gl_PointCoord-0.5)*2.0;
+      if(d>1.0) discard;
+      float core = smoothstep(0.4,0.0,d);
+      float halo = smoothstep(1.0,0.2,d)*0.4;
+      vec3 cold = vec3(0.2,0.3,0.9);
+      vec3 hot = vec3(1.0,0.2,0.6);
+      vec3 elec = vec3(0.1,1.0,0.5);
+      float mix1 = sin(vPhase+uActivity*3.0)*0.5+0.5;
+      float mix2 = cos(vPhase*2.0+uActivity*5.0)*0.5+0.5;
+      vec3 col = mix(cold, hot, mix1)*core + elec*halo*(0.5+vGlow*0.5);
+      col *= 0.6+vGlow*0.6+uActivity*0.8;
+      gl_FragColor = vec4(col, core*0.9+halo*0.3);
+    }
+  `,
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+});
+
+const neuronGeo = new THREE.BufferGeometry();
+neuronGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+neuronGeo.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+neuronGeo.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+const neuronPoints = new THREE.Points(neuronGeo, neuronMat);
+scene.add(neuronPoints);
+
+// Synapse connections
+const CONNECTIONS = 4500;
+const connPos = new Float32Array(CONNECTIONS*6);
+const connAlpha = new Float32Array(CONNECTIONS*2);
+const connIndices = [];
+const distSq = (a,b) => (a[0]-b[0])**2+(a[1]-b[1])**2+(a[2]-b[2])**2;
+for (let i = 0; i < CONNECTIONS; i++) {
+  const a = Math.floor(Math.random()*NEURONS);
+  const b = Math.floor(Math.random()*NEURONS);
+  if (a===b) continue;
+  connIndices.push(a, b);
+  connPos[i*6] = positions[a*3]; connPos[i*6+1] = positions[a*3+1]; connPos[i*6+2] = positions[a*3+2];
+  connPos[i*6+3] = positions[b*3]; connPos[i*6+4] = positions[b*3+1]; connPos[i*6+5] = positions[b*3+2];
+  connAlpha[i*2] = 0.1+Math.random()*0.3;
+  connAlpha[i*2+1] = 0.1+Math.random()*0.3;
+}
+const connGeo = new THREE.BufferGeometry();
+connGeo.setAttribute('position', new THREE.BufferAttribute(connPos, 3));
+connGeo.setAttribute('aAlpha', new THREE.BufferAttribute(connAlpha, 1));
+const connMat = new THREE.ShaderMaterial({
+  uniforms: { uTime: { value: 0 } },
+  vertexShader: `
+    attribute float aAlpha;
+    uniform float uTime;
+    varying float vA;
+    void main() {
+      vA = aAlpha*(0.3+0.7*abs(sin(uTime*0.5+aAlpha*20.0)));
+      gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0);
+    }
+  `,
+  fragmentShader: `
+    varying float vA;
+    void main() {
+      gl_FragColor = vec4(0.3,0.4,1.0, vA*0.15);
+    }
+  `,
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+});
+scene.add(new THREE.LineSegments(connGeo, connMat));
+
+// Firing particles (avalanche system)
+const fpPos = new Float32Array(FIRING_PARTICLES*3);
+const fpVel = new Float32Array(FIRING_PARTICLES*3);
+const fpLife = new Float32Array(FIRING_PARTICLES);
+const fpColor = new Float32Array(FIRING_PARTICLES*3);
+for (let i = 0; i < FIRING_PARTICLES; i++) { fpLife[i] = -1; }
+const fpGeo = new THREE.BufferGeometry();
+fpGeo.setAttribute('position', new THREE.BufferAttribute(fpPos, 3));
+fpGeo.setAttribute('aColor', new THREE.BufferAttribute(fpColor, 3));
+fpGeo.setAttribute('aLife', new THREE.BufferAttribute(fpLife, 1));
+const fpMat = new THREE.ShaderMaterial({
+  vertexShader: `
+    attribute float aLife;
+    attribute vec3 aColor;
+    varying vec3 vCol;
+    varying float vLife;
+    void main() {
+      vCol = aColor; vLife = aLife;
+      vec4 mv = modelViewMatrix*vec4(position,1.0);
+      gl_PointSize = (aLife>0.0 ? aLife*8.0 : 0.0)*(150.0/-mv.z);
+      gl_Position = projectionMatrix*mv;
+    }
+  `,
+  fragmentShader: `
+    varying vec3 vCol;
+    varying float vLife;
+    void main() {
+      if(vLife<=0.0) discard;
+      float d = length(gl_PointCoord-0.5)*2.0;
+      if(d>1.0) discard;
+      float a = smoothstep(1.0,0.0,d)*vLife;
+      gl_FragColor = vec4(vCol, a);
+    }
+  `,
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+});
+scene.add(new THREE.Points(fpGeo, fpMat));
+
+let fpIdx = 0;
+function spawnBurst(pos, count) {
+  for (let n = 0; n < count; n++) {
+    const i = fpIdx; fpIdx = (fpIdx+1)%FIRING_PARTICLES;
+    fpPos[i*3]=pos.x; fpPos[i*3+1]=pos.y; fpPos[i*3+2]=pos.z;
+    const th=Math.random()*Math.PI*2, ph=Math.acos(2*Math.random()-1);
+    const sp = 2+Math.random()*6;
+    fpVel[i*3]=sp*Math.sin(ph)*Math.cos(th);
+    fpVel[i*3+1]=sp*Math.sin(ph)*Math.sin(th);
+    fpVel[i*3+2]=sp*Math.cos(ph);
+    fpLife[i]=1.0;
+    const hue = 0.6+Math.random()*0.3;
+    const c = new THREE.Color().setHSL(hue, 1, 0.6);
+    fpColor[i*3]=c.r; fpColor[i*3+1]=c.g; fpColor[i*3+2]=c.b;
+  }
+}
+
+// Background starfield
+const STAR_COUNT = 2000;
+const starPos = new Float32Array(STAR_COUNT*3);
+for (let i=0;i<STAR_COUNT;i++){
+  const r = 600+Math.random()*800;
+  const th=Math.random()*Math.PI*2, ph=Math.acos(2*Math.random()-1);
+  starPos[i*3]=r*Math.sin(ph)*Math.cos(th);
+  starPos[i*3+1]=r*Math.sin(ph)*Math.sin(th);
+  starPos[i*3+2]=r*Math.cos(ph);
+}
+const starGeo = new THREE.BufferGeometry();
+starGeo.setAttribute('position', new THREE.BufferAttribute(starPos,3));
+const starMat = new THREE.PointsMaterial({ color:0x334466, size:1.2, sizeAttenuation:true, transparent:true, opacity:0.5 });
+scene.add(new THREE.Points(starGeo, starMat));
+
+// Avalanche / thought system
+let globalActivity = 0;
+let nextAvalanche = 0;
+const activeNeurons = [];
+
+function triggerAvalanche() {
+  const seed = Math.floor(Math.random()*NEURONS);
+  const seedPos = new THREE.Vector3(positions[seed*3], positions[seed*3+1], positions[seed*3+2]);
+  spawnBurst(seedPos, 60);
+  // cascade
+  const queue = [seed];
+  const visited = new Set();
+  visited.add(seed);
+  for (let step = 0; step < 40; step++) {
+    if (queue.length === 0) break;
+    const current = queue.pop();
+    const cx = positions[current*3], cy = positions[current*3+1], cz = positions[current*3+2];
+    // find 1-3 nearby
+    const found = [];
+    for (let tries = 0; tries < 20 && found.length < 3; tries++) {
+      const nb = Math.floor(Math.random()*NEURONS);
+      if (visited.has(nb)) continue;
+      const d = distSq([cx,cy,cz],[positions[nb*3],positions[nb*3+1],positions[nb*3+2]]);
+      if (d < 12000) { found.push(nb); visited.add(nb); }
+    }
+    found.forEach(nb => {
+      queue.push(nb);
+      const bp = new THREE.Vector3(positions[nb*3], positions[nb*3+1], positions[nb*3+2]);
+      spawnBurst(bp, 15);
+    });
+  }
+}
+
+// Camera orbit
+let camAngle = 0;
+
+const clock = new THREE.Clock();
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+  const dt = Math.min(clock.getDelta(), 0.05);
+
+  // Avalanche timing
+  if (t > nextAvalanche) {
+    triggerAvalanche();
+    nextAvalanche = t + 0.8 + Math.random()*2.5;
+    globalActivity = 1.0;
+  }
+  globalActivity *= 0.97;
+
+  // Update firing particles
+  for (let i = 0; i < FIRING_PARTICLES; i++) {
+    if (fpLife[i] > 0) {
+      fpLife[i] -= 0.018;
+      fpPos[i*3] += fpVel[i*3]*0.016;
+      fpPos[i*3+1] += fpVel[i*3+1]*0.016;
+      fpPos[i*3+2] += fpVel[i*3+2]*0.016;
+      fpVel[i*3]*=0.97; fpVel[i*3+1]*=0.97; fpVel[i*3+2]*=0.97;
+    }
+  }
+  fpGeo.attributes.position.needsUpdate = true;
+  fpGeo.attributes.aLife.needsUpdate = true;
+  fpGeo.attributes.aColor.needsUpdate = true;
+
+  // Update uniforms
+  neuronMat.uniforms.uTime.value = t;
+  neuronMat.uniforms.uActivity.value = globalActivity;
+  connMat.uniforms.uTime.value = t;
+
+  // Camera
+  camAngle = t*0.08;
+  const cr = 350 + Math.sin(t*0.15)*50;
+  camera.position.set(
+    Math.cos(camAngle)*cr,
+    Math.sin(t*0.1)*80,
+    Math.sin(camAngle)*cr
+  );
+  camera.lookAt(0, 0, 0);
+
+  // Slow rotation of whole structure
+  neuronPoints.rotation.y = t*0.02;
+  scene.children.forEach(c => { if(c.isLineSegments) c.rotation.y = t*0.02; });
+
+  renderer.render(scene, camera);
+}
+animate();
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

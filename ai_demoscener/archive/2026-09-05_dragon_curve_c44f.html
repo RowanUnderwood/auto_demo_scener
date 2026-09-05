@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Heighway Dragon — L-System</title>
+<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}canvas{display:block;width:100%;height:100%}</style>
+</head>
+<body>
+<script>
+/* ---------- L-system: axiom FX, X -> X+YF+, Y -> -FX-Y, 14 iterations ---------- */
+let str = 'FX';
+for (let i = 0; i < 14; i++) {
+  let out = '';
+  for (let j = 0; j < str.length; j++) {
+    const c = str[j];
+    out += c === 'X' ? 'X+YF+' : c === 'Y' ? '-FX-Y' : c;
+  }
+  str = out;
+}
+
+/* ---------- Turtle interpretation ---------- */
+const raw = [];
+let px = 0, py = 0, dir = 0;
+raw.push(px, py);
+for (let i = 0; i < str.length; i++) {
+  const c = str[i];
+  if (c === '+') dir += 90;
+  else if (c === '-') dir -= 90;
+  else {
+    const a = dir * Math.PI / 180;
+    px += Math.cos(a);
+    py += Math.sin(a);
+    raw.push(px, py);
+  }
+}
+
+/* ---------- Center & scale ---------- */
+let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+for (let i = 0; i < raw.length; i += 2) {
+  if (raw[i] < minX) minX = raw[i];
+  if (raw[i] > maxX) maxX = raw[i];
+  if (raw[i+1] < minY) minY = raw[i+1];
+  if (raw[i+1] > maxY) maxY = raw[i+1];
+}
+const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+const scale = 10 / Math.max(maxX - minX, maxY - minY);
+const n = raw.length / 2;
+
+/* ---------- Build vertex data ---------- */
+const posData = new Float32Array(n * 2);
+const colData = new Float32Array(n * 3);
+
+function hslToRgb(h, s, l) {
+  let r, g, b;
+  if (s === 0) { r = g = b = l; }
+  else {
+    const hue2rgb = (p, q, t) => {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1/6) return p + (q - p) * 6 * t;
+      if (t < 1/2) return q;
+      if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+      return p;
+    };
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    r = hue2rgb(p, q, h + 1/3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1/3);
+  }
+  return [r, g, b];
+}
+
+for (let i = 0; i < n; i++) {
+  posData[i * 2]     = (raw[i] - cx) * scale;
+  posData[i * 2 + 1] = (raw[i + 1] - cy) * scale;
+  const rgb = hslToRgb(i / (n - 1), 1, 0.5);
+  colData[i * 3]     = rgb[0];
+  colData[i * 3 + 1] = rgb[1];
+  colData[i * 3 + 2] = rgb[2];
+}
+
+/* ---------- WebGL setup ---------- */
+const canvas = document.createElement('canvas');
+canvas.width = window.innerWidth || 800;
+canvas.height = window.innerHeight || 600;
+document.body.appendChild(canvas);
+
+const gl = canvas.getContext('webgl', { antialias: true, alpha: false });
+if (!gl) {
+  document.body.innerHTML = '<p style="color:#fff;font-family:sans-serif">WebGL not supported.</p>';
+} else {
+
+  /* Shaders */
+  const vsSrc = [
+    'attribute vec2 aPos;',
+    'attribute vec3 aCol;',
+    'uniform mat2 uRot;',
+    'uniform float uScale;',
+    'varying vec3 vCol;',
+    'void main(){',
+    '  vec2 p = uRot * (aPos * uScale);',
+    '  gl_Position = vec4(p, 0.0, 1.0);',
+    '  vCol = aCol;',
+    '}'
+  ].join('\n');
+
+  const fsSrc = [
+    'precision mediump float;',
+    'varying vec3 vCol;',
+    'uniform float uOpacity;',
+    'void main(){',
+    '  gl_FragColor = vec4(vCol * uOpacity, uOpacity);',
+    '}'
+  ].join('\n');
+
+  function compileShader(type, src) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+      console.error(gl.getShaderInfoLog(s));
+    }
+    return s;
+  }
+
+  const vs = compileShader(gl.VERTEX_SHADER, vsSrc);
+  const fs = compileShader(gl.FRAGMENT_SHADER, fsSrc);
+  const prog = gl.createProgram();
+  gl.attachShader(prog, vs);
+  gl.attachShader(prog, fs);
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+    console.error(gl.getProgramInfoLog(prog));
+  }
+  gl.useProgram(prog);
+
+  /* Buffers */
+  const posBuf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, posData, gl.STATIC_DRAW);
+  const aPos = gl.getAttribLocation(prog, 'aPos');
+  gl.enableVertexAttribArray(aPos);
+  gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+  const colBuf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, colBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, colData, gl.STATIC_DRAW);
+  const aCol = gl.getAttribLocation(prog, 'aCol');
+  gl.enableVertexAttribArray(aCol);
+  gl.vertexAttribPointer(aCol, 3, gl.FLOAT, false, 0, 0);
+
+  /* Uniforms */
+  const uRot     = gl.getUniformLocation(prog, 'uRot');
+  const uScale   = gl.getUniformLocation(prog, 'uScale');
+  const uOpacity = gl.getUniformLocation(prog, 'uOpacity');
+
+  gl.uniform1f(uScale, 0.12);
+
+  /* Blending: additive */
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+
+  /* Clear */
+  gl.clearColor(0.0, 0.0, 0.004, 1.0);
+
+  /* ---------- Animation: 10 s draw, 2 s fade, restart rotated ---------- */
+  const DRAW = 10, FADE = 2, CYCLE = DRAW + FADE;
+  let lastT = 0;
+  let rot = 0;
+
+  function animate() {
+    requestAnimationFrame(animate);
+    const t = (performance.now() / 1000) % CYCLE;
+
+    if (t < lastT) {
+      rot += (Math.random() - 0.5) * Math.PI * 2 + Math.PI / 4;
+    }
+    lastT = t;
+    rot += 0.0004;
+
+    let count, opacity;
+    if (t < DRAW) {
+      const p = t / DRAW;
+      count = Math.max(2, 1 + Math.floor(p * (n - 1)));
+      opacity = 1.0;
+    } else {
+      const p = (t - DRAW) / FADE;
+      count = n;
+      opacity = Math.max(0, 1 - p * p);
+    }
+
+    const c = Math.cos(rot), s = Math.sin(rot);
+    gl.uniformMatrix2fv(uRot, false, new Float32Array([c, s, -s, c]));
+    gl.uniform1f(uOpacity, opacity);
+
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.drawArrays(gl.LINE_STRIP, 0, count);
+  }
+
+  /* First synchronous render to guarantee a draw call */
+  {
+    const c = 1, s = 0;
+    gl.uniformMatrix2fv(uRot, false, new Float32Array([c, s, -s, c]));
+    gl.uniform1f(uOpacity, 1.0);
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.drawArrays(gl.LINE_STRIP, 0, n);
+  }
+
+  animate();
+
+  window.addEventListener('resize', () => {
+    canvas.width = window.innerWidth || 800;
+    canvas.height = window.innerHeight || 600;
+  });
+}
+</script>
+</body>
+</html>

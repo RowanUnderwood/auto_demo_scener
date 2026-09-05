@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Fractal Tide</title>
+<style>
+*{margin:0;padding:0}
+body{overflow:hidden;background:#000}
+canvas{display:block}
+</style>
+</head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script>
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x020208, 0.012);
+const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 300);
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+const noiseGLSL = `
+vec3 mod289(vec3 x){return x-floor(x*(1.0/289.0))*289.0;}
+vec4 mod289(vec4 x){return x-floor(x*(1.0/289.0))*289.0;}
+vec4 permute(vec4 x){return mod289(((x*34.0)+1.0)*x);}
+vec4 taylorInvSqrt(vec4 r){return 1.79284291400159-0.85373472095314*r;}
+float snoise(vec3 v){
+  const vec2 C=vec2(1.0/6.0,1.0/3.0);
+  const vec4 D=vec4(0.0,0.5,1.0,2.0);
+  vec3 i=floor(v+dot(v,C.yyy));
+  vec3 x0=v-i+dot(i,C.xxx);
+  vec3 g=step(x0.yzx,x0.xyz);
+  vec3 l=1.0-g;
+  vec3 i1=min(g.xyz,l.zxy);
+  vec3 i2=max(g.xyz,l.zxy);
+  vec3 x1=x0-i1+C.xxx;
+  vec3 x2=x0-i2+C.yyy;
+  vec3 x3=x0-D.yyy;
+  i=mod289(i);
+  vec4 p=permute(permute(permute(i.z+vec4(0.0,i1.z,i2.z,1.0))+i.y+vec4(0.0,i1.y,i2.y,1.0))+i.x+vec4(0.0,i1.x,i2.x,1.0));
+  float n_=0.142857142857;
+  vec3 ns=n_*D.wyz-D.xzx;
+  vec4 j=p-49.0*floor(p*ns.z*ns.z);
+  vec4 x_=floor(j*ns.z);
+  vec4 y_=floor(j-7.0*x_);
+  vec4 x=x_*ns.x+ns.yyyy;
+  vec4 y=y_*ns.x+ns.yyyy;
+  vec4 h=1.0-abs(x)-abs(y);
+  vec4 b0=vec4(x.xy,y.xy);
+  vec4 b1=vec4(x.zw,y.zw);
+  vec4 s0=floor(b0)*2.0+1.0;
+  vec4 s1=floor(b1)*2.0+1.0;
+  vec4 sh=-step(h,vec4(0.0));
+  vec4 a0=b0.xzyw+s0.xzyw*sh.xxyy;
+  vec4 a1=b1.xzyw+s1.xzyw*sh.zzww;
+  vec3 p0=vec3(a0.xy,h.x);
+  vec3 p1=vec3(a0.zw,h.y);
+  vec3 p2=vec3(a1.xy,h.z);
+  vec3 p3=vec3(a1.zw,h.w);
+  vec4 norm=taylorInvSqrt(vec4(dot(p0,p0),dot(p1,p1),dot(p2,p2),dot(p3,p3)));
+  p0*=norm.x;p1*=norm.y;p2*=norm.z;p3*=norm.w;
+  vec4 m=max(0.6-vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)),0.0);
+  m=m*m;
+  return 42.0*dot(m*m,vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));
+}`;
+
+const terrainMat = new THREE.ShaderMaterial({
+  uniforms:{uTime:{value:0},uEruption:{value:0}},
+  vertexShader:`
+    uniform float uTime;
+    uniform float uEruption;
+    varying float vHeight;
+    varying vec3 vPos;
+    varying float vErupt;
+    varying vec3 vNorm;
+    ${noiseGLSL}
+    float eruptPos(vec2 p){
+      vec2 c1=vec2(sin(uTime*0.3)*5.0,cos(uTime*0.4)*5.0);
+      vec2 c2=vec2(cos(uTime*0.2+2.0)*7.0,sin(uTime*0.35+1.0)*7.0);
+      vec2 c3=vec2(sin(uTime*0.5+4.0)*4.0,cos(uTime*0.25+3.0)*4.0);
+      float e1=smoothstep(3.5,0.0,length(p-c1));
+      float e2=smoothstep(4.5,0.0,length(p-c2))*0.7;
+      float e3=smoothstep(3.0,0.0,length(p-c3))*0.5;
+      return (e1+e2+e3)*uEruption;
+    }
+    float fullHeight(vec2 p,float t){
+      float h=snoise(vec3(p*0.15,t))*0.8;
+      h+=snoise(vec3(p*0.4,t*1.3))*0.3;
+      h+=snoise(vec3(p*1.2,t*0.7))*0.1;
+      float e=eruptPos(p);
+      float spike=abs(snoise(vec3(p*2.0,t*2.0))*4.0+snoise(vec3(p*5.0,t*3.0))*1.5)*e;
+      return h+spike;
+    }
+    void main(){
+      vec3 pos=position;
+      float t=uTime*0.4;
+      float h=fullHeight(pos.xz,t);
+      pos.y+=h;
+      float eps=0.2;
+      float hx=fullHeight(pos.xz+vec2(eps,0.0),t);
+      float hy=fullHeight(pos.xz+vec2(0.0,eps),t);
+      vNorm=normalize(vec3(h-hx,h-hy,eps*6.0));
+      vHeight=h;
+      vPos=pos;
+      vErupt=eruptPos(pos.xz);
+      gl_Position=projectionMatrix*modelViewMatrix*vec4(pos,1.0);
+    }`,
+  fragmentShader:`
+    uniform float uTime;
+    varying float vHeight;
+    varying vec3 vPos;
+    varying float vErupt;
+    varying vec3 vNorm;
+    void main(){
+      vec3 deep=vec3(0.005,0.015,0.05);
+      vec3 shallow=vec3(0.0,0.35,0.45);
+      vec3 crystalA=vec3(0.9,0.15,0.75);
+      vec3 crystalB=vec3(0.15,0.85,1.0);
+      vec3 gold=vec3(1.0,0.65,0.1);
+      vec3 col=mix(deep,shallow,smoothstep(-1.0,1.5,vHeight));
+      if(vErupt>0.01){
+        float cm=smoothstep(0.5,3.0,vHeight)*vErupt;
+        vec3 cc=mix(crystalA,crystalB,0.5+0.5*sin(vHeight*3.0+uTime*0.5));
+        col=mix(col,cc,cm);
+        col=mix(col,gold,smoothstep(3.0,5.5,vHeight)*vErupt);
+      }
+      float irid=sin(vNorm.x*12.0+uTime)*0.5+0.5;
+      col+=vec3(irid,1.0-irid*0.5,irid*0.8)*0.04*smoothstep(0.5,2.0,vHeight);
+      col+=vec3(0.25,0.08,0.35)*vErupt*smoothstep(0.0,2.0,vHeight);
+      float dist=length(vPos-cameraPosition);
+      col=mix(col,vec3(0.005,0.005,0.02),smoothstep(25.0,70.0,dist));
+      gl_FragColor=vec4(col,1.0);
+    }`
+});
+
+const size=80,seg=256;
+const tGeo=new THREE.PlaneGeometry(size,size,seg,seg);
+tGeo.rotateX(-Math.PI/2);
+const terrain=new THREE.Mesh(tGeo,terrainMat);
+scene.add(terrain);
+
+// Particles
+const pCount=4000;
+const pGeo=new THREE.BufferGeometry();
+const pPos=new Float32Array(pCount*3);
+const pCol=new Float32Array(pCount*3);
+const pSpd=new Float32Array(pCount);
+const pLife=new Float32Array(pCount);
+for(let i=0;i<pCount;i++){
+  pPos[i*3]=(Math.random()-0.5)*50;
+  pPos[i*3+1]=(Math.random()-0.5)*50;
+  pPos[i*3+2]=Math.random()*8;
+  pSpd[i]=0.5+Math.random()*2.5;
+  pLife[i]=Math.random();
+}
+pGeo.setAttribute('position',new THREE.BufferAttribute(pPos,3));
+pGeo.setAttribute('color',new THREE.BufferAttribute(pCol,3));
+const pMat=new THREE.PointsMaterial({size:0.07,vertexColors:true,transparent:true,opacity:0.75,blending:THREE.AdditiveBlending,depthWrite:false});
+const particles=new THREE.Points(pGeo,pMat);
+scene.add(particles);
+
+// Stars
+const sCount=3000;
+const sGeo=new THREE.BufferGeometry();
+const sPos=new Float32Array(sCount*3);
+for(let i=0;i<sCount;i++){
+  const th=Math.random()*Math.PI*2,ph=Math.random()*Math.PI,r=90+Math.random()*60;
+  sPos[i*3]=r*Math.sin(ph)*Math.cos(th);
+  sPos[i*3+1]=r*Math.cos(ph);
+  sPos[i*3+2]=r*Math.sin(ph)*Math.sin(th);
+}
+sGeo.setAttribute('position',new THREE.BufferAttribute(sPos,3));
+const stars=new THREE.Points(sGeo,new THREE.PointsMaterial({size:0.12,color:0x7777cc,transparent:true,opacity:0.5}));
+scene.add(stars);
+
+// Central glow sprite
+const glowCanvas=document.createElement('canvas');
+glowCanvas.width=glowCanvas.height=128;
+const gCtx=glowCanvas.getContext('2d');
+const grad=gCtx.createRadialGradient(64,64,0,64,64,64);
+grad.addColorStop(0,'rgba(102,25,153,0.8)');
+grad.addColorStop(0.4,'rgba(25,76,128,0.3)');
+grad.addColorStop(1,'rgba(0,0,0,0)');
+gCtx.fillStyle=grad;
+gCtx.fillRect(0,0,128,128);
+const glowTex=new THREE.CanvasTexture(glowCanvas);
+const glowSprite=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex,transparent:true,blending:THREE.AdditiveBlending,opacity:0.6}));
+glowSprite.scale.set(30,30,1);
+glowSprite.position.y=2;
+scene.add(glowSprite);
+
+const clock=new THREE.Clock();
+
+function animate(){
+  requestAnimationFrame(animate);
+  const t=clock.getElapsedTime();
+
+  // Eruption: rhythmic pulse
+  const cycle=t%5.0;
+  const rise=cycle<1.5?cycle/1.5:1.0;
+  const fall=cycle>3.0?Math.max(0,1.0-(cycle-3.0)/2.0):1.0;
+  const eruption=Math.pow(rise*fall,2.0);
+
+  terrainMat.uniforms.uTime.value=t;
+  terrainMat.uniforms.uEruption.value=eruption;
+
+  // Particles
+  const pp=pGeo.attributes.position.array;
+  const pc=pGeo.attributes.color.array;
+  for(let i=0;i<pCount;i++){
+    pp[i*3+2]+=pSpd[i]*0.015;
+    pp[i*3]+=Math.sin(t*0.8+i*0.1)*0.004;
+    pp[i*3+1]+=Math.cos(t*0.6+i*0.07)*0.004;
+    pLife[i]+=0.002*pSpd[i];
+    if(pLife[i]>1.0){
+      pp[i*3]=(Math.random()-0.5)*50;
+      pp[i*3+1]=(Math.random()-0.5)*50;
+      pp[i*3+2]=0;
+      pLife[i]=0;
+    }
+    const h=pp[i*3+2];
+    pc[i*3]=0.15+h*0.04+eruption*0.35;
+    pc[i*3+1]=0.4+h*0.02-pLife[i]*0.15;
+    pc[i*3+2]=0.7+eruption*0.3;
+  }
+  pGeo.attributes.position.needsUpdate=true;
+  pGeo.attributes.color.needsUpdate=true;
+
+  // Camera
+  const a=t*0.08;
+  const r=22+Math.sin(t*0.15)*4;
+  const y=7+Math.sin(t*0.2)*3+eruption*2;
+  camera.position.set(Math.cos(a)*r,y,Math.sin(a)*r);
+  camera.lookAt(0,2+eruption,0);
+
+  stars.rotation.y=t*0.005;
+  glowSprite.material.opacity=0.3+eruption*0.5;
+  glowSprite.scale.setScalar(25+eruption*15);
+
+  renderer.render(scene,camera);
+}
+animate();
+
+addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

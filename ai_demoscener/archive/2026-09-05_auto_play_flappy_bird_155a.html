@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flappy AI Bird</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b2a55; }
+  canvas { display: block; }
+  #hud {
+    position: fixed; top: 12px; left: 12px; color: #fff;
+    font-family: monospace; font-size: 14px; text-shadow: 0 1px 3px rgba(0,0,0,.5);
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div id="hud">AI Flappy&nbsp;&nbsp;|&nbsp;&nbsp;score: <span id="score">0</span></div>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script>
+(function () {
+  // ---------- Constants ----------
+  const SPEED        = 0.5;
+  const GRAVITY      = -0.09;
+  const FLAP         = 2.0;
+  const BIRD_OFFSET  = 22;
+  const BIRD_R       = 1.6;
+  const PIPE_SPACING = 200;
+  const PIPE_WIDTH   = 8;
+  const CAP_H        = 4;
+  const GAP          = 18;
+  const FLOOR_Y      = 0;
+  const CEIL_Y       = 56;
+  const GAP_MARGIN   = 1.4;
+  const HALF_H       = 30;
+
+  // ---------- Renderer / Scene ----------
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.max(1, Math.min(window.devicePixelRatio || 1, 2)));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  document.body.appendChild(renderer.domElement);
+
+  const scene = new THREE.Scene();
+
+  const aspect = window.innerWidth / window.innerHeight;
+  const camera = new THREE.OrthographicCamera(
+    -HALF_H * aspect, HALF_H * aspect, HALF_H, -HALF_H, 0.1, 500
+  );
+  camera.position.set(0, HALF_H, 50);
+  camera.lookAt(0, HALF_H, 0);
+
+  // ---------- Sky gradient ----------
+  const skyMat = new THREE.ShaderMaterial({
+    depthWrite: false,
+    depthTest: false,
+    uniforms: {
+      topColor:    { value: new THREE.Color(0x123a86) },
+      bottomColor: { value: new THREE.Color(0xbdf3ff) }
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 topColor;
+      uniform vec3 bottomColor;
+      varying vec2 vUv;
+      void main() {
+        float t = smoothstep(0.0, 1.0, vUv.y);
+        gl_FragColor = vec4(mix(bottomColor, topColor, t), 1.0);
+      }
+    `
+  });
+  const SKY_W = 4000, SKY_H = 1000;
+  const sky = new THREE.Mesh(new THREE.PlaneGeometry(SKY_W, SKY_H), skyMat);
+  sky.renderOrder = -10;
+  sky.position.set(0, HALF_H, -100);
+  scene.add(sky);
+
+  // ---------- Cloud texture ----------
+  function makeCloudTexture() {
+    const c = document.createElement('canvas');
+    c.width = 256; c.height = 160;
+    const ctx = c.getContext('2d');
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.fillStyle = 'rgba(255,255,255,0.95)';
+    const puff = (x, y, r) => { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); };
+    puff(80, 100, 45);
+    puff(130, 85, 55);
+    puff(180, 105, 42);
+    puff(110, 115, 50);
+    puff(155, 115, 45);
+    puff(60, 115, 35);
+    ctx.fillRect(55, 95, 130, 45);
+    const tex = new THREE.CanvasTexture(c);
+    return tex;
+  }
+  const cloudTex = makeCloudTexture();
+
+  // ---------- Clouds ----------
+  const clouds = [];
+  const CLOUD_COUNT = 10;
+  for (let i = 0; i < CLOUD_COUNT; i++) {
+    const mat = new THREE.MeshBasicMaterial({
+      map: cloudTex, transparent: true, depthWrite: false
+    });
+    const w = 60 + Math.random() * 60;
+    const h = w * (160 / 256);
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+    m.position.x = (i / CLOUD_COUNT) * (HALF_H * aspect * 2) + Math.random() * 40;
+    m.position.y = 12 + Math.random() * 40;
+    m.position.z = -40 - Math.random() * 30;
+    m.renderOrder = -5;
+    m.userData = {
+      parallax: 0.15 + Math.random() * 0.15,
+      drift: 0.15 + Math.random() * 0.25
+    };
+    scene.add(m);
+    clouds.push(m);
+  }
+
+  // ---------- Ground ----------
+  const groundMat = new THREE.MeshBasicMaterial({ color: 0x7ecb5a });
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(SKY_W, 12), groundMat);
+  ground.position.set(0, FLOOR_Y - 6, -30);
+  ground.renderOrder = -4;
+  scene.add(ground);
+  const grassMat = new THREE.MeshBasicMaterial({ color: 0x5aa83d });
+  const grass = new THREE.Mesh(new THREE.PlaneGeometry(SKY_W, 3), grassMat);
+  grass.position.set(0, FLOOR_Y, -29.9);
+  grass.renderOrder = -4;
+  scene.add(grass);
+
+  // ---------- Bird ----------
+  const birdMat = new THREE.MeshStandardMaterial({
+    color: 0xffc400, emissive: 0x553300, metalness: 0.2, roughness: 0.5
+  });
+  const bird = new THREE.Mesh(new THREE.SphereGeometry(BIRD_R, 24, 24), birdMat);
+  const wingMat = new THREE.MeshStandardMaterial({ color: 0xffe08a, roughness: 0.6 });
+  const wing = new THREE.Mesh(new THREE.SphereGeometry(BIRD_R * 0.5, 12, 12), wingMat);
+  wing.scale.set(1.2, 0.8, 0.4);
+  wing.position.set(0, 0.2, BIRD_R * 0.7);
+  bird.add(wing);
+  const eyeMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
+  const eye = new THREE.Mesh(new THREE.SphereGeometry(BIRD_R * 0.18, 10, 10), eyeMat);
+  eye.position.set(0, BIRD_R * 0.35, BIRD_R * 0.82);
+  bird.add(eye);
+  const beakMat = new THREE.MeshStandardMaterial({ color: 0xff8c00 });
+  const beak = new THREE.Mesh(new THREE.ConeGeometry(BIRD_R * 0.3, BIRD_R * 0.55, 12), beakMat);
+  beak.rotation.x = -Math.PI / 2;
+  beak.position.set(0, 0, BIRD_R * 0.95);
+  bird.add(beak);
+  scene.add(bird);
+
+  const light = new THREE.DirectionalLight(0xffffff, 0.9);
+  light.position.set(10, 40, 30);
+  scene.add(light);
+  scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+
+  // ---------- Pipes ----------
+  const pipeBodyMat = new THREE.MeshStandardMaterial({ color: 0x35d64b, roughness: 0.55 });
+  const pipeCapMat  = new THREE.MeshStandardMaterial({ color: 0x1f8a30, roughness: 0.5 });
+
+  const pipes = [];
+  let nextPipeX = 140;
+  let score = 0;
+  const scoreEl = document.getElementById('score');
+
+  function makePipe(x, gapCenter) {
+    const lowerH = gapCenter - GAP / 2 - FLOOR_Y;
+    const lowerTop = FLOOR_Y + lowerH;
+    const upperBottom = gapCenter + GAP / 2;
+    const upperH = CEIL_Y - upperBottom;
+
+    const lower = new THREE.Mesh(new THREE.BoxGeometry(PIPE_WIDTH, lowerH, PIPE_WIDTH), pipeBodyMat);
+    lower.position.set(x, FLOOR_Y + lowerH / 2, 0);
+    const lowerCap = new THREE.Mesh(new THREE.BoxGeometry(PIPE_WIDTH + 2, CAP_H, PIPE_WIDTH + 2), pipeCapMat);
+    lowerCap.position.set(x, lowerTop - CAP_H / 2, 0);
+
+    const upper = new THREE.Mesh(new THREE.BoxGeometry(PIPE_WIDTH, upperH, PIPE_WIDTH), pipeBodyMat);
+    upper.position.set(x, upperBottom + upperH / 2, 0);
+    const upperCap = new THREE.Mesh(new THREE.BoxGeometry(PIPE_WIDTH + 2, CAP_H, PIPE_WIDTH + 2), pipeCapMat);
+    upperCap.position.set(x, upperBottom + CAP_H / 2, 0);
+
+    scene.add(lower, lowerCap, upper, upperCap);
+    return { x, gapCenter, meshes: [lower, lowerCap, upper, upperCap] };
+  }
+
+  function generatePipes() {
+    const aheadX = camera.position.x + HALF_H * aspect + 200;
+    while (nextPipeX < aheadX) {
+      const minC = FLOOR_Y + GAP / 2 + 6;
+      const maxC = CEIL_Y - GAP / 2 - 6;
+      const gapCenter = minC + Math.random() * (maxC - minC);
+      pipes.push(makePipe(nextPipeX, gapCenter));
+      nextPipeX += PIPE_SPACING;
+    }
+  }
+
+  function clearPipes() {
+    for (const p of pipes) {
+      for (const m of p.meshes) scene.remove(m);
+    }
+    pipes.length = 0;
+    nextPipeX = 140;
+    score = 0;
+    scoreEl.textContent = '0';
+  }
+
+  // ---------- State ----------
+  let birdY, vy;
+
+  function reset() {
+    camera.position.x = 0;
+    birdY = HALF_H;
+    vy = 0;
+    clearPipes();
+    generatePipes();
+    bird.position.set(BIRD_OFFSET, birdY, 0);
+  }
+
+  // ---------- Loop ----------
+  function animate() {
+    camera.position.x += SPEED;
+
+    const birdX = camera.position.x + BIRD_OFFSET;
+
+    // AI decision
+    let next = null;
+    for (const p of pipes) {
+      if (p.x >= birdX) { next = p; break; }
+    }
+    if (next && birdY < next.gapCenter - GAP_MARGIN) {
+      vy = FLAP;
+    }
+
+    // physics
+    vy += GRAVITY;
+    birdY += vy;
+
+    // clamp bird to visible area
+    if (birdY > CEIL_Y - BIRD_R) { birdY = CEIL_Y - BIRD_R; vy = 0; }
+    if (birdY < FLOOR_Y + BIRD_R) { birdY = FLOOR_Y + BIRD_R; vy = 0; }
+
+    // update bird
+    bird.position.x = birdX;
+    bird.position.y = birdY;
+    bird.rotation.z = THREE.MathUtils.clamp(vy * 0.08, -0.9, 0.7);
+    wing.position.y = 0.2 + Math.sin(performance.now() * 0.02) * 0.15;
+
+    // collision
+    let hit = false;
+    if (birdY - BIRD_R <= FLOOR_Y) hit = true;
+    if (birdY + BIRD_R >= CEIL_Y) hit = true;
+    if (!hit) {
+      const hw = PIPE_WIDTH / 2 + BIRD_R * 0.7;
+      for (const p of pipes) {
+        if (Math.abs(birdX - p.x) < hw) {
+          const lowerTop = p.gapCenter - GAP / 2;
+          const upperBottom = p.gapCenter + GAP / 2;
+          if (birdY - BIRD_R < lowerTop || birdY + BIRD_R > upperBottom) {
+            hit = true; break;
+          }
+        }
+      }
+    }
+
+    // scoring
+    const passed = pipes.filter(p => p.x < birdX - PIPE_WIDTH).length;
+    if (passed > score) { score = passed; scoreEl.textContent = String(score); }
+
+    // cleanup
+    while (pipes.length && pipes[0].x < camera.position.x - 100) {
+      const old = pipes.shift();
+      for (const m of old.meshes) scene.remove(m);
+    }
+
+    // clouds parallax
+    const leftEdge = camera.position.x - HALF_H * aspect - 120;
+    const rightEdge = camera.position.x + HALF_H * aspect + 120;
+    for (const c of clouds) {
+      c.position.x -= SPEED * c.userData.parallax + c.userData.drift * 0.05;
+      if (c.position.x < leftEdge) {
+        c.position.x = rightEdge + Math.random() * 60;
+        c.position.y = 12 + Math.random() * 40;
+      }
+    }
+
+    // keep sky + ground glued to camera
+    sky.position.x = camera.position.x;
+    ground.position.x = camera.position.x;
+    grass.position.x = camera.position.x;
+
+    if (hit) reset();
+
+    generatePipes();
+    renderer.render(scene, camera);
+    requestAnimationFrame(animate);
+  }
+
+  window.addEventListener('resize', () => {
+    const a = window.innerWidth / window.innerHeight;
+    camera.left = -HALF_H * a;
+    camera.right = HALF_H * a;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  reset();
+  renderer.compile(scene, camera);
+  renderer.render(scene, camera);
+  animate();
+})();
+</script>
+</body>
+</html>

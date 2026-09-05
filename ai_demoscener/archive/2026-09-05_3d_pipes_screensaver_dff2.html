@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>3D Pipe Maze</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #111; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function () {
+  var N = 20;
+  var HALF = (N - 1) / 2;
+
+  var scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x111418);
+
+  var camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 500);
+
+  var renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(window.devicePixelRatio);
+  document.body.appendChild(renderer.domElement);
+
+  // Lights
+  var dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
+  dirLight.position.set(30, 50, 20);
+  scene.add(dirLight);
+  scene.add(new THREE.AmbientLight(0x606070, 0.9));
+
+  var center = new THREE.Vector3(HALF, HALF, HALF);
+
+  // Grid bookkeeping
+  var occupied = new Set();
+  var freeCells = [];
+  for (var x = 0; x < N; x++)
+    for (var y = 0; y < N; y++)
+      for (var z = 0; z < N; z++)
+        freeCells.push([x, y, z]);
+
+  function key(p) { return p[0] + ',' + p[1] + ',' + p[2]; }
+  function inBounds(p) {
+    return p[0] >= 0 && p[0] < N && p[1] >= 0 && p[1] < N && p[2] >= 0 && p[2] < N;
+  }
+  function removeFreeCell(p) {
+    var k = key(p);
+    if (occupied.has(k)) return;
+    occupied.add(k);
+    var idx = freeCells.findIndex(function (c) { return c[0] === p[0] && c[1] === p[1] && c[2] === p[2]; });
+    if (idx >= 0) freeCells.splice(idx, 1);
+  }
+  function randomFreeCell() {
+    if (freeCells.length === 0) return null;
+    return freeCells[Math.floor(Math.random() * freeCells.length)];
+  }
+
+  // Shared geometries
+  var pipeGeo = new THREE.CylinderGeometry(0.22, 0.22, 1, 10, 1);
+  var elbowGeo = new THREE.SphereGeometry(0.38, 14, 12);
+  var UP = new THREE.Vector3(0, 1, 0);
+  var D = [
+    [1, 0, 0], [-1, 0, 0],
+    [0, 1, 0], [0, -1, 0],
+    [0, 0, 1], [0, 0, -1]
+  ];
+
+  var root = new THREE.Group();
+  scene.add(root);
+
+  function addSegment(from, to) {
+    var mat = from[0] === -1 ? arguments[2] : arguments[2];
+    var mesh = new THREE.Mesh(pipeGeo, mat);
+    var a = new THREE.Vector3(from[0] - HALF, from[1] - HALF, from[2] - HALF);
+    var b = new THREE.Vector3(to[0] - HALF, to[1] - HALF, to[2] - HALF);
+    var dir = b.clone().sub(a);
+    var len = dir.length();
+    dir.normalize();
+    mesh.scale.set(1, len, 1);
+    mesh.quaternion.setFromUnitVectors(UP, dir);
+    mesh.position.copy(a).add(b).multiplyScalar(0.5);
+    root.add(mesh);
+  }
+
+  function addElbow(pos, mat) {
+    var mesh = new THREE.Mesh(elbowGeo, mat);
+    mesh.position.set(pos[0] - HALF, pos[1] - HALF, pos[2] - HALF);
+    root.add(mesh);
+  }
+
+  var pipes = [];
+
+  function spawnPipe() {
+    var cell = randomFreeCell();
+    if (!cell) return null;
+    removeFreeCell(cell);
+    var color = new THREE.Color().setHSL(Math.random(), 1.0, 0.55);
+    var mat = new THREE.MeshPhongMaterial({
+      color: color,
+      specular: 0x444444,
+      shininess: 40
+    });
+    var pipe = {
+      pos: cell,
+      dir: null,
+      mat: mat
+    };
+    // small starting nub
+    var nub = new THREE.Mesh(elbowGeo, mat);
+    nub.position.set(cell[0] - HALF, cell[1] - HALF, cell[2] - HALF);
+    root.add(nub);
+    pipes.push(pipe);
+    return pipe;
+  }
+
+  function stepPipe(pipe) {
+    var candidates = [];
+    for (var i = 0; i < D.length; i++) {
+      var d = D[i];
+      var np = [pipe.pos[0] + d[0], pipe.pos[1] + d[1], pipe.pos[2] + d[2]];
+      if (inBounds(np) && !occupied.has(key(np))) candidates.push(d);
+    }
+    if (candidates.length === 0) return false; // stuck
+
+    var d = candidates[Math.floor(Math.random() * candidates.length)];
+    var np = [pipe.pos[0] + d[0], pipe.pos[1] + d[1], pipe.pos[2] + d[2]];
+    removeFreeCell(np);
+
+    // Elbow on direction change
+    if (pipe.dir && (pipe.dir[0] !== d[0] || pipe.dir[1] !== d[1] || pipe.dir[2] !== d[2])) {
+      addElbow(pipe.pos, pipe.mat);
+    }
+
+    addSegment(pipe.pos, np, pipe.mat);
+    pipe.pos = np;
+    pipe.dir = d;
+    return true;
+  }
+
+  // Initial pipes
+  var ACTIVE = 8;
+  for (var i = 0; i < ACTIVE; i++) spawnPipe();
+
+  // Tick
+  setInterval(function () {
+    if (freeCells.length === 0) return;
+    for (var i = 0; i < pipes.length; i++) {
+      if (!stepPipe(pipes[i])) {
+        pipes.splice(i, 1);
+        i--;
+        spawnPipe();
+      }
+    }
+  }, 90);
+
+  // Camera orbit
+  var theta = 0.6, phi = 1.1, R = 42;
+  function animate() {
+    requestAnimationFrame(animate);
+    theta += 0.0018;
+    phi += Math.sin(theta * 0.3) * 0.0006;
+    camera.position.set(
+      center.x + R * Math.cos(phi) * Math.cos(theta),
+      center.y + R * Math.sin(phi),
+      center.z + R * Math.cos(phi) * Math.sin(theta)
+    );
+    camera.lookAt(center);
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  window.addEventListener('resize', function () {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Quantum Foam</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 3;
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Quantum foam particles
+        const particleCount = 2500;
+        const positions = new Float32Array(particleCount * 3);
+        const sizes = new Float32Array(particleCount);
+        const colors = new Float32Array(particleCount * 3);
+        
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+        // Quantum foam material
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                time: { value: 0 },
+                uSize: { value: 0.8 }
+            },
+            vertexShader: `
+                attribute float size;
+                attribute vec3 color;
+                varying vec3 vColor;
+                
+                void main() {
+                    vColor = color;
+                    vec4 modelViewPosition = viewMatrix * modelMatrix * vec4(position, 1.0);
+                    gl_Position = projectionMatrix * modelViewPosition;
+                    gl_PointSize = size * (300.0 / -modelViewPosition.z) * uSize;
+                }
+            `,
+            fragmentShader: `
+                varying vec3 vColor;
+                
+                void main() {
+                    float t = length(gl_PointCoord - 0.5);
+                    if(t > 0.5) discard;
+                    gl_FragColor = vec4(vColor, 1.0 - smoothstep(0.4, 0.5, t));
+                }
+            `,
+            transparent: true,
+            depthWrite: false
+        });
+
+        const particles = new THREE.Points(geometry, material);
+        scene.add(particles);
+
+        // Initialize particles with quantum foam properties
+        for (let i = 0; i < particleCount; i++) {
+            const index = i * 3;
+            
+            // Random positions within a sphere
+            const angle = Math.random() * Math.PI * 2;
+            const radius = 1 + Math.random() * 4;
+            const theta = Math.random() * Math.PI;
+            
+            positions[index] = radius * Math.sin(theta) * Math.cos(angle);
+            positions[index+1] = radius * Math.sin(theta) * Math.sin(angle);
+            positions[index+2] = radius * Math.cos(theta);
+            
+            // Random size based on position
+            sizes[i] = 0.3 + (Math.random() * 0.7);
+            
+            // Quantum color palette
+            const hue = (i / particleCount) * 0.15;
+            colors[index] = 0.8 - Math.sin(i * 0.02) * 0.3;
+            colors[index+1] = 0.9 + Math.cos(i * 0.04) * 0.2;
+            colors[index+2] = 0.75 + Math.sin(i * 0.06) * 0.2;
+        }
+
+        // Quantum entanglement effect
+        const connections = [];
+        for (let i = 0; i < particleCount; i++) {
+            if (Math.random() > 0.8) continue;
+            
+            const j = Math.floor(Math.random() * particleCount);
+            connections.push({ a: i, b: j });
+        }
+
+        // Entanglement lines
+        const lineGeometry = new THREE.BufferGeometry();
+        const linePositions = new Float32Array(connections.length * 6);
+        
+        for (let i = 0; i < connections.length; i++) {
+            const c = connections[i];
+            const a = c.a;
+            const b = c.b;
+            
+            const posA = positions.slice(a * 3, a * 3 + 3);
+            const posB = positions.slice(b * 3, b * 3 + 3);
+            
+            linePositions[i*6] = posA[0];
+            linePositions[i*6+1] = posA[1];
+            linePositions[i*6+2] = posA[2];
+            
+            linePositions[i*6+3] = posB[0];
+            linePositions[i*6+4] = posB[1];
+            linePositions[i*6+5] = posB[2];
+        }
+        
+        lineGeometry.setAttribute('position', new THREE.BufferAttribute(linePositions, 3));
+        const lineMaterial = new THREE.LineBasicMaterial({ 
+            color: 0x8a2be2,
+            transparent: true,
+            opacity: 0.15
+        });
+        const lines = new THREE.LineSegments(lineGeometry, lineMaterial);
+        scene.add(lines);
+
+        // Background with subtle particles
+        const backgroundCount = 30;
+        const bgPositions = new Float32Array(backgroundCount * 3);
+        for (let i = 0; i < backgroundCount; i++) {
+            bgPositions[i*3] = (Math.random() - 0.5) * 10;
+            bgPositions[i*3+1] = (Math.random() - 0.5) * 10;
+            bgPositions[i*3+2] = -10 + Math.random() * 5;
+        }
+        
+        const bgGeometry = new THREE.BufferGeometry();
+        bgGeometry.setAttribute('position', new THREE.BufferAttribute(bgPositions, 3));
+        const bgMaterial = new THREE.PointsMaterial({ 
+            color: 0xffffff,
+            size: 0.02,
+            transparent: true
+        });
+        const background = new THREE.Points(bgGeometry, bgMaterial);
+        scene.add(background);
+
+        // Lighting
+        scene.background = new THREE.Color(0x1a0d4b);
+        scene.fog = new THREE.Fog(0x1a0d4b, 5, 20);
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Update quantum foam particles
+            material.uniforms.time.value = clock.getElapsedTime();
+            
+            // Move background stars slightly
+            for (let i = 0; i < backgroundCount; i++) {
+                bgPositions[i*3+2] += 0.001;
+                if (bgPositions[i*3+2] > -5) {
+                    bgPositions[i*3+2] = -10 + Math.random() * 5;
+                }
+            }
+            background.geometry.attributes.position.needsUpdate = true;
+
+            // Update entanglement lines
+            const time = clock.getElapsedTime();
+            for (let i = 0; i < connections.length; i++) {
+                const c = connections[i];
+                const a = c.a;
+                const b = c.b;
+                
+                // Quantum oscillation effect
+                positions[a*3] += Math.sin(time * 0.5 + a) * 0.01;
+                positions[a*3+1] += Math.cos(time * 0.7 + a) * 0.01;
+                positions[b*3] += Math.sin(time * 0.8 + b) * 0.01;
+                positions[b*3+1] += Math.cos(time * 0.9 + b) * 0.01;
+                
+                // Update line positions
+                const posA = positions.slice(a*3, a*3+3);
+                const posB = positions.slice(b*3, b*3+3);
+                
+                linePositions[i*6] = posA[0];
+                linePositions[i*6+1] = posA[1];
+                linePositions[i*6+2] = posA[2];
+                
+                linePositions[i*6+3] = posB[0];
+                linePositions[i*6+4] = posB[1];
+                linePositions[i*6+5] = posB[2];
+            }
+            
+            // Update particle positions
+            geometry.attributes.position.needsUpdate = true;
+            lineGeometry.attributes.position.needsUpdate = true;
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+    </script>
+</body>
+</html>

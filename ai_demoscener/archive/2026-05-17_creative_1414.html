@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Neon Cathedral</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Initialize scene
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+
+        // Camera position
+        camera.position.z = 5;
+
+        // Create ambient light
+        const ambientLight = new THREE.AmbientLight(0x404040);
+        scene.add(ambientLight);
+
+        // Create directional light for neon effect
+        const directionalLight = new THREE.DirectionalLight(0xff6600, 1);
+        directionalLight.position.set(5, 10, 5);
+        scene.add(directionalLight);
+
+        // Create a large glowing cathedral structure
+        const cathedralGeometry = new THREE.CylinderGeometry(2, 2, 10, 32);
+        const cathedralMaterial = new THREE.MeshPhongMaterial({
+            color: 0x0000ff,
+            shininess: 100,
+            emissive: 0x00ffff,
+            emissiveIntensity: 0.3
+        });
+        const cathedral = new THREE.Mesh(cathedralGeometry, cathedralMaterial);
+        scene.add(cathedral);
+
+        // Add arches and columns
+        const arches = [];
+        for (let i = 0; i < 8; i++) {
+            const archGeometry = new THREE.CylinderGeometry(0.5, 0.5, 5, 32);
+            const archMaterial = new THREE.MeshPhongMaterial({
+                color: 0xff00ff,
+                emissive: 0xff00ff,
+                emissiveIntensity: 0.4
+            });
+            const arch = new THREE.Mesh(archGeometry, archMaterial);
+            arch.position.x = Math.cos(i * Math.PI / 4) * 4;
+            arch.position.z = Math.sin(i * Math.PI / 4) * 4;
+            arch.rotation.y = i * Math.PI / 4;
+            arch.rotation.x = Math.PI / 4;
+            scene.add(arch);
+            arches.push(arch);
+        }
+
+        // Create floating particles for neon glow
+        const particleSystem = new THREE.Points();
+        const particleGeometry = new THREE.BufferGeometry();
+        const particlePositions = new Float32Array(1000 * 3);
+        const particleColors = new Float32Array(1000 * 3);
+
+        for (let i = 0; i < 1000; i++) {
+            const x = (Math.random() - 0.5) * 10;
+            const y = (Math.random() - 0.5) * 10;
+            const z = (Math.random() - 0.5) * 10;
+            particlePositions[i * 3] = x;
+            particlePositions[i * 3 + 1] = y;
+            particlePositions[i * 3 + 2] = z;
+            
+            const r = Math.random() * 0.5 + 0.5;
+            const g = Math.random() * 0.5 + 0.5;
+            const b = Math.random() * 0.5 + 0.5;
+            particleColors[i * 3] = r;
+            particleColors[i * 3 + 1] = g;
+            particleColors[i * 3 + 2] = b;
+        }
+
+        particleGeometry.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
+        particleGeometry.setAttribute('color', new THREE.BufferAttribute(particleColors, 3));
+
+        const particleMaterial = new THREE.PointsMaterial({
+            size: 0.1,
+            color: 0xff00ff,
+            transparent: true,
+            opacity: 0.8
+        });
+
+        particleSystem.geometry = particleGeometry;
+        particleSystem.material = particleMaterial;
+        scene.add(particleSystem);
+
+        // Add ground
+        const groundGeometry = new THREE.PlaneGeometry(20, 20);
+        const groundMaterial = new THREE.MeshPhongMaterial({
+            color: 0x333333,
+            side: THREE.DoubleSide
+        });
+        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+        ground.rotation.x = -Math.PI / 2;
+        ground.position.y = -1;
+        scene.add(ground);
+
+        // Add some glowing orbs
+        const orbs = [];
+        for (let i = 0; i < 12; i++) {
+            const orbGeometry = new THREE.SphereGeometry(0.8, 32, 32);
+            const orbMaterial = new THREE.MeshPhongMaterial({
+                color: 0xff00ff,
+                emissive: 0x0000ff,
+                emissiveIntensity: 0.8
+            });
+            const orb = new THREE.Mesh(orbGeometry, orbMaterial);
+            orb.position.x = (Math.random() - 0.5) * 8;
+            orb.position.y = 3 + Math.random() * 4;
+            orb.position.z = (Math.random() - 0.5) * 8;
+            orb.rotation.y = Math.random() * Math.PI * 2;
+            orb.rotation.x = Math.random() * Math.PI * 2;
+            scene.add(orb);
+            orbs.push(orb);
+        }
+
+        // Add a glowing floor effect with particle system
+        const floorParticles = new THREE.Points();
+        const floorGeometry = new THREE.BufferGeometry();
+        const floorPositions = new Float32Array(200 * 3);
+        const floorColors = new Float32Array(200 * 3);
+
+        for (let i = 0; i < 200; i++) {
+            const x = (Math.random() - 0.5) * 10;
+            const y = 0.1;
+            const z = (Math.random() - 0.5) * 10;
+            floorPositions[i * 3] = x;
+            floorPositions[i * 3 + 1] = y;
+            floorPositions[i * 3 + 2] = z;
+            
+            const r = Math.random() * 0.5 + 0.5;
+            const g = Math.random() * 0.5 + 0.5;
+            const b = Math.random() * 0.5 + 0.5;
+            floorColors[i * 3] = r;
+            floorColors[i * 3 + 1] = g;
+            floorColors[i * 3 + 2] = b;
+        }
+
+        floorGeometry.setAttribute('position', new THREE.BufferAttribute(floorPositions, 3));
+        floorGeometry.setAttribute('color', new THREE.BufferAttribute(floorColors, 3));
+
+        const floorMaterial = new THREE.PointsMaterial({
+            size: 0.1,
+            color: 0x00ffff,
+            transparent: true,
+            opacity: 0.5
+        });
+
+        floorParticles.geometry = floorGeometry;
+        floorParticles.material = floorMaterial;
+        scene.add(floorParticles);
+
+        // Animation
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Rotate cathedral and arches
+            cathedral.rotation.y += 0.01;
+            for (let i = 0; i < arches.length; i++) {
+                arches[i].rotation.y += 0.01;
+                arches[i].rotation.x += 0.005;
+            }
+            
+            // Move particles slowly
+            for (let i = 0; i < 1000; i++) {
+                const x = particlePositions[i * 3];
+                const y = particlePositions[i * 3 + 1];
+                const z = particlePositions[i * 3 + 2];
+                
+                // Simple drift effect
+                particlePositions[i * 3] = x + (Math.random() - 0.5) * 0.01;
+                particlePositions[i * 3 + 1] = y + (Math.random() - 0.5) * 0.01;
+                particlePositions[i * 3 + 2] = z + (Math.random() - 0.5) * 0.01;
+            }
+            
+            // Move orbs slowly
+            for (let i = 0; i < orbs.length; i++) {
+                const x = orbs[i].position.x;
+                const y = orbs[i].position.y;
+                const z = orbs[i].position.z;
+                
+                orbs[i].position.x = x + (Math.random() - 0.5) * 0.01;
+                orbs[i].position.z = z + (Math.random() - 0.5) * 0.01;
+                orbs[i].position.y = y + (Math.random() - 0.5) * 0.01;
+            }
+            
+            // Update floor particles
+            for (let i = 0; i < 200; i++) {
+                const x = floorPositions[i * 3];
+                const y = floorPositions[i * 3 + 1];
+                const z = floorPositions[i * 3 + 2];
+                
+                floorPositions[i * 3] = x + (Math.random() - 0.5) * 0.01;
+                floorPositions[i * 3 + 1] = y + (Math.random() - 0.5) * 0.01;
+                floorPositions[i * 3 + 2] = z + (Math.random() - 0.5) * 0.01;
+            }
+            
+            // Update particle colors with subtle pulsing effect
+            for (let i = 0; i < 1000; i++) {
+                const r = particleColors[i * 3];
+                const g = particleColors[i * 3 + 1];
+                const b = particleColors[i * 3 + 2];
+                
+                particleColors[i * 3] = r + (Math.random() - 0.5) * 0.01;
+                particleColors[i * 3 + 1] = g + (Math.random() - 0.5) * 0.01;
+                particleColors[i * 3 + 2] = b + (Math.random() - 0.5) * 0.01;
+            }
+            
+            // Update floor particle colors
+            for (let i = 0; i < 200; i++) {
+                const r = floorColors[i * 3];
+                const g = floorColors[i * 3 + 1];
+                const b = floorColors[i * 3 + 2];
+                
+                floorColors[i * 3] = r + (Math.random() - 0.5) * 0.01;
+                floorColors[i * 3 + 1] = g + (Math.random() - 0.5) * 0.01;
+                floorColors[i * 3 + 2] = b + (Math.random() - 0.5) * 0.01;
+            }
+            
+            renderer.render(scene, camera);
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

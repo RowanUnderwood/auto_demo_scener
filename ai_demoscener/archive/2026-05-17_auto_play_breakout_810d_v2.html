@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cosmic Breakout</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #050510; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const COLS = 10;
+const ROWS = 6;
+const BRICK_W = 1.4;
+const BRICK_H = 0.35;
+const BRICK_D = 0.35;
+const GAP = 0.35;
+const PADDLE_W = 3.8;
+const PADDLE_H = 0.15;
+const BALL_RADIUS = 0.18;
+const SPEED = 0.2;
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x050510, 0.012);
+
+const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 200);
+camera.position.set(0, 6, 20);
+camera.lookAt(0, 0, 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+document.body.appendChild(renderer.domElement);
+
+const ambientLight = new THREE.AmbientLight(0x1a1a3a, 2);
+scene.add(ambientLight);
+const light1 = new THREE.PointLight(0x3388ff, 3, 40);
+light1.position.set(-8, 6, 8);
+scene.add(light1);
+const light2 = new THREE.PointLight(0xff3388, 2, 40);
+light2.position.set(8, 4, 6);
+scene.add(light2);
+const ballLight = new THREE.PointLight(0xffffff, 2, 6);
+scene.add(ballLight);
+
+let bricks = [];
+let paddle, ball, ballVel;
+let particles = [];
+let trailHistory = [];
+const TRAIL_LEN = 30;
+const BOUNDS = { left: -8.5, right: 8.5, top: 9, bottom: -6 };
+
+const palette = [0x22ffcc, 0x22ccff, 0x7744ff, 0xff3399, 0xff7733, 0xffcc22];
+
+function initGame() {
+    bricks.forEach(b => { scene.remove(b.mesh); b.mesh.geometry.dispose(); b.mesh.material.dispose(); });
+    bricks = [];
+    particles.forEach(p => { scene.remove(p.mesh); p.mesh.geometry.dispose(); p.mesh.material.dispose(); });
+    particles = [];
+    if (paddle) { scene.remove(paddle); paddle.geometry.dispose(); paddle.material.dispose(); }
+    if (ball) { scene.remove(ball); ball.geometry.dispose(); ball.material.dispose(); }
+    trailHistory = [];
+
+    const startX = -((COLS * (BRICK_W + GAP)) / 2) + BRICK_W / 2;
+    const startY = 6;
+
+    for (let r = 0; r < ROWS; r++) {
+        const col = palette[r % palette.length];
+        for (let c = 0; c < COLS; c++) {
+            const geo = new THREE.BoxGeometry(BRICK_W, BRICK_H, BRICK_D);
+            const mat = new THREE.MeshStandardMaterial({
+                color: col,
+                emissive: col,
+                emissiveIntensity: 0.25,
+                metalness: 0.4,
+                roughness: 0.3
+            });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.set(startX + c * (BRICK_W + GAP), startY - r * (BRICK_H + GAP), 0);
+            scene.add(mesh);
+            bricks.push({
+                mesh,
+                xMin: mesh.position.x - BRICK_W / 2,
+                xMax: mesh.position.x + BRICK_W / 2,
+                yMin: mesh.position.y - BRICK_H / 2,
+                yMax: mesh.position.y + BRICK_H / 2,
+                baseRot: Math.random() * 0.1
+            });
+        }
+    }
+
+    const pGeo = new THREE.CapsuleGeometry(0.12, PADDLE_W - 0.24, 8, 12);
+    pGeo.rotateZ(Math.PI / 2);
+    const pMat = new THREE.MeshStandardMaterial({
+        color: 0xeeeeff,
+        emissive: 0x4488ff,
+        emissiveIntensity: 0.6,
+        metalness: 0.9,
+        roughness: 0.1
+    });
+    paddle = new THREE.Mesh(pGeo, pMat);
+    paddle.position.set(0, -5, 0);
+    scene.add(paddle);
+
+    const bGeo = new THREE.SphereGeometry(BALL_RADIUS, 20, 20);
+    const bMat = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        emissive: 0xffffff,
+        emissiveIntensity: 1.0,
+        metalness: 0.2,
+        roughness: 0.1
+    });
+    ball = new THREE.Mesh(bGeo, bMat);
+    ball.position.set(0, -2, 0);
+    scene.add(ball);
+
+    ballVel = new THREE.Vector3(
+        Math.cos(0.7) * SPEED,
+        Math.sin(0.7) * SPEED,
+        0
+    );
+}
+
+// Stars
+{
+    const sGeo = new THREE.BufferGeometry();
+    const sPos = [];
+    for (let i = 0; i < 500; i++) {
+        sPos.push(
+            (Math.random() - 0.5) * 100,
+            (Math.random() - 0.5) * 60,
+            -20 - Math.random() * 60
+        );
+    }
+    sGeo.setAttribute('position', new THREE.Float32BufferAttribute(sPos, 3));
+    const sMat = new THREE.PointsMaterial({ color: 0x334466, size: 0.15, sizeAttenuation: true });
+    scene.add(new THREE.Points(sGeo, sMat));
+}
+
+// Grid floor
+{
+    const gridGeo = new THREE.PlaneGeometry(30, 30, 30, 30);
+    const gridMat = new THREE.MeshBasicMaterial({
+        color: 0x111133,
+        wireframe: true,
+        transparent: true,
+        opacity: 0.15
+    });
+    const grid = new THREE.Mesh(gridGeo, gridMat);
+    grid.rotation.x = -Math.PI / 2;
+    grid.position.y = -6.5;
+    scene.add(grid);
+}
+
+// Trail
+const trailGeo = new THREE.BufferGeometry();
+const trailArr = new Float32Array(TRAIL_LEN * 3);
+trailGeo.setAttribute('position', new THREE.BufferAttribute(trailArr, 3));
+const trailMat = new THREE.LineBasicMaterial({ color: 0x66aaff, transparent: true, opacity: 0.4 });
+const trailLine = new THREE.Line(trailGeo, trailMat);
+scene.add(trailLine);
+
+function spawnBurst(pos, color) {
+    for (let i = 0; i < 12; i++) {
+        const geo = new THREE.OctahedronGeometry(0.06, 0);
+        const mat = new THREE.MeshBasicMaterial({ color: color, transparent: true });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.copy(pos);
+        const vel = new THREE.Vector3(
+            (Math.random() - 0.5) * 0.2,
+            (Math.random() - 0.5) * 0.2,
+            (Math.random() - 0.5) * 0.1
+        );
+        scene.add(mesh);
+        particles.push({ mesh, vel, life: 1.0, rotSpeed: (Math.random() - 0.5) * 0.2 });
+    }
+}
+
+function reset() {
+    if (bricks.length === 0) {
+        initGame();
+    } else {
+        ball.position.set(0, -2, 0);
+        const a = 0.6 + Math.random() * 0.4;
+        ballVel.set(Math.cos(a) * SPEED, Math.sin(a) * SPEED, 0);
+    }
+}
+
+initGame();
+
+function animate() {
+    requestAnimationFrame(animate);
+    const t = performance.now() * 0.001;
+
+    ball.position.add(ballVel);
+    ballLight.position.copy(ball.position);
+
+    paddle.position.x += (ball.position.x - paddle.position.x) * 0.1;
+
+    // Trail
+    trailHistory.unshift(ball.position.clone());
+    if (trailHistory.length > TRAIL_LEN) trailHistory.pop();
+    for (let i = 0; i < TRAIL_LEN; i++) {
+        const p = trailHistory[Math.min(i, trailHistory.length - 1)];
+        trailArr[i * 3] = p.x;
+        trailArr[i * 3 + 1] = p.y;
+        trailArr[i * 3 + 2] = p.z;
+    }
+    trailGeo.attributes.position.needsUpdate = true;
+
+    // Walls
+    if (ball.position.x < BOUNDS.left + BALL_RADIUS) {
+        ballVel.x = Math.abs(ballVel.x);
+        ball.position.x = BOUNDS.left + BALL_RADIUS;
+    }
+    if (ball.position.x > BOUNDS.right - BALL_RADIUS) {
+        ballVel.x = -Math.abs(ballVel.x);
+        ball.position.x = BOUNDS.right - BALL_RADIUS;
+    }
+    if (ball.position.y > BOUNDS.top - BALL_RADIUS) {
+        ballVel.y = -Math.abs(ballVel.y);
+        ball.position.y = BOUNDS.top - BALL_RADIUS;
+    }
+
+    // Paddle
+    const pdx = Math.abs(ball.position.x - paddle.position.x);
+    const pdy = Math.abs(ball.position.y - paddle.position.y);
+    if (pdx < PADDLE_W / 2 + BALL_RADIUS && pdy < 0.25 + BALL_RADIUS && ballVel.y < 0) {
+        ballVel.y = Math.abs(ballVel.y);
+        const impact = (ball.position.x - paddle.position.x) / (PADDLE_W / 2);
+        ballVel.x += impact * 0.03;
+    }
+
+    // Bricks
+    for (let i = bricks.length - 1; i >= 0; i--) {
+        const b = bricks[i];
+        if (ball.position.x > b.xMin - BALL_RADIUS && ball.position.x < b.xMax + BALL_RADIUS &&
+            ball.position.y > b.yMin - BALL_RADIUS && ball.position.y < b.yMax + BALL_RADIUS) {
+            ballVel.y *= -1;
+            spawnBurst(b.mesh.position, b.mesh.material.color.getHex());
+            scene.remove(b.mesh);
+            b.mesh.geometry.dispose();
+            b.mesh.material.dispose();
+            bricks.splice(i, 1);
+            break;
+        }
+    }
+
+    // Brick idle animation
+    for (const b of bricks) {
+        b.mesh.rotation.z = Math.sin(t * 2 + b.baseRot) * 0.03;
+        b.mesh.material.emissiveIntensity = 0.2 + Math.sin(t * 3 + b.baseRot) * 0.08;
+    }
+
+    // Particles
+    for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.mesh.position.add(p.vel);
+        p.vel.multiplyScalar(0.97);
+        p.life -= 0.025;
+        p.mesh.rotation.x += p.rotSpeed;
+        p.mesh.rotation.y += p.rotSpeed;
+        p.mesh.scale.setScalar(Math.max(p.life, 0.01));
+        p.mesh.material.opacity = p.life;
+        if (p.life <= 0) {
+            scene.remove(p.mesh);
+            p.mesh.geometry.dispose();
+            p.mesh.material.dispose();
+            particles.splice(i, 1);
+        }
+    }
+
+    // Loss
+    if (ball.position.y < BOUNDS.bottom) reset();
+
+    // Camera drift
+    camera.position.x = Math.sin(t * 0.3) * 2;
+    camera.position.y = 6 + Math.sin(t * 0.2) * 1;
+    camera.lookAt(0, 1, 0);
+
+    // Light pulse
+    light1.intensity = 2.5 + Math.sin(t * 1.5) * 0.5;
+    light2.intensity = 1.5 + Math.cos(t * 1.2) * 0.5;
+
+    renderer.render(scene, camera);
+}
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+animate();
+</script>
+</body>
+</html>

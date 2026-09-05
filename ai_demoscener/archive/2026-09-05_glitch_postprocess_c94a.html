@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>GLitch Torus Knot</title>
+<style>
+  html, body { margin: 0; padding: 0; overflow: hidden; background: #000; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+<script>
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 100);
+  camera.position.z = 4;
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  document.body.appendChild(renderer.domElement);
+
+  const mesh = new THREE.Mesh(
+    new THREE.TorusKnotGeometry(1, 0.32, 220, 32),
+    new THREE.MeshNormalMaterial()
+  );
+  scene.add(mesh);
+
+  const composer = new THREE.EffectComposer(renderer);
+  composer.addPass(new THREE.RenderPass(scene, camera));
+
+  const glitchShader = {
+    uniforms: {
+      tDiffuse: { value: null },
+      uTime:    { value: 0 },
+      uResolution: { value: new THREE.Vector2(innerWidth, innerHeight) }
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      precision highp float;
+      uniform sampler2D tDiffuse;
+      uniform float uTime;
+      uniform vec2 uResolution;
+      varying vec2 vUv;
+
+      float rand(vec2 st) {
+        return fract(sin(dot(st, vec2(12.9898, 78.233))) * 43758.5453);
+      }
+
+      void main() {
+        vec2 uv = vUv;
+        vec3 col;
+
+        // (a) time-driven horizontal R/B channel shifts
+        float shiftR = sin(uTime * 2.1) * 0.006;
+        float shiftB = cos(uTime * 1.4) * 0.006;
+        col.r = texture2D(tDiffuse, uv + vec2(shiftR, 0.0)).r;
+        col.g = texture2D(tDiffuse, uv).g;
+        col.b = texture2D(tDiffuse, uv + vec2(shiftB, 0.0)).b;
+
+        // (b) every few frames, swap random horizontal slices
+        // slice pattern reseeds every 4 frames
+        float sliceSeedFrame = floor(uTime * 60.0 / 4.0);
+
+        const int NUM_SLICES = 5;
+        for (int i = 0; i < NUM_SLICES; i++) {
+          float fi = float(i);
+          float r1 = rand(vec2(fi, sliceSeedFrame));
+          // only some slices are active on a given reseed
+          if (r1 < 0.55) {
+            float sliceY = rand(vec2(fi + 100.0, sliceSeedFrame));      // vertical position
+            float sliceH = 0.01 + 0.04 * rand(vec2(fi + 200.0, sliceSeedFrame)); // height
+            if (abs(uv.y - sliceY) < sliceH) {
+              float yOff = (rand(vec2(fi + 300.0, sliceSeedFrame)) - 0.5) * 0.12;
+              col = texture2D(tDiffuse, uv + vec2(0.0, yOff)).rgb;
+            }
+          }
+        }
+
+        gl_FragColor = vec4(col, 1.0);
+      }
+    `
+  };
+
+  const glitchPass = new THREE.ShaderPass(glitchShader);
+  glitchPass.renderToScreen = true;
+  composer.addPass(glitchPass);
+
+  const clock = new THREE.Clock();
+  function animate() {
+    requestAnimationFrame(animate);
+    const t = clock.getElapsedTime();
+    mesh.rotation.x = t * 0.4;
+    mesh.rotation.y = t * 0.6;
+    glitchPass.uniforms.uTime.value = t;
+    composer.render();
+  }
+  animate();
+
+  addEventListener('resize', () => {
+    camera.aspect = innerWidth / innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+    composer.setSize(innerWidth, innerHeight);
+    glitchPass.uniforms.uResolution.value.set(innerWidth, innerHeight);
+  });
+</script>
+</body>
+</html>

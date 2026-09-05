@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SYNAPTIC ECHO // Demoscene Concept</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<script id="vertexShader" type="x-shader/x-vertex">
+uniform float time;
+varying vec3 vNormal;
+void main() {
+    vNormal = normalize(normalMatrix * normal);
+    vec3 newPosition = position;
+    // Subtle wave displacement driven by sine waves and time
+    newPosition.z += sin(position.x * 5.0 + time * 2.0) * 0.1;
+    newPosition.y += cos(position.z * 4.0 - time * 3.0) * 0.1;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(newPosition, 1.0);
+}
+</script>
+
+<script id="fragmentShader" type="x-shader/x-fragment">
+uniform float time;
+varying vec3 vNormal;
+void main() {
+    // Base color: electric blue/cyan
+    vec3 finalColor = vec3(0.1, 0.8, 1.0);
+
+    // Introduce noise and distortion based on time and normal vector
+    float distortion = sin(vNormal.x * 15.0 + time * 4.0) * cos(vNormal.y * 20.0 - time * 6.0);
+    float intensity = pow(abs(sin(time * 0.8 + gl_FragCoord.x / 100.0)), 3.0) * 0.5 + 0.5;
+
+    // Color shift based on intensity and distortion (simulating data corruption/bleed)
+    vec3 colorShift = vec3(0.9, 0.2, 0.7); // Magenta/Red bleed
+    float blendFactor = clamp(abs(distortion * 1.5), 0.0, 1.0);
+
+    // Set the final color and full opacity (The original alpha calculation was incorrectly zeroing out visibility)
+    gl_FragColor = vec4(mix(finalColor, colorShift, blendFactor * intensity), 1.0);
+}
+</script>
+
+<script>
+    let scene, camera, renderer, material;
+    const container = document.body;
+    let geometry;
+    let uniforms;
+    let startTime = Date.now();
+
+    function init() {
+        // Scene Setup
+        scene = new THREE.Scene();
+        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        container.appendChild(renderer.domElement);
+
+        // --- Geometry and Shaders Setup (The Core Concept) ---
+        // Use a large cube/plane structure as the base for the "data field"
+        geometry = new THREE.IcosahedronGeometry(15, 64);
+
+        // Load Shader Code
+        const vertexShader = document.getElementById('vertexShader').textContent;
+        const fragmentShader = document.getElementById('fragmentShader').textContent;
+
+        // Uniforms required for dynamic updates (time)
+        uniforms = {
+            time: { value: 0.0 }
+        };
+
+        material = new THREE.ShaderMaterial({
+            uniforms: uniforms,
+            vertexShader: vertexShader,
+            fragmentShader: fragmentShader,
+            side: THREE.DoubleSide, // Ensure both sides are rendered for complexity
+            transparent: true,
+            blending: THREE.AdditiveBlending, // Glow effect simulation
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        camera.position.z = 30;
+
+        // Event Listeners
+        window.addEventListener('resize', onWindowResize, false);
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+
+        const elapsed = (Date.now() - startTime) / 1000;
+        uniforms.time.value = elapsed;
+
+        // Subtle camera rotation for dynamism
+        camera.position.x = Math.sin(elapsed * 0.05) * 2;
+        camera.lookAt(scene.position);
+
+        renderer.render(scene, camera);
+    }
+
+    function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    init();
+    animate();
+</script>
+
+</body>
+</html>

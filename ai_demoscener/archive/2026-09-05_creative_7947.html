@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>SYNAPTIC STORM</title>
+<style>
+*{margin:0;padding:0}
+body{overflow:hidden;background:#000}
+canvas{display:block}
+#title{position:fixed;bottom:30px;left:50%;transform:translateX(-50%);font-family:'Courier New',monospace;font-size:14px;color:rgba(180,140,255,0.6);letter-spacing:8px;text-transform:uppercase;pointer-events:none;text-shadow:0 0 20px rgba(150,100,255,0.4)}
+</style>
+</head>
+<body>
+<div id="title">synaptic storm</div>
+<script type="importmap">
+{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x000005, 0.006);
+const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 300);
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setClearColor(0x000005);
+document.body.appendChild(renderer.domElement);
+
+const N = 700;
+const BOUND = 22;
+const CDIST = 3.5;
+const CDIST2 = CDIST * CDIST;
+
+const pos = new Float32Array(N * 3);
+const vel = new Float32Array(N * 3);
+const act = new Float32Array(N);
+const peak = new Float32Array(N);
+const phase = new Float32Array(N);
+
+for (let i = 0; i < N; i++) {
+  const r = Math.pow(Math.random(), 0.6) * BOUND;
+  const th = Math.random() * Math.PI * 2;
+  const ph = Math.acos(2 * Math.random() - 1);
+  pos[i * 3] = r * Math.sin(ph) * Math.cos(th);
+  pos[i * 3 + 1] = r * Math.sin(ph) * Math.sin(th);
+  pos[i * 3 + 2] = r * Math.cos(ph);
+  vel[i * 3] = (Math.random() - 0.5) * 0.015;
+  vel[i * 3 + 1] = (Math.random() - 0.5) * 0.015;
+  vel[i * 3 + 2] = (Math.random() - 0.5) * 0.015;
+  act[i] = 0;
+  peak[i] = 0;
+  phase[i] = Math.random() * Math.PI * 2;
+}
+
+const pGeo = new THREE.BufferGeometry();
+const pPos = new Float32Array(N * 3);
+const pCol = new Float32Array(N * 3);
+const pSz = new Float32Array(N);
+pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+pGeo.setAttribute('color', new THREE.BufferAttribute(pCol, 3));
+pGeo.setAttribute('size', new THREE.BufferAttribute(pSz, 1));
+
+const pMat = new THREE.ShaderMaterial({
+  vertexShader: `
+    attribute float size;
+    attribute vec3 color;
+    varying vec3 vColor;
+    varying float vDist;
+    void main(){
+      vColor = color;
+      vec4 mv = modelViewMatrix * vec4(position,1.0);
+      vDist = -mv.z;
+      gl_PointSize = size * (180.0 / -mv.z);
+      gl_Position = projectionMatrix * mv;
+    }`,
+  fragmentShader: `
+    varying vec3 vColor;
+    varying float vDist;
+    void main(){
+      float d = length(gl_PointCoord - vec2(0.5));
+      if(d > 0.5) discard;
+      float core = smoothstep(0.5, 0.0, d);
+      float glow = smoothstep(0.5, 0.15, d) * 0.5;
+      vec3 col = vColor * (core + glow);
+      float fog = exp(-vDist * 0.015);
+      gl_FragColor = vec4(col, (core + glow) * fog);
+    }`,
+  transparent: true,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false
+});
+scene.add(new THREE.Points(pGeo, pMat));
+
+const MAXL = 4000;
+const lPos = new Float32Array(MAXL * 6);
+const lCol = new Float32Array(MAXL * 6);
+const lGeo = new THREE.BufferGeometry();
+lGeo.setAttribute('position', new THREE.BufferAttribute(lPos, 3));
+lGeo.setAttribute('color', new THREE.BufferAttribute(lCol, 3));
+const lMat = new THREE.LineBasicMaterial({
+  vertexColors: true,
+  transparent: true,
+  opacity: 0.5,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false
+});
+scene.add(new THREE.LineSegments(lGeo, lMat));
+
+// Inner morphing core
+const coreGeo = new THREE.TorusKnotGeometry(1.5, 0.4, 128, 16, 2, 3);
+const coreMat = new THREE.MeshBasicMaterial({
+  color: 0x6622cc,
+  wireframe: true,
+  transparent: true,
+  opacity: 0.25,
+  blending: THREE.AdditiveBlending
+});
+const core = new THREE.Mesh(coreGeo, coreMat);
+scene.add(core);
+
+// Outer shell
+const shellGeo = new THREE.IcosahedronGeometry(18, 1);
+const shellMat = new THREE.MeshBasicMaterial({
+  color: 0x112244,
+  wireframe: true,
+  transparent: true,
+  opacity: 0.08,
+  blending: THREE.AdditiveBlending
+});
+const shell = new THREE.Mesh(shellGeo, shellMat);
+scene.add(shell);
+
+let t = 0;
+let fc = 0;
+
+function loop() {
+  t += 0.016;
+  fc++;
+  const breathe = Math.sin(t * 0.25) * 0.5 + 0.5;
+  const scale = 0.85 + breathe * 0.3;
+
+  for (let i = 0; i < N; i++) {
+    pos[i * 3] += vel[i * 3];
+    pos[i * 3 + 1] += vel[i * 3 + 1];
+    pos[i * 3 + 2] += vel[i * 3 + 2];
+
+    const x = pos[i * 3], y = pos[i * 3 + 1], z = pos[i * 3 + 2];
+    const d = Math.sqrt(x * x + y * y + z * z);
+    if (d > BOUND) {
+      vel[i * 3] -= x * 0.0008;
+      vel[i * 3 + 1] -= y * 0.0008;
+      vel[i * 3 + 2] -= z * 0.0008;
+    }
+    const pull = (d * scale - d) * 0.008;
+    if (d > 0.01) {
+      pos[i * 3] += (x / d) * pull;
+      pos[i * 3 + 1] += (y / d) * pull;
+      pos[i * 3 + 2] += (z / d) * pull;
+    }
+    // Gentle orbital swirl
+    const swirl = 0.001 * Math.sin(t * 0.4 + phase[i]);
+    vel[i * 3] += -z * swirl;
+    vel[i * 3 + 2] += x * swirl;
+  }
+
+  // Random ignition
+  if (fc % 2 === 0) {
+    const idx = (Math.random() * N) | 0;
+    act[idx] = 1.0;
+    peak[idx] = 1.0;
+  }
+  // Occasional cascade burst
+  if (fc % 90 === 0) {
+    for (let k = 0; k < 8; k++) {
+      const idx = (Math.random() * N) | 0;
+      act[idx] = 1.0;
+      peak[idx] = 1.0;
+    }
+  }
+
+  for (let i = 0; i < N; i++) {
+    act[i] *= 0.94;
+    peak[i] *= 0.995;
+  }
+
+  let lc = 0;
+  for (let i = 0; i < N && lc < MAXL; i++) {
+    for (let j = i + 1; j < N && lc < MAXL; j++) {
+      const dx = pos[i * 3] - pos[j * 3];
+      const dy = pos[i * 3 + 1] - pos[j * 3 + 1];
+      const dz = pos[i * 3 + 2] - pos[j * 3 + 2];
+      const d2 = dx * dx + dy * dy + dz * dz;
+      if (d2 < CDIST2) {
+        const d = Math.sqrt(d2);
+        const s = 1.0 - d / CDIST;
+        const aAvg = (act[i] + act[j]) * 0.5;
+
+        if (act[i] > 0.08) act[j] = Math.max(act[j], act[i] * 0.35);
+        if (act[j] > 0.08) act[i] = Math.max(act[i], act[j] * 0.35);
+
+        const li = lc * 6;
+        lPos[li] = pos[i * 3]; lPos[li + 1] = pos[i * 3 + 1]; lPos[li + 2] = pos[i * 3 + 2];
+        lPos[li + 3] = pos[j * 3]; lPos[li + 4] = pos[j * 3 + 1]; lPos[li + 5] = pos[j * 3 + 2];
+
+        const hue = 0.72 + aAvg * 0.15;
+        const r = (0.1 + aAvg * 0.9) * s;
+        const g = (0.05 + aAvg * 0.25) * s;
+        const b = (0.4 + aAvg * 0.6) * s;
+        lCol[li] = r; lCol[li + 1] = g; lCol[li + 2] = b;
+        lCol[li + 3] = r; lCol[li + 4] = g; lCol[li + 5] = b;
+        lc++;
+      }
+    }
+  }
+
+  for (let i = 0; i < N; i++) {
+    pPos[i * 3] = pos[i * 3];
+    pPos[i * 3 + 1] = pos[i * 3 + 1];
+    pPos[i * 3 + 2] = pos[i * 3 + 2];
+
+    const a = act[i];
+    const p = peak[i];
+    pCol[i * 3] = 0.1 + a * 0.9 + p * 0.15;
+    pCol[i * 3 + 1] = 0.04 + a * 0.2 + p * 0.05;
+    pCol[i * 3 + 2] = 0.45 + a * 0.55 + p * 0.2;
+    pSz[i] = 2.5 + a * 10.0 + p * 4.0;
+  }
+
+  pGeo.attributes.position.needsUpdate = true;
+  pGeo.attributes.color.needsUpdate = true;
+  pGeo.attributes.size.needsUpdate = true;
+  lGeo.attributes.position.needsUpdate = true;
+  lGeo.attributes.color.needsUpdate = true;
+  lGeo.setDrawRange(0, lc * 2);
+
+  core.rotation.x = t * 0.3;
+  core.rotation.y = t * 0.5;
+  const coreScale = 1 + Math.sin(t * 1.5) * 0.15 + breathe * 0.3;
+  core.scale.setScalar(coreScale);
+  coreMat.opacity = 0.15 + breathe * 0.2 + Math.sin(t * 3) * 0.05;
+  coreMat.color.setHSL(0.75 + Math.sin(t * 0.3) * 0.08, 0.9, 0.3 + breathe * 0.15);
+
+  shell.rotation.y = t * 0.02;
+  shell.rotation.x = t * 0.01;
+  shellMat.opacity = 0.04 + breathe * 0.04;
+
+  const camA = t * 0.12;
+  const camR = 28 + Math.sin(t * 0.18) * 6;
+  const camH = Math.sin(t * 0.08) * 12;
+  camera.position.set(Math.cos(camA) * camR, camH, Math.sin(camA) * camR);
+  camera.lookAt(0, 0, 0);
+
+  renderer.render(scene, camera);
+  requestAnimationFrame(loop);
+}
+loop();
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

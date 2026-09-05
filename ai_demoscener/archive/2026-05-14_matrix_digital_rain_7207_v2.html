@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Neon Grid Matrix</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background-color: #111;
+    }
+    canvas {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+  <script>
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.z = 5;
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    const gridSize = 20;
+    let grid = [];
+
+    for (let x = -gridSize; x <= gridSize; x += 1) {
+      for (let y = -gridSize; y <= gridSize; y += 1) {
+        const geometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+        const material = new THREE.MeshBasicMaterial({ color: 0x222 });
+        const cube = new THREE.Mesh(geometry, material);
+        cube.position.set(x * 1 - gridSize/2 + 0.5, y * 1 - gridSize/2 + 0.5, Math.random() * 40 - 20);
+
+        // Random color for each cube
+        const colors = [0xff3366, 0x3399ff, 0xffff66];
+        const randomColor = colors[Math.floor(Math.random() * colors.length)];
+        material.color.setHex(randomColor);
+        grid.push({ mesh: cube, targetY: Math.random() * 20 - 10 });
+      }
+    }
+
+    // Add all cubes to the scene
+    grid.forEach(item => {
+      scene.add(item.mesh);
+    });
+
+    const uniforms = {
+      time: { value: 0 },
+      resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+      color: { value: new THREE.Color(0xffffff) }
+    };
+
+    const material = new THREE.ShaderMaterial({
+      uniforms,
+      vertexShader: `
+        uniform float time;
+        uniform vec2 resolution;
+        uniform vec3 color;
+
+        varying vec3 vColor;
+        attribute float delay;
+
+        void main() {
+          vColor = color;
+          float t = time + delay;
+
+          // Animate cubes up and down
+          float y = position.y + sin(t * 0.5) * 2.0;
+
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position.x, y, position.z, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform float time;
+        uniform vec2 resolution;
+        uniform vec3 color;
+
+        varying vec3 vColor;
+
+        void main() {
+          // Create a glow effect for the cubes
+          vec2 uv = gl_PointCoord - vec2(0.5);
+          float dist = length(uv);
+          float alpha = smoothstep(1.0, 0.8, dist);
+
+          // Flash randomly based on time and position
+          float flash = mod(gl_FragCoord.y * 100.0 + time * 3.0, 2.0) > 1.0 ? 0.5 : 1.0;
+
+          gl_FragColor = vec4(vColor.rgb * alpha * flash, alpha);
+        }
+      `,
+    });
+
+    // Replace materials for a more dynamic look
+    grid.forEach(item => {
+      const newMaterial = material.clone();
+      item.mesh.material = newMaterial;
+      item.mesh.material.needsUpdate = true;
+
+      // Add delay attribute to each cube for staggered animations
+      if (item.mesh.geometry.attributes.position) {
+        const delays = [];
+        for (let i = 0; i < item.mesh.geometry.attributes.position.count; i++) {
+          delays.push(Math.random() * Math.PI);
+        }
+        item.mesh.geometry.setAttribute('delay', new THREE.Float32BufferAttribute(delays, 1));
+      }
+
+      // Set individual color
+      const colors = [new THREE.Color(0xff3366), new THREE.Color(0x3399ff), new THREE.Color(0xffff66)];
+      const randomColor = colors[Math.floor(Math.random() * colors.length)];
+      item.mesh.material.uniforms.color.value = randomColor;
+    });
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      uniforms.time.value += 0.05;
+
+      // Update cube positions for a matrix-like effect
+      grid.forEach(item => {
+        if (Math.random() < 0.1) { // Random chance to change targetY
+          item.targetY = Math.random() * 20 - 10;
+        }
+        item.mesh.position.y += (item.targetY - item.mesh.position.y) * 0.05;
+
+        // Rotate cubes for a more dynamic effect
+        item.mesh.rotation.x += 0.01;
+        item.mesh.rotation.y += 0.02;
+      });
+
+      renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+  </script>
+</body>
+</html>

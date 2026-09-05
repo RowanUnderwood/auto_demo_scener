@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Tetris AI with Three.js</title>
+  <style>
+    body { margin: 0; overflow: hidden; }
+    canvas { display: block; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+  <script>
+    // Set up the scene, camera, and renderer
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x222222);
+
+    const camera = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 1000);
+    camera.position.set(0, 25, 0);
+    camera.lookAt(0, 0, 0);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setClearColor(0x222222);
+    document.body.appendChild(renderer.domElement);
+
+    // Add controls
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+
+    // Grid setup
+    const gridWidth = 10;
+    const gridHeight = 20;
+    const cellSize = 1;
+    const cells = new Array(gridHeight).fill(null).map(() => new Array(gridWidth).fill(null));
+    const pieceColors = {
+      I: 0x00FFFF,
+      O: 0xFFFF00,
+      T: 0x800080,
+      S: 0x00FF00,
+      Z: 0xFF0000,
+      J: 0x0000FF,
+      L: 0xFFA500
+    };
+
+    // Define the tetrominoes
+    const tetrominoes = {
+      I: [[0, 0], [0, 1], [0, 2], [0, 3]],
+      O: [[0, 0], [0, 1], [1, 0], [1, 1]],
+      T: [[0, 0], [0, 1], [0, 2], [1, 1]],
+      S: [[0, 1], [0, 2], [1, 0], [1, 1]],
+      Z: [[0, 0], [0, 1], [1, 1], [1, 2]],
+      J: [[0, 0], [0, 1], [0, 2], [1, 0]],
+      L: [[0, 0], [0, 1], [0, 2], [1, 2]]
+    };
+
+    // Rotation function
+    function rotatePiece(piece, direction) {
+      return piece.map(([x, y]) => {
+        if (direction === 'clockwise') {
+          return [y, -x];
+        } else {
+          return [-y, x];
+        }
+      });
+    }
+
+    // Check if a piece can be placed at a certain position
+    function canPlacePiece(piece, x, y) {
+      for (const [px, py] of piece) {
+        const nx = x + px;
+        const ny = y + py;
+        if (nx < 0 || nx >= gridWidth || ny >= gridHeight || (ny >= 0 && cells[ny][nx] !== null)) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    // Place a piece and return the new grid state
+    function placePiece(piece, x, y, color) {
+      const newCells = cells.map(row => [...row]);
+      for (const [px, py] of piece) {
+        const nx = x + px;
+        const ny = y + py;
+        if (ny >= 0) {
+          newCells[ny][nx] = color;
+        }
+      }
+      return newCells;
+    }
+
+    // Score a placement
+    function scorePlacement(piece, x, y) {
+      const newCells = placePiece(piece, x, y, null);
+      let aggregateHeight = 0;
+      let holes = 0;
+      let linesCleared = 0;
+      let bumpiness = 0;
+
+      // Calculate aggregate height
+      for (let col = 0; col < gridWidth; col++) {
+        let height = 0;
+        for (let row = gridHeight - 1; row >= 0; row--) {
+          if (newCells[row][col] !== null) {
+            height = gridHeight - row;
+            break;
+          }
+        }
+        aggregateHeight += height;
+      }
+
+      // Calculate holes
+      for (let row = 0; row < gridHeight; row++) {
+        for (let col = 0; col < gridWidth; col++) {
+          if (newCells[row][col] === null && row < gridHeight - 1) {
+            let hasBlockBelow = false;
+            for (let r = row + 1; r < gridHeight; r++) {
+              if (newCells[r][col] !== null) {
+                hasBlockBelow = true;
+                break;
+              }
+            }
+            if (hasBlockBelow) {
+              holes++;
+            }
+          }
+        }
+      }
+
+      // Calculate lines cleared
+      for (let row = 0; row < gridHeight; row++) {
+        let fullRow = true;
+        for (let col = 0; col < gridWidth; col++) {
+          if (newCells[row][col] === null) {
+            fullRow = false;
+            break;
+          }
+        }
+        if (fullRow) {
+          linesCleared++;
+        }
+      }
+
+      // Calculate bumpiness
+      const heights = [];
+      for (let col = 0; col < gridWidth; col++) {
+        let height = 0;
+        for (let row = gridHeight - 1; row >= 0; row--) {
+          if (newCells[row][col] !== null) {
+            height = gridHeight - row;
+            break;
+          }
+        }
+        heights.push(height);
+      }
+      for (let i = 0; i < heights.length - 1; i++) {
+        bumpiness += Math.abs(heights[i] - heights[i + 1]);
+      }
+
+      return -aggregateHeight - 4 * holes + linesCleared * 2 - bumpiness;
+    }
+
+    // Find the best placement
+    function findBestPlacement(piece) {
+      let bestScore = -Infinity;
+      let bestX = 0;
+      let bestY = 0;
+      let bestRotation = 0;
+
+      for (let rotation = 0; rotation < 4; rotation++) {
+        const rotatedPiece = rotatePiece(piece, rotation === 0 ? 'clockwise' : rotation === 1 ? 'counterclockwise' : rotation === 2 ? 'clockwise' : 'counterclockwise');
+        for (let x = 0; x <= gridWidth - Math.max(...rotatedPiece.map(p => p[0] + 1)); x++) {
+          for (let y = 0; y < gridHeight; y++) {
+            if (canPlacePiece(rotatedPiece, x, y)) {
+              const score = scorePlacement(rotatedPiece, x, y);
+              if (score > bestScore) {
+                bestScore = score;
+                bestX = x;
+                bestY = y;
+                bestRotation = rotation;
+              }
+            }
+          }
+        }
+      }
+
+      return { x: bestX, y: bestY, rotation: bestRotation, score: bestScore };
+    }
+
+    // Create a mesh for a cell
+    function createCell(x, y, color) {
+      const geometry = new THREE.BoxGeometry(0.9, 0.9, 0.9);
+      const material = new THREE.MeshLambertMaterial({ color: color });
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.set(x, y, 0);
+      return mesh;
+    }
+
+    // Render the grid
+    function renderGrid() {
+      scene.children.forEach(child => {
+        if (child instanceof THREE.Mesh && child !== camera) {
+          scene.remove(child);
+        }
+      });
+
+      // Draw the grid lines
+      const gridMaterial = new THREE.LineBasicMaterial({ color: 0x333333 });
+      for (let x = 0; x <= gridWidth; x++) {
+        const geometry = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(x, 0, 0),
+          new THREE.Vector3(x, gridHeight, 0)
+        ]);
+        const line = new THREE.Line(geometry, gridMaterial);
+        scene.add(line);
+      }
+      for (let y = 0; y <= gridHeight; y++) {
+        const geometry = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(0, y, 0),
+          new THREE.Vector3(gridWidth, y, 0)
+        ]);
+        const line = new THREE.Line(geometry, gridMaterial);
+        scene.add(line);
+      }
+
+      // Draw the blocks
+      for (let y = 0; y < gridHeight; y++) {
+        for (let x = 0; x < gridWidth; x++) {
+          if (cells[y][x] !== null) {
+            const mesh = createCell(x, y, cells[y][x]);
+            scene.add(mesh);
+          }
+        }
+      }
+    }
+
+    // Animate a piece
+    function animatePiece(piece, x, y, color, rotation, duration = 500) {
+      const start = Date.now();
+      const startRotation = 0;
+      const endRotation = rotation * 90;
+      const startXY = { x: 0, y: 0 };
+      const endXY = { x, y };
+
+      const animation = setInterval(() => {
+        const elapsed = Date.now() - start;
+        const progress = Math.min(elapsed / duration, 1);
+
+        const currentX = startXY.x + (endXY.x - startXY.x) * progress;
+        const currentY = startXY.y + (endXY.y - startXY.y) * progress;
+        const currentRotation = startRotation + (endRotation - startRotation) * progress;
+
+        // Remove the piece
+        scene.children.forEach(child => {
+          if (child instanceof THREE.Mesh && child !== camera) {
+            scene.remove(child);
+          }
+        });
+
+        // Draw the piece
+        const rotatedPiece = rotatePiece(piece, currentRotation === 0 ? 'clockwise' : currentRotation === 90 ? 'counterclockwise' : currentRotation === 180 ? 'clockwise' : 'counterclockwise');
+        for (const [px, py] of rotatedPiece) {
+          const mesh = createCell(currentX + px, currentY + py, color);
+          scene.add(mesh);
+        }
+
+        if (progress >= 1) {
+          clearInterval(animation);
+          // Place the piece
+          for (const [px, py] of piece) {
+            const nx = x + px;
+            const ny = y + py;
+            if (ny >= 0) {
+              cells[ny][nx] = color;
+            }
+          }
+          // Clear filled rows
+          const newCells = [];
+          let linesCleared = 0;
+          for (let row = 0; row < gridHeight; row++) {
+            let fullRow = true;
+            for (let col = 0; col < gridWidth; col++) {
+              if (cells[row][col] === null) {
+                fullRow = false;
+                break;
+              }
+            }
+            if (!fullRow) {
+              newCells.push(cells[row]);
+            } else {
+              linesCleared++;
+            }
+          }
+          // Add empty rows at the top
+          for (let i = 0; i < linesCleared; i++) {
+            newCells.unshift(new Array(gridWidth).fill(null));
+          }
+          cells.length = 0;
+          cells.push(...newCells);
+
+          // Flash the cleared rows
+          if (linesCleared > 0) {
+            const flash = () => {
+              const flashMaterial = new THREE.MeshLambertMaterial({ color: 0xFFFFFF });
+              for (let row = 0; row < gridHeight; row++) {
+                for (let col = 0; col < gridWidth; col++) {
+                  if (cells[row][col] !== null) {
+                    const mesh = createCell(col, row, 0xFFFFFF);
+                    mesh.material = flashMaterial;
+                    scene.add(mesh);
+                  }
+                }
+              }
+              setTimeout(() => {
+                renderGrid();
+              }, 200);
+            };
+            setTimeout(flash, 100);
+          }
+
+          // Render the grid
+          renderGrid();
+        }
+      }, 16);
+    }
+
+    // Initialize the scene
+    function init() {
+      // Add lights
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+      scene.add(ambientLight);
+
+      const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
+      directionalLight.position.set(0, 10, 10);
+      scene.add(directionalLight);
+
+      // Render the grid
+      renderGrid();
+
+      // Spawn the tetrominoes
+      const tetrominoOrder = ['I', 'O', 'T', 'S', 'Z', 'J', 'L'];
+      let currentPiece = 0;
+
+      const spawnPiece = () => {
+        if (currentPiece >= tetrominoOrder.length) {
+          return;
+        }
+
+        const pieceType = tetrominoOrder[currentPiece];
+        const piece = tetrominoes[pieceType];
+        const color = pieceColors[pieceType];
+
+        const best = findBestPlacement(piece);
+        console.log(`Placing ${pieceType} at (${best.x}, ${best.y}) with rotation ${best.rotation}, score: ${best.score}`);
+
+        animatePiece(piece, best.x, best.y, color, best.rotation);
+
+        currentPiece++;
+        setTimeout(spawnPiece, 1000);
+      };
+
+      spawnPiece();
+    }
+
+    // Handle window resize
+    window.addEventListener('resize', () => {
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      renderer.setSize(width, height);
+      camera.left = -width / 2;
+      camera.right = width / 2;
+      camera.top = height / 2;
+      camera.bottom = -height / 2;
+      camera.updateProjectionMatrix();
+    });
+
+    // Start the game
+    init();
+
+    // Animation loop
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+  </script>
+</body>
+</html>

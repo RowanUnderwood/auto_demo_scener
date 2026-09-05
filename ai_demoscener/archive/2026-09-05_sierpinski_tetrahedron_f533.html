@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Recursive Tetrahedron Subdivision</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0d12; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0b0d12);
+
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 100);
+camera.position.set(0, 0.6, 5);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+const light = new THREE.DirectionalLight(0xffffff, 2.2);
+light.position.set(3, 5, 4);
+scene.add(light);
+
+// ---- Recursive subdivision: keep the 4 corner tetrahedra at each step ----
+const MAX_DEPTH = 5;
+
+// Regular tetrahedron vertices (circumradius 1)
+const S = 0.5;
+const base = [
+  new THREE.Vector3( 1,  1,  1).multiplyScalar(S),
+  new THREE.Vector3( 1, -1, -1).multiplyScalar(S),
+  new THREE.Vector3(-1,  1, -1).multiplyScalar(S),
+  new THREE.Vector3(-1, -1,  1).multiplyScalar(S),
+];
+
+const leaves = []; // { center: Vector3, scale: number, depth: number }
+
+const mid = (a, b) => a.clone().add(b).multiplyScalar(0.5);
+
+function subdivide(v0, v1, v2, v3, depth) {
+  const m01 = mid(v0, v1), m02 = mid(v0, v2), m03 = mid(v0, v3);
+  const m12 = mid(v1, v2), m13 = mid(v1, v3), m23 = mid(v2, v3);
+
+  if (depth === MAX_DEPTH) {
+    const center = new THREE.Vector3().addVectors(v0, v1).add(v2).add(v3).multiplyScalar(0.25);
+    const scale = v0.distanceTo(v1) / (2 * S); // edge of unit-circumradius tetra is sqrt(8/3)
+    // circumradius of this leaf relative to unit-circum geometry
+    const r = v0.distanceTo(center);
+    leaves.push({ center, scale: r, depth });
+    return;
+  }
+
+  subdivide(v0, m01, m02, m03, depth + 1);
+  subdivide(v1, m01, m12, m13, depth + 1);
+  subdivide(v2, m02, m12, m23, depth + 1);
+  subdivide(v3, m03, m13, m23, depth + 1);
+}
+
+subdivide(base[0], base[1], base[2], base[3], 0);
+
+// ---- InstancedMesh ----
+const COUNT = leaves.length; // 4^5 = 1024
+const geometry = new THREE.TetrahedronGeometry(1, 0);
+const material = new THREE.MeshStandardMaterial({ roughness: 0.55, metalness: 0.1 });
+
+const mesh = new THREE.InstancedMesh(geometry, material, COUNT);
+const group = new THREE.Group();
+group.add(mesh);
+scene.add(group);
+
+const palette = [
+  new THREE.Color(0x35d0ba),
+  new THREE.Color(0xf2c94c),
+  new THREE.Color(0xef6351),
+  new THREE.Color(0x5b8def),
+  new THREE.Color(0xc98bf5),
+];
+
+const dummy = new THREE.Matrix4();
+const color = new THREE.Color();
+
+leaves.forEach((leaf, i) => {
+  dummy.makeTranslation(leaf.center.x, leaf.center.y, leaf.center.z);
+  dummy.multiply(new THREE.Matrix4().makeScale(leaf.scale, leaf.scale, leaf.scale));
+  mesh.setMatrixAt(i, dummy);
+
+  color.copy(palette[leaf.depth % palette.length]);
+  color.multiplyScalar(0.75 + 0.25 * ((leaf.depth * 7 + i) % 3) / 2); // subtle per-instance variation
+  mesh.setColorAt(i, color);
+});
+
+mesh.instanceMatrix.needsUpdate = true;
+if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+
+// ---- Animate ----
+const clock = new THREE.Clock();
+
+renderer.setAnimationLoop(() => {
+  const t = clock.getElapsedTime();
+  group.rotation.y = t * 0.15;
+  group.rotation.x = Math.sin(t * 0.2) * 0.3;
+  renderer.render(scene, camera);
+});
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

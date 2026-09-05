@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Topographic Flux Field</title>
+    <style>
+        body { margin: 0; background: #06040a; overflow: hidden; }
+        canvas { display: block; }
+        #label {
+            position: fixed; bottom: 18px; left: 20px;
+            font-family: 'Courier New', monospace; font-size: 11px;
+            letter-spacing: 2px; color: rgba(255,200,140,0.45);
+            pointer-events: none; text-transform: uppercase;
+        }
+    </style>
+</head>
+<body>
+<div id="label">flux field · move cursor to disturb</div>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+</script>
+<script type="module">
+    import * as THREE from 'three';
+
+    const N_MOVING = 6;
+    const N_MASSES = N_MOVING + 1; // +1 for mouse
+    const SEGMENTS = 260;
+    const SIZE = 58;
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x06040a);
+    scene.fog = new THREE.FogExp2(0x06040a, 0.012);
+
+    const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    document.body.appendChild(renderer.domElement);
+
+    // Lissajous-style moving attractors
+    const moving = [];
+    for (let i = 0; i < N_MOVING; i++) {
+        moving.push({
+            ax: 6 + Math.random() * 16,
+            ay: 6 + Math.random() * 16,
+            fx: 0.15 + Math.random() * 0.45,
+            fy: 0.15 + Math.random() * 0.45,
+            px: Math.random() * Math.PI * 2,
+            py: Math.random() * Math.PI * 2,
+            strength: 5 + Math.random() * 7,
+            sigma: 1.6 + Math.random() * 2.6
+        });
+    }
+
+    const mouseWorld = new THREE.Vector3();
+    const pointer = new THREE.Vector2(9999, 9999);
+    const raycaster = new THREE.Raycaster();
+    const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+
+    const shaderMaterial = new THREE.ShaderMaterial({
+        uniforms: {
+            uTime: { value: 0 },
+            uMasses: { value: new Array(N_MASSES).fill(new THREE.Vector4()) }
+        },
+        vertexShader: `
+            varying float vDepth;
+            varying vec3 vWorld;
+            uniform vec4 uMasses[${N_MASSES}];
+
+            void main() {
+                vec3 pos = position;
+                float total = 0.0;
+
+                for (int i = 0; i < ${N_MASSES}; i++) {
+                    vec2 mp = uMasses[i].xy;
+                    float s = uMasses[i].z;
+                    float sig = uMasses[i].w;
+                    vec2 diff = pos.xy - mp;
+                    float d2 = dot(diff, diff);
+                    total += s * exp(-d2 / (sig * sig));
+                }
+
+                pos.z -= total;
+                vDepth = total;
+                vWorld = (modelMatrix * vec4(pos, 1.0)).xyz;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+            }
+        `,
+        fragmentShader: `
+            varying float vDepth;
+            varying vec3 vWorld;
+            uniform float uTime;
+
+            void main() {
+                float d = vDepth;
+                float t = clamp(d / 14.0, 0.0, 1.0);
+
+                vec3 deep  = vec3(0.04, 0.02, 0.09);
+                vec3 mid   = vec3(0.42, 0.14, 0.55);
+                vec3 hot   = vec3(1.00, 0.74, 0.34);
+
+                vec3 col = mix(deep, mid, smoothstep(0.0, 0.45, t));
+                col = mix(col, hot, smoothstep(0.45, 1.0, t));
+
+                // topographic contour lines
+                float iso = d * 0.32;
+                float lines = abs(fract(iso) - 0.5);
+                float contour = 1.0 - smoothstep(0.0, 0.09, lines);
+
+                col *= (0.55 + 0.7 * contour);
+                col += contour * vec3(1.0, 0.82, 0.5) * 0.35 * t;
+
+                // distance fog
+                float dist = length(vWorld - cameraPosition);
+                float fog = smoothstep(40.0, 120.0, dist);
+                col = mix(col, vec3(0.024, 0.016, 0.04), fog);
+
+                gl_FragColor = vec4(col, 1.0);
+            }
+        `,
+        wireframe: true
+    });
+
+    const geometry = new THREE.PlaneGeometry(SIZE, SIZE, SEGMENTS, SEGMENTS);
+    const mesh = new THREE.Mesh(geometry, shaderMaterial);
+    mesh.rotation.x = -Math.PI / 2;
+    scene.add(mesh);
+
+    window.addEventListener('pointermove', (e) => {
+        pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
+        pointer.y = -(e.clientY / window.innerHeight) * 2 + 1;
+    });
+
+    const clock = new THREE.Clock();
+
+    function animate() {
+        requestAnimationFrame(animate);
+        const elapsed = clock.getElapsedTime();
+
+        const list = [];
+
+        // Mouse-driven well (index 0)
+        raycaster.setFromCamera(pointer, camera);
+        const hit = new THREE.Vector3();
+        if (raycaster.ray.intersectPlane(groundPlane, hit)) {
+            mouseWorld.lerp(hit, 0.15);
+        }
+        // local plane coords: local x = world x, local y = -world z
+        list.push(new THREE.Vector4(mouseWorld.x, -mouseWorld.z, 9.0, 2.2));
+
+        for (let i = 0; i < N_MOVING; i++) {
+            const m = moving[i];
+            const x = Math.cos(elapsed * m.fx + m.px) * m.ax;
+            const y = Math.sin(elapsed * m.fy + m.py) * m.ay;
+            const pulse = 0.75 + 0.25 * Math.sin(elapsed * 0.7 + i);
+            list.push(new THREE.Vector4(x, y, m.strength * pulse, m.sigma));
+        }
+
+        shaderMaterial.uniforms.uTime.value = elapsed;
+        shaderMaterial.uniforms.uMasses.value = list;
+
+        const camR = 58;
+        camera.position.x = Math.cos(elapsed * 0.08) * camR;
+        camera.position.z = Math.sin(elapsed * 0.08) * camR;
+        camera.position.y = 22 + Math.sin(elapsed * 0.15) * 8;
+        camera.lookAt(0, 0, 0);
+
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+</script>
+</body>
+</html>

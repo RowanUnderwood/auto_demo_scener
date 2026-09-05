@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Pulse Bars</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000000; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+    </style>
+</head>
+<body>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const uniforms = {
+            u_time: { value: 0 },
+            u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+            u_intensity: { value: 1.2 },
+            u_frequency: { value: 2.0 }
+        };
+
+        const material = new THREE.ShaderMaterial({
+            uniforms,
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float u_time;
+                uniform vec2 u_resolution;
+                uniform float u_intensity;
+                uniform float u_frequency;
+                varying vec2 vUv;
+
+                vec3 getNeonPalette(float t) {
+                    // Neon gradient: cyan -> magenta -> yellow
+                    vec3 cyan = vec3(0.0, 0.8, 1.0);
+                    vec3 magenta = vec3(1.0, 0.0, 1.0);
+                    vec3 yellow = vec3(1.0, 1.0, 0.0);
+
+                    float phase = 0.314; // PI / 10 approx
+                    float normalizedT = fract(t * 0.5);
+                    
+                    if (normalizedT < 0.33) {
+                        return mix(cyan, magenta, normalizedT * 3.0);
+                    } else if (normalizedT < 0.66) {
+                        return mix(magenta, yellow, (normalizedT - 0.33) * 3.0);
+                    } else {
+                        return mix(yellow, cyan, (normalizedT - 0.66) * 3.0);
+                    }
+                }
+
+                void main() {
+                    vec3 finalColor = vec3(0.0);
+                    
+                    // Add pulsing glow effect
+                    float pulse = 0.5 + 0.5 * sin(u_time * 0.7 + 0.1 * u_frequency);
+                    float pulseStrength = smoothstep(0.4, 0.6, pulse);
+                    
+                    // Create 12 vertical bars with sine-based positioning
+                    for (int i = 0; i < 12; i++) {
+                        float fi = float(i);
+                        float barOffset = 0.08; // Narrower bars
+                        float barY = sin(u_time + fi * 0.628) * 0.4 + 0.5; // 2pi/12 per bar
+                        float dist = abs(vUv.y - barY);
+                        float barStrength = smoothstep(barOffset, 0.0, dist);
+                        
+                        if (barStrength > 0.0) {
+                            vec3 barColor = getNeonPalette(fi / 11.0);
+                            barColor *= pulseStrength;
+                            finalColor += barStrength * barColor;
+                        }
+                    }
+                    
+                    // Add a horizontal gradient sweep to enhance glow
+                    float xGradient = 0.2 + 0.8 * sin(u_time * 0.3 + vUv.x * 3.0);
+                    finalColor *= xGradient;
+                    
+                    // Add a soft vignette for focus
+                    float vignette = 1.0 - smoothstep(0.9, 1.1, length(vUv - 0.5));
+                    finalColor *= vignette;
+                    
+                    // Apply intensity
+                    finalColor *= u_intensity;
+                    
+                    gl_FragColor = vec4(finalColor, 1.0);
+                }
+            `
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        function animate(time) {
+            uniforms.u_time.value = time * 0.001;
+            uniforms.u_frequency.value = 2.0 + 0.5 * Math.sin(time * 0.005);
+            renderer.render(scene, camera);
+            requestAnimationFrame(animate);
+        }
+
+        window.addEventListener('resize', () => {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            uniforms.u_resolution.value.set(window.innerWidth, window.innerHeight);
+        });
+
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>

@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Glowing Wireframe Icosahedron</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        // Scene Setup
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x000000);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 0, 8);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.body.appendChild(renderer.domElement);
+
+        // Lighting Setup
+        const ambientLight = new THREE.AmbientLight(0x333333);
+        scene.add(ambientLight);
+
+        const pointLight1 = new THREE.PointLight(0x88ffaa, 1.5, 20);
+        pointLight1.position.set(-2, 3, -4);
+        scene.add(pointLight1);
+
+        const pointLight2 = new THREE.PointLight(0x66ccff, 1.2, 20);
+        pointLight2.position.set(3, -1, 2);
+        scene.add(pointLight2);
+
+        // Geometry & Line Setup
+        const geometry = new THREE.IcosahedronGeometry(1.8, 2); // Higher subdivision for smoother look
+
+        // Primary Wireframe (thinner lines)
+        const lineMaterial = new THREE.LineBasicMaterial({
+            color: 0x4dffff,
+            linewidth: 1.5
+        });
+        const wireframeLines = new THREE.LineSegments(geometry, lineMaterial);
+        
+        // Inner glow effect
+        const innerGlowMaterial = new THREE.LineBasicMaterial({
+            color: 0x4dffff,
+            transparent: true,
+            opacity: 0.8
+        });
+
+        const outerGlowMaterial = new THREE.LineBasicMaterial({
+            color: 0x33aaff,
+            transparent: true,
+            opacity: 0.5
+        });
+
+        // Create glow layers with different scales and offsets for depth effect
+        const innerGlowLines = new THREE.LineSegments(
+            geometry, 
+            innerGlowMaterial
+        );
+        innerGlowLines.scale.set(1.02, 1.02, 1.02);
+        
+        const outerGlowLines = new THREE.LineSegments(
+            geometry, 
+            outerGlowMaterial
+        );
+        outerGlowLines.scale.set(1.08, 1.08, 1.08);
+        
+        // Add a slight rotation offset for visual interest
+        innerGlowLines.rotation.x += 0.2;
+        
+        scene.add(wireframeLines);
+        scene.add(innerGlowLines);
+        scene.add(outerGlowLines);
+
+        // Animation Loop
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const time = Date.now() * 0.001;
+            
+            wireframeLines.rotation.x += 0.01 + Math.sin(time) * 0.002;
+            wireframeLines.rotation.y += 0.02;
+
+            innerGlowLines.rotation.x -= 0.015 + Math.cos(time) * 0.003;
+            innerGlowLines.rotation.z = time * 0.5 % (Math.PI * 2);
+
+            outerGlowLines.rotation.x += 0.008 + Math.sin(time * 1.3) * 0.004;
+            outerGlowLines.rotation.y -= 0.02;
+
+            renderer.render(scene, camera);
+        }
+
+        // Handle resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

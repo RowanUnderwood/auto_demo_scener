@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Parametric Curve Animation</title>
+  <style>
+    body { margin: 0; overflow: hidden; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+  <script>
+    // Initialize Three.js scene
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x000000);
+
+    // Orthographic camera
+    const camera = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 1000);
+    camera.position.set(0, 0, 50);
+    camera.lookAt(0, 0, 0);
+
+    // Renderer
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    document.body.appendChild(renderer.domElement);
+
+    // Parameters for the parametric curve
+    let R = 5;
+    let r = 1;
+    let d = 2;
+    let rotation = 0;
+
+    // Function to generate parametric points
+    function generatePoints(R, r, d, tMax, numPoints) {
+      const points = [];
+      const step = tMax / numPoints;
+      for (let t = 0; t <= tMax; t += step) {
+        const x = (R - r) * Math.cos(t) + d * Math.cos((R - r) / r * t);
+        const y = (R - r) * Math.sin(t) - d * Math.sin((R - r) / r * t);
+        points.push(new THREE.Vector3(x, y, 0));
+      }
+      return points;
+    }
+
+    // Initial curve
+    let points = generatePoints(R, r, d, 200 * Math.PI, 2000);
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const material = new THREE.LineBasicMaterial({ color: 0x00ff00, linewidth: 2 });
+    const line = new THREE.Line(geometry, material);
+    scene.add(line);
+
+    // Animation loop
+    function animate() {
+      requestAnimationFrame(animate);
+
+      // Slowly mutate parameters
+      R += 0.001;
+      r += 0.0005;
+      d += 0.002;
+      rotation += 0.01;
+
+      // Generate new points with updated parameters
+      points = generatePoints(R, r, d, 200 * Math.PI, 2000);
+
+      // Update geometry
+      geometry.setFromPoints(points);
+
+      // Update material color based on t (parametric value)
+      const colors = [];
+      for (let i = 0; i < points.length; i++) {
+        const t = i / (points.length - 1);
+        const hue = (t * 360) % 360;
+        const color = new THREE.Color().setHSL(hue / 360, 1.0, 0.5);
+        colors.push(color.r, color.g, color.b);
+      }
+      geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+      // Update line material color
+      material.color = new THREE.Color(0xffffff);
+
+      // Rotate the line
+      line.rotation.x = rotation;
+      line.rotation.y = rotation;
+
+      renderer.render(scene, camera);
+    }
+
+    // Handle window resize
+    window.addEventListener('resize', () => {
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      renderer.setSize(width, height);
+      camera.left = -width / 2;
+      camera.right = width / 2;
+      camera.top = height / 2;
+      camera.bottom = -height / 2;
+      camera.updateProjectionMatrix();
+    });
+
+    animate();
+  </script>
+</body>
+</html>

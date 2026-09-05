@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Quantum Fractal Core</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000 }
+        canvas { display: block }
+        .info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-family: monospace;
+            pointer-events: none;
+            text-shadow: 0 0 5px rgba(255,255,255,0.7);
+        }
+    </style>
+</head>
+<body>
+    <div class="info">Quantum Fractal Core - Press SPACE to toggle time flow</div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Create scene, camera and renderer
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x000011);
+        
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 0, 30);
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+
+        // Add ambient light
+        const ambientLight = new THREE.AmbientLight(0x333333);
+        scene.add(ambientLight);
+        
+        // Add directional lights for drama
+        const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.7);
+        dirLight1.position.set(10, 15, 10);
+        scene.add(dirLight1);
+
+        const dirLight2 = new THREE.DirectionalLight(0x444488, 0.3);
+        dirLight2.position.set(-10, -5, 5);
+        scene.add(dirLight2);
+        
+        // Create central core geometry
+        const coreGeometry = new THREE.SphereGeometry(1.5, 32, 32);
+        const coreMaterial = new THREE.MeshPhongMaterial({
+            color: 0x4a00e7,
+            specular: 0x6666ff,
+            shininess: 80,
+            transparent: true,
+            opacity: 0.9
+        });
+        
+        const core = new THREE.Mesh(coreGeometry, coreMaterial);
+        scene.add(core);
+        
+        // Add fractal orbit rings
+        function createFractalRing(radius, segments, color) {
+            const ringGeometry = new THREE.TorusGeometry(
+                radius, 0.2, segments, 8,
+                Math.PI * 2
+            );
+            
+            const ringMaterial = new THREE.MeshPhongMaterial({
+                color: color || 0x7f7fff,
+                transparent: true,
+                opacity: 0.5 + (Math.random() * 0.3),
+                shininess: 64
+            });
+            
+            return new THREE.Mesh(ringGeometry, ringMaterial);
+        }
+        
+        // Create multiple fractal rings at different distances
+        const ringCount = 12;
+        for(let i = 0; i < ringCount; i++) {
+            const radius = (i + 1) * 3.5;
+            const segmentCount = Math.max(8, Math.floor(i / 2) + 16);
+            const colorVariation = i % 4 === 0 ? 0x4a00e7 :
+                                  i % 4 === 1 ? 0x6f3bff :
+                                  i % 4 === 2 ? 0xa060ff :
+                                  0xd090ff;
+            
+            const ring = createFractalRing(radius, segmentCount, colorVariation);
+            ring.rotation.x = Math.PI / 2 + (Math.random() * 0.5 - 0.25) * i;
+            ring.position.set(0, 0, radius * 0.1); // Subtle position offset
+            
+            scene.add(ring);
+        }
+        
+        // Create particle system for quantum effects
+        const particles = [];
+        const particleCount = 300;
+        
+        function createParticle() {
+            const geometry = new THREE.SphereGeometry(0.1, 8, 8);
+            const material = new THREE.MeshPhongMaterial({
+                color: Math.random() > 0.7 ? 
+                      Math.floor(Math.random() * 0xffffff) : 
+                      0x50c6ff,
+                transparent: true,
+                opacity: 0.8 + Math.random() * 0.2,
+                shininess: 128
+            });
+            
+            const particle = new THREE.Mesh(geometry, material);
+            
+            // Random initial position around core
+            particle.position.set(
+                (Math.random() - 0.5) * 6,
+                (Math.random() - 0.5) * 6,
+                (Math.random() - 0.5) * 6
+            );
+            
+            // Random velocity vector
+            const velX = (Math.random() - 0.5) * 0.3;
+            const velY = (Math.random() - 0.5) * 0.3;
+            const velZ = (Math.random() - 0.5) * 0.3;
+            
+            particle.velocity = new THREE.Vector3(velX, velY, velZ);
+            
+            return particle;
+        }
+        
+        // Create all particles
+        for(let i = 0; i < particleCount; i++) {
+            const p = createParticle();
+            scene.add(p);
+            particles.push(p);
+        }
+        
+        // Add ambient noise texture effect (like starfield)
+        function addNoiseParticles() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 128;
+            
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            for(let i = 0; i < Math.random() * 50 + 10; i++) {
+                const x = (Math.random() - 0.5) * canvas.width;
+                const y = (Math.random() - 0.5) * canvas.height;
+                ctx.fillStyle = `rgba(255, ${Math.floor(Math.random()*100)}, 0, 0.6)`;
+                ctx.fillRect(x + Math.random(), y + Math.random(), 3, 3);
+            }
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            const quadGeometry = new THREE.PlaneGeometry(2, 2);
+            const quadMaterial = new THREE.MeshBasicMaterial({
+                map: texture,
+                transparent: true
+            });
+            
+            const noiseQuad = new THREE.Mesh(quadGeometry, quadMaterial);
+            noiseQuad.rotation.x = -Math.PI / 2;
+            scene.add(noiseQuad);
+        }
+        
+        // Add more dynamic elements to the scene
+        function addDynamicElements() {
+            for(let i = 0; i < 5; i++) {
+                const shape = new THREE.TetrahedronGeometry(0.5 + Math.random() * 2, 3);
+                const material = new THREE.MeshPhongMaterial({
+                    color: `hsl(${Math.random() * 180}, 70%, 40%)`,
+                    transparent: true,
+                    opacity: 0.7 + Math.random() * 0.3
+                });
+                
+                const mesh = new THREE.Mesh(shape, material);
+                mesh.rotation.set(
+                    Math.random() * Math.PI,
+                    Math.random() * Math.PI,
+                    Math.random() * Math.PI
+                );
+                
+                // Animate the shape to move in a pattern
+                mesh.userData = {
+                    speed: 0.05 + Math.random() * 0.1,
+                    rotationSpeed: 0.02 + Math.random() * 0.04,
+                    direction: new THREE.Vector3(
+                        (Math.random() - 0.5) * 2,
+                        (Math.random() - 0.5) * 2,
+                        (Math.random() - 0.5) * 2
+                    ),
+                    scaleSpeed: Math.random() > 0.5 ? 1 : -1
+                };
+                
+                scene.add(mesh);
+            }
+        }
+        
+        // Add grid pattern in background for depth
+        function addGridPattern() {
+            const gridSize = 40;
+            const gridMaterial = new THREE.MeshBasicMaterial({
+                color: 0x2a3567,
+                transparent: true,
+                opacity: 0.1 + Math.random() * 0.1,
+                side: THREE.DoubleSide
+            });
+            
+            for(let i = -gridSize; i < gridSize; i += 4) {
+                const lineGeometry = new THREE.BufferGeometry();
+                const positions = [];
+                
+                // X-axis line
+                positions.push(0, i, 0);
+                positions.push(gridSize, i, 0);
+                
+                // Y-axis line
+                positions.push(i, 0, 0);
+                positions.push(i, gridSize, 0);
+                
+                lineGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+                
+                const gridLine = new THREE.Line(lineGeometry, gridMaterial);
+                scene.add(gridLine);
+            }
+        }
+        
+        // Add lens flare for dramatic effect
+        function addLensFlare() {
+            const light = new THREE.PointLight(0xffffff, 1.5, 50);
+            light.position.set(0, 5, -20);
+            scene.add(light);
+            
+            const flareGeometry = new THREE.CircleGeometry(3, 8);
+            const flareMaterial = new THREE.MeshBasicMaterial({
+                color: 0x7fffec,
+                transparent: true,
+                opacity: 0.1
+            });
+            
+            const flareMesh = new THREE.Mesh(flareGeometry, flareMaterial);
+            flareMesh.rotation.x = Math.PI / 2;
+            scene.add(flareMesh);
+        }
+        
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Animate core rotation
+            core.rotation.y += 0.005;
+            
+            // Move particles with physics-like behavior
+            for(let i = 0; i < particles.length; i++) {
+                const p = particles[i];
+                
+                if(p.position.distanceTo(core.position) > 8) {
+                    p.velocity.add(new THREE.Vector3(Math.random() * 0.02 - 0.01, 
+                                                    Math.random() * 0.02 - 0.01, 
+                                                    Math.random() * 0.02 - 0.01));
+                }
+                
+                // Apply gravity
+                p.velocity.y -= 0.005;
+                
+                p.position.add(p.velocity);
+                
+                // Bounce off core
+                if(p.position.distanceTo(core.position) < 3 && p.velocity.length() > 0.05) {
+                    const direction = new THREE.Vector3().subVectors(
+                        p.position, core.position
+                    ).normalize();
+                    
+                    p.velocity.copy(direction).multiplyScalar(Math.random() * 0.8 + 0.2);
+                }
+                
+                // Keep particles within bounds
+                if(p.position.x > 15 || p.position.x < -15) {
+                    p.velocity.x *= -1;
+                }
+                if(p.position.y > 15 || p.position.y < -15) {
+                    p.velocity.y *= -1;
+                }
+                if(p.position.z > 15 || p.position.z < -15) {
+                    p.velocity.z *= -1;
+                }
+            }
+            
+            // Rotate rings
+            const ringGroup = scene.children.filter(c => c.type === 'Mesh');
+            for(let i = 0; i < ringGroup.length; i++) {
+                if(ringGroup[i].geometry && 
+                   ringGroup[i].geometry.isTorusGeometry) {
+                    ringGroup[i].rotation.y += (i + 1) * 0.02;
+                }
+            }
+            
+            // Rotate dynamic shapes
+            for(let i = 0; i < scene.children.length; i++) {
+                const child = scene.children[i];
+                if(child.geometry && 
+                   child.geometry.isTetrahedronGeometry &&
+                   child.userData) {
+                    
+                    child.rotation.x += child.userData.rotationSpeed;
+                    child.rotation.y += child.userData.rotationSpeed * 0.5;
+                    child.scale.set(
+                        1 + Math.sin(Date.now() * 0.002),
+                        1 + Math.sin(Date.now() * 0.003),
+                        1 + Math.sin(Date.now() * 0.004)
+                    );
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+        
+        // Initialize scene
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        
+        addNoiseParticles();
+        addDynamicElements();
+        addGridPattern();
+        addLensFlare();
+
+        // Add keyboard control for time flow
+        document.addEventListener('keydown', (e) => {
+            if(e.code === 'Space') {
+                core.rotation.y = 0;
+                scene.children.forEach(child => {
+                    child.rotation.set(0, 0, 0);
+                    if(child.userData && child.userData.direction) {
+                        child.userData.direction.set(
+                            Math.random() * 2 - 1,
+                            Math.random() * 2 - 1,
+                            Math.random() * 2 - 1
+                        );
+                    }
+                });
+            }
+        });
+
+        animate();
+    </script>
+</body>
+</html>

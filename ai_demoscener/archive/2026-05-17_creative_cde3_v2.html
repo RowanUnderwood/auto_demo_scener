@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Glowing Nebula</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a0a2b);
+        
+        const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 3000);
+        camera.position.set(0, 0, 1200);
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.body.appendChild(renderer.domElement);
+
+        // Nebula glow
+        const nebulaGeometry = new THREE.SphereGeometry(1000, 64, 64);
+        const nebulaMaterial = new THREE.MeshBasicMaterial({
+            color: 0x3b598c,
+            transparent: true,
+            opacity: 0.2,
+            wireframe: false
+        });
+        const nebula = new THREE.Mesh(nebulaGeometry, nebulaMaterial);
+        scene.add(nebula);
+
+        // Starfield with varying density and glow
+        const starCount = 15000;
+        const starsGeometry = new THREE.BufferGeometry();
+        const positionsArray = new Float32Array(starCount * 3);
+        
+        for (let i = 0; i < starCount; i++) {
+            const i3 = i * 3;
+            positionsArray[i3]     = Math.random() * 2000 - 1000;
+            positionsArray[i3 + 1] = Math.random() * 2000 - 1000;
+            positionsArray[i3 + 2] = Math.random() * 2000 - 1000;
+        }
+        
+        starsGeometry.setAttribute('position', new THREE.BufferAttribute(positionsArray, 3));
+        
+        const starMaterial = new THREE.PointsMaterial({
+            color: 0xffffff,
+            size: 2.5 + Math.random() * 1,
+            transparent: true,
+            opacity: 0.9,
+            blending: THREE.AdditiveBlending
+        });
+        
+        const stars = new THREE.Points(starsGeometry, starMaterial);
+        scene.add(stars);
+
+        // Glow particles for cosmic effect
+        const glowCount = 250;
+        const glowGeometry = new THREE.BufferGeometry();
+        const glowPositionsArray = new Float32Array(glowCount * 3);
+        
+        for (let i = 0; i < glowCount; i++) {
+            const i3 = i * 3;
+            glowPositionsArray[i3]     = Math.random() * 1500 - 750;
+            glowPositionsArray[i3 + 1] = Math.random() * 1500 - 750;
+            glowPositionsArray[i3 + 2] = Math.random() * 1500 - 750;
+        }
+        
+        glowGeometry.setAttribute('position', new THREE.BufferAttribute(glowPositionsArray, 3));
+        
+        const glowMaterial = new THREE.PointsMaterial({
+            color: 0xffb6c1,
+            size: 8 + Math.random() * 4,
+            transparent: true,
+            opacity: 0.5,
+            blending: THREE.AdditiveBlending
+        });
+        
+        const glows = new THREE.Points(glowGeometry, glowMaterial);
+        scene.add(glows);
+
+        // Light sources - multiple for depth and realism
+        const light1 = new THREE.PointLight(0xffccff, 1.8, 2500);
+        light1.position.set(700, 500, 900);
+        
+        const light2 = new THREE.PointLight(0x66ccff, 1.2, 2000);
+        light2.position.set(-400, -300, 700);
+        
+        const light3 = new THREE.PointLight(0xff99cc, 0.8, 1500);
+        light3.position.set(-600, 200, -500);
+        
+        scene.add(light1);
+        scene.add(light2);
+        scene.add(light3);
+
+        // Camera orbit controls
+        let mouseX = 0;
+        let mouseY = 0;
+
+        window.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX / window.innerWidth * 2 - 1;
+            mouseY = e.clientY / window.innerHeight * 2 - 1;
+        });
+
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Slowly rotate the nebula
+            nebula.rotation.x += 0.001;
+            nebula.rotation.y += 0.003;
+            
+            // Move stars slightly for parallax effect
+            const time = Date.now() * 0.0001;
+            stars.scale.set(1 + Math.sin(time) * 0.05, 
+                          1 + Math.cos(time) * 0.05, 
+                          1);
+            
+            // Animate glow particles with random movement
+            glows.rotation.x += 0.0005;
+            glows.rotation.y += 0.002;
+            
+            // Update light positions based on mouse input for dynamic lighting
+            const x = mouseX * 300 - 150;
+            const y = mouseY * 300 - 150;
+            light1.position.set(x + Math.sin(time) * 400, y + Math.cos(time) * 300, 1200);
+            light2.position.set(-x + Math.sin(time + 0.2) * 400, -y + Math.cos(time + 0.5) * 300, -800);
+            light3.position.set(x + Math.sin(time + 0.8) * 400, y + Math.cos(time + 1.0) * 200, -1200);
+            
+            // Camera orbit
+            camera.position.x += (mouseX * 50 - camera.position.x) * 0.05;
+            camera.position.y += (-mouseY * 50 - camera.position.y) * 0.05;
+            camera.lookAt(scene.position);
+            
+            renderer.render(scene, camera);
+        }
+        
+        animate();
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>

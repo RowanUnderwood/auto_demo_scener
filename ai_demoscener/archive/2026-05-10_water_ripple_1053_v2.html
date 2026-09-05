@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #1a0f2b; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+</script>
+<script type="module">
+    import * as THREE from 'three';
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    const geometry = new THREE.IcosahedronGeometry(5, 64);
+
+    const material = new THREE.MeshPhongMaterial({
+        color: 0xffaa88,
+        flatShading: false
+    });
+
+    material.onBeforeCompile = (shader) => {
+        shader.uniforms.uTime = { value: 0 };
+        shader.vertexShader = `uniform float uTime;\n` + shader.vertexShader;
+        shader.vertexShader = shader.vertexShader.replace(
+            '#include <begin_vertex>',
+            `
+            vec3 transformed = vec3( position );
+            float wave1 = sin(transformed.y * 2.0 + uTime);
+            float wave2 = cos(transformed.z * 3.0 + uTime * 0.7);
+            transformed *= mix(1.0, 1.5, (wave1 + wave2) * 0.1);
+            `
+        );
+        material.userData.shader = shader;
+    };
+
+    const mesh = new THREE.Mesh(geometry, material);
+    scene.add(mesh);
+
+    const dirLight1 = new THREE.DirectionalLight(0xffaa88, 0.5);
+    dirLight1.position.set(3, 5, -2);
+    scene.add(dirLight1);
+
+    const dirLight2 = new THREE.DirectionalLight(0xaa88ff, 0.5);
+    dirLight2.position.set(-3, 5, 2);
+    scene.add(dirLight2);
+
+    camera.position.set(0, 0, 15);
+    camera.lookAt(0, 0, 0);
+
+    const clock = new THREE.Clock();
+
+    function animate() {
+        requestAnimationFrame(animate);
+        const elapsedTime = clock.getElapsedTime();
+        mesh.rotation.x += 0.002;
+        mesh.rotation.y += 0.003;
+
+        if (material.userData.shader) {
+            material.userData.shader.uniforms.uTime.value = elapsedTime;
+        }
+
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+</script>
+</body>
+</html>

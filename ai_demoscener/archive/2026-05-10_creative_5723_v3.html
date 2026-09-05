@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>OBSIDIAN_EMBER // CHRONOFLUX</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', monospace; }
+        #ui {
+            position: absolute; top: 24px; left: 24px; color: #ffb347; pointer-events: none;
+            text-shadow: 0 0 10px rgba(255,140,40,.7); letter-spacing: 2px; font-size: 12px; line-height: 1.8;
+        }
+        #ui b { color: #ff5e3a; }
+        #ui .dim { color: #6b4a3a; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <b>OBSIDIAN_EMBER</b> // CHRONOFLUX v2<br>
+        STATE: <span id="st">MOLTEN</span> <span class="dim">// CORE: MANDERBULB-7 · FIELD: 16384</span>
+    </div>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        /**
+         * CONCEPT: "OBSIDIAN_EMBER // CHRONOFLUX"
+         * A warm molten re-imagining of the chrono-flux idea:
+         *  - A raymarched Mandelbulb "Ember Core" (amber body, violet rim)
+         *  - A GPU-driven kinetic orbital particle field ("spark swarm")
+         *  - A true ping-pong feedback trail pass (chrono ghosting)
+         *  - A final grade pass: soft tone, vignette, film grain
+         */
+
+        const PR = Math.min(window.devicePixelRatio, 1.5);
+        let W = window.innerWidth, H = window.innerHeight;
+
+        const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
+        renderer.setPixelRatio(PR);
+        renderer.setSize(W, H);
+        document.body.appendChild(renderer.domElement);
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(60, W / H, 0.1, 100);
+        camera.position.set(0, 0, 3.2);
+
+        // ---------------- Ember Core (raymarched Mandelbulb) ----------------
+        const coreFS = `
+            precision highp float;
+            uniform float uTime;
+            uniform vec2 uRes;
+
+            vec2 mbulb(vec3 pos, float power) {
+                vec3 z = pos;
+                float dr = 1.0, r = 0.0;
+                for (int i = 0; i < 7; i++) {
+                    r = length(z);
+                    if (r > 2.0) break;
+                    float rr = max(r, 0.001);
+                    float theta = acos(clamp(z.z / rr, -1.0, 1.0)) / rr * power;
+                    float phi = atan(z.y, z.x) / rr * power;
+                    float zr = pow(r, power);
+                    dr = pow(r, power - 1.0) * power * dr + 1.0;
+                    z = zr * vec3(sin(theta) * cos(phi), sin(phi) * sin(theta), cos(theta)) + pos;
+                }
+                return vec2(0.5 * log(r) * r / dr, r);
+            }
+
+            float map(vec3 p) {
+                float t = uTime * 0.22;
+                p.xz = mat2(cos(t), -sin(t), sin(t), cos(t)) * p.xz;
+                p.yz = mat2(cos(t*0.6), -sin(t*0.6), sin(t*0.6), cos(t*0.6)) * p.yz;
+                return mbulb(p * 1.15, 8.0).x;
+            }
+
+            vec3 calcNormal(vec3 p) {
+                vec2 e = vec2(0.0025, 0.0);
+                return normalize(vec3(
+                    map(p + e.xyy) - map(p - e.xyy),
+                    map(p + e.yxy) - map(p - e.yxy),
+                    map(p + e.yyx) - map(p - e.yyx)));
+            }
+
+            void main() {
+                vec2 uv = (gl_FragCoord.xy - 0.5 * uRes) / min(uRes.x, uRes.y);
+
+                float a = uTime * 0.11;
+                vec3 ro = vec3(0.0, 0.0, 3.4);
+                ro.xz = mat2(cos(a), -sin(a), sin(a), cos(a)) * ro.xz;
+                ro.y = 0.5 * sin(uTime * 0.17);
+
+                vec3 fw = normalize(-ro);
+                vec3 rt = normalize(cross(fw, vec3(0.0, 1.0, 0.0)));
+                vec3 up = cross(rt, fw);
+                vec3 rd = normalize(fw * 1.8 + uv.x * rt + uv.y * up);
+
+                float t = 0.0, d = 0.0;
+                int hit = 0;
+                for (int i = 0; i < 80; i++) {
+                    vec3 p = ro + rd * t;
+                    d = map(p);
+                    if (d < 0.0015 || t > 6.0) { if (d < 0.0015) hit = 1; break; }
+                    t += d * 0.9;
+                }
+
+                vec3 col = vec3(0.0);
+                if (hit) {
+                    vec3 p = ro + rd * t;
+                    vec3 n = calcNormal(p);
+                    vec3 l1 = normalize(vec3(1.5, 2.0, 1.0));
+                    vec3 l2 = normalize(vec3(-1.0, -1.2, 0.5));
+                    float dif = max(dot(n, l1), 0.0);
+                    float rim = pow(1.0 - max(dot(n, -rd), 0.0), 3.0);
+
+                    vec3 base = mix(vec3(0.85, 0.3, 0.06), vec3(1.0, 0.75, 0.3), dif);
+                    col = base * dif * 1.5;
+                    col += vec3(0.45, 0.2, 0.95) * rim * 1.3;
+                    col += vec3(0.3, 0.1, 0.45) * max(dot(n, l2), 0.0) * 0.6;
+                    col += pow(max(dot(reflect(-l1, n), -rd), 0.0), 48.0) * vec3(1.0, 0.8, 0.5);
+                }
+
+                // molten background glow
+                col += vec3(0.9, 0.4, 0.15) * exp(-dot(uv, uv) * 2.2) * 0.14;
+
+                col = 1.0 - exp(-col * 1.6);
+                gl_FragColor = vec4(col, 1.0);
+            }
+        `;
+        const coreMat = new THREE.ShaderMaterial({
+            uniforms: { uTime: { value: 0 }, uRes: { value: new THREE.Vector2(W * PR, H * PR) } },
+            vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+            fragmentShader: coreFS,
+            depthWrite: false
+        });
+        const coreQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), coreMat);
+        coreQuad.frustumCulled = false;
+        scene.add(coreQuad);
+
+        // ---------------- Spark Swarm (GPU orbital particles) ----------------
+        const COUNT = 16384;
+        const pGeo = new THREE.BufferGeometry();
+        const dummyPos = new Float32Array(COUNT * 3);
+        const seeds = new Float32Array(COUNT);
+        for (let i = 0; i < COUNT; i++) seeds[i] = Math.random();
+        pGeo.setAttribute('position', new THREE.BufferAttribute(dummyPos, 3));
+        pGeo.setAttribute('aSeed', new THREE.BufferAttribute(seeds, 1));
+
+        const sparkMat = new THREE.ShaderMaterial({
+            uniforms: { uTime: { value: 0 } },
+            vertexShader: `
+                attribute float aSeed;
+                uniform float uTime;
+                varying float vGlow;
+                void main() {
+                    float s = aSeed;
+                    float speed  = 0.15 + 0.55 * fract(s * 7.31);
+                    float phase  = s * 6.28318;
+                    float radius = 1.15 + 1.7 * pow(fract(s * 3.71), 1.4);
+                    float incl   = (fract(s * 5.13) - 0.5) * 2.4;
+                    float ang    = uTime * speed + phase;
+
+                    vec3 p;
+                    p.x = cos(ang) * radius;
+                    p.y = sin(ang * 0.9 + phase) * radius * 0.35;
+                    p.z = sin(ang) * radius;
+                    float ca = cos(incl), sa = sin(incl);
+                    p = vec3(p.x, p.y * ca - p.z * sa, p.y * sa + p.z * ca);
+                    p *= 1.0 + 0.18 * sin(uTime * 0.7 + s * 21.0);
+
+                    vec4 mv = modelViewMatrix * vec4(p, 1.0);
+                    gl_Position = projectionMatrix * mv;
+                    gl_PointSize = clamp((55.0 * fract(s * 9.17) + 12.0) / -mv.z, 1.0, 14.0);
+                    vGlow = fract(s * 4.31);
+                }
+            `,
+            fragmentShader: `
+                varying float vGlow;
+                void main() {
+                    vec2 d = gl_PointCoord - 0.5;
+                    float r = length(d);
+                    float a = smoothstep(0.5, 0.0, r);
+                    a *= a;
+                    vec3 c = mix(vec3(1.0, 0.45, 0.1), vec3(0.55, 0.25, 1.0), vGlow * 0.85);
+                    gl_FragColor = vec4(c * a, a);
+                }
+            `,
+            transparent: true,
+            depthTest: false,
+            blending: THREE.AdditiveBlending
+        });
+        const swarm = new THREE.Points(pGeo, sparkMat);
+        swarm.frustumCulled = false;
+        scene.add(swarm);
+
+        // ---------------- Feedback / Trail pass (ping-pong) ----------------
+        function makeRT() {
+            return new THREE.WebGLRenderTarget(W * PR, H * PR, {
+                minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat
+            });
+        }
+        let rtA = makeRT(), rtB = makeRT(), rtScene = makeRT();
+
+        const trailCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const fsQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2));
+
+        const trailMat = new THREE.ShaderMaterial({
+            uniforms: {
+                tCur: { value: null }, tPrev: { value: null },
+                uDecay: { value: 0.86 }, uTime: { value: 0 }
+            },
+            vertexShader: `void main(){ gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+            fragmentShader: `
+                uniform sampler2D tCur, tPrev;
+                uniform float uDecay, uTime;
+                varying vec2 vUv;
+                void main() {
+                    vec3 cur = texture2D(tCur, vUv).rgb;
+                    // slight temporal drift on the ghost = "chrono shimmer"
+                    vec2 off = vec2(sin(uTime * 0.31), cos(uTime * 0.23)) * 0.0015;
+                    vec3 prev = texture2D(tPrev, vUv + off).rgb;
+                    gl_FragColor = vec4(cur + prev * uDecay, 1.0);
+                }
+            `
+        });
+        fsQuad.material = trailMat;
+        const trailScene = new THREE.Scene();
+        trailScene.add(fsQuad);
+
+        // ---------------- Final Grade pass ----------------
+        const gradeMat = new THREE.ShaderMaterial({
+            uniforms: { tDiffuse: { value: null }, uTime: { value: 0 } },
+            vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+            fragmentShader: `
+                uniform sampler2D tDiffuse;
+                uniform float uTime;
+                varying vec2 vUv;
+                float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+                void main() {
+                    vec3 c = texture2D(tDiffuse, vUv).rgb;
+                    c = c / (1.0 + 0.35 * c);            // soft shoulder
+                    float d = distance(vUv, vec2(0.5));  // vignette
+                    c *= smoothstep(0.9, 0.25, d) * 1.12;
+                    c.r *= 1.06; c.b *= 0.94;            // warm grade
+                    float g = hash(vUv * vec2(1920.0, 1080.0) + fract(uTime * 0.13) * 7.0) - 0.5;
+                    c += g * 0.05;                       // film grain
+                    gl_FragColor = vec4(c, 1.0);
+                }
+            `
+        });
+        const gradeScene = new THREE.Scene();
+        const gradeQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), gradeMat);
+        gradeScene.add(gradeQuad);
+
+        // ---------------- Loop ----------------
+        const clock = new THREE.Clock();
+        const stEl = document.getElementById('st');
+        const uiEl = document.getElementById('ui');
+        const states = ['MOLTEN', 'PULSING', 'STABLE', 'SURGING'];
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const t = clock.getElapsedTime();
+
+            coreMat.uniforms.uTime.value = t;
+            sparkMat.uniforms.uTime.value = t * 0.55;
+            swarm.rotation.y = t * 0.03;
+            swarm.rotation.x = Math.sin(t * 0.1) * 0.15;
+
+            // 1. main scene -> rtScene
+            renderer.setRenderTarget(rtScene);
+            renderer.render(scene, camera);
+
+            // 2. trail composite (rtScene + ghost rtB) -> rtA
+            trailMat.uniforms.tCur.value = rtScene.texture;
+            trailMat.uniforms.tPrev.value = rtB.texture;
+            trailMat.uniforms.uTime.value = t;
+            renderer.setRenderTarget(rtA);
+            renderer.render(trailScene, trailCam);
+
+            // 3. grade rtA -> screen
+            gradeMat.uniforms.tDiffuse.value = rtA.texture;
+            gradeMat.uniforms.uTime.value = t;
+            renderer.setRenderTarget(null);
+            renderer.render(gradeScene, trailCam);
+
+            // ping-pong swap
+            const tmp = rtA; rtA = rtB; rtB = tmp;
+
+            // UI pulse
+            uiEl.style.opacity = 0.55 + Math.sin(t * 4.0) * 0.45;
+            stEl.textContent = states[Math.floor(t * 0.5) % states.length];
+        }
+
+        window.addEventListener('resize', () => {
+            W = window.innerWidth; H = window.innerHeight;
+            camera.aspect = W / H;
+            camera.updateProjectionMatrix();
+            renderer.setPixelRatio(PR);
+            renderer.setSize(W, H);
+            coreMat.uniforms.uRes.value.set(W * PR, H * PR);
+            [rtA, rtB, rtScene].forEach(rt => { rt.setSize(W * PR, H * PR); });
+        });
+
+        animate();
+    </script>
+</body>
+</html>

@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SINGULARITY // CORE</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #050505;
+            font-family: 'Courier New', Courier, monospace;
+        }
+        canvas {
+            display: block;
+        }
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #ffaa00;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-size: 10px;
+            pointer-events: none;
+            text-shadow: 0 0 10px #ff4400;
+            z-index: 10;
+        }
+        #stats {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            color: #555;
+            font-size: 8px;
+            text-align: right;
+        }
+    </style>
+</head>
+<body>
+    <div id="ui">System: SINGULARITY_CORE<br>Flux: CRITICAL</div>
+    <div id="stats">ENTROPY: HIGH</div>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        // --- Shader Configuration ---
+        
+        const vertexShader = `
+            uniform float uTime;
+            uniform float uSize;
+            
+            varying vec3 vColor;
+            varying float vNoise;
+            
+            // Simple pseudo-random noise
+            float hash(vec3 p) {
+                p  = fract( p*0.3183099+.1 );
+                p *= 17.0;
+                return fract( p.x*p.y*p.z*(p.x+p.y+p.z) );
+            }
+
+            // 3D Noise function
+            float noise(vec3 x) {
+                vec3 i = floor(x);
+                vec3 f = fract(x);
+                f = f*f*(3.0-2.0*f);
+                return mix(mix(mix( hash(i+vec3(0,0,0)), 
+                                    hash(i+vec3(1,0,0)),f.x),
+                               mix( hash(i+vec3(0,1,0)), 
+                                    hash(i+vec3(1,1,0)),f.x),f.y),
+                           mix(mix( hash(i+vec3(0,0,1)), 
+                                    hash(i+vec3(1,0,1)),f.x),
+                               mix( hash(i+vec3(0,1,1)), 
+                                    hash(i+vec3(1,1,1)),f.x),f.y),f.z);
+            }
+
+            float fbm(vec3 x) {
+                float v = 0.0;
+                float a = 0.5;
+                vec3 shift = vec3(100);
+                for (int i = 0; i < 5; ++i) {
+                    v += a * noise(x);
+                    x = x * 2.0 + shift;
+                    a *= 0.5;
+                }
+                return v;
+            }
+
+            void main() {
+                vec3 pos = position;
+                
+                // Calculate intense noise distortion
+                float n = fbm(pos * 0.15 + uTime * 0.3);
+                vNoise = n;
+                
+                // Pulse outward expansion
+                float pulse = sin(uTime * 1.5 + length(pos) * 0.5) * 0.2;
+                pos += normal * n * 2.0;
+                pos += normal * pulse * 0.5;
+
+                vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+                gl_Position = projectionMatrix * mvPosition;
+
+                // Dynamic point size based on depth and noise
+                gl_PointSize = uSize * (300.0 / -mvPosition.z) * (1.0 + n * 1.5);
+                
+                // Heat color calculation
+                float dist = length(pos);
+                float heat = smoothstep(0.0, 1.0, n); 
+                vColor = mix(vec3(1.0, 0.2, 0.0), vec3(1.0, 1.0, 0.8), heat);
+            }
+        `;
+
+        const fragmentShader = `
+            varying vec3 vColor;
+            varying float vNoise;
+
+            void main() {
+                // Circular particle
+                vec2 coord = gl_PointCoord - vec2(0.5);
+                float dist = length(coord);
+                
+                if (dist > 0.5) discard;
+                
+                // Soft glow edge
+                float alpha = 1.0 - smoothstep(0.3, 0.5, dist);
+                
+                // Add a bright core
+                float core = 1.0 - smoothstep(0.0, 0.1, dist);
+                
+                gl_FragColor = vec4(vColor, alpha * (0.5 + 0.5 * vNoise) + core);
+            }
+        `;
+
+        class Singularity {
+            constructor() {
+                this.scene = new THREE.Scene();
+                this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
+                this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+                this.clock = new THREE.Clock();
+                
+                this.init();
+            }
+
+            init() {
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                document.body.appendChild(this.renderer.domElement);
+
+                this.camera.position.z = 25;
+
+                // High density sphere for the core
+                const geometry = new THREE.IcosahedronGeometry(8, 60);
+                const positions = geometry.attributes.position;
+                
+                // Create a new geometry for particles
+                const particleGeometry = new THREE.BufferGeometry();
+                const pPositions = [];
+                const pNormals = [];
+
+                for (let i = 0; i < positions.count; i++) {
+                    // Sample heavily to create a dense cluster
+                    if (Math.random() > 0.1) {
+                        pPositions.push(
+                            positions.getX(i),
+                            positions.getY(i),
+                            positions.getZ(i)
+                        );
+                        // Calculate approximate normal for distortion direction
+                        const x = positions.getX(i);
+                        const y = positions.getY(i);
+                        const z = positions.getZ(i);
+                        const len = Math.sqrt(x*x + y*y + z*z);
+                        pNormals.push(x/len, y/len, z/len);
+                    }
+                }
+                
+                particleGeometry.setAttribute('position', new THREE.Float32BufferAttribute(pPositions, 3));
+                
+                this.material = new THREE.ShaderMaterial({
+                    uniforms: {
+                        uTime: { value: 0 },
+                        uSize: { value: 4.0 }
+                    },
+                    vertexShader,
+                    fragmentShader,
+                    transparent: true,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false
+                });
+
+                this.points = new THREE.Points(particleGeometry, this.material);
+                this.scene.add(this.points);
+
+                // Add a secondary "Halo" ring
+                const ringGeo = new THREE.TorusGeometry(14, 0.1, 16, 100);
+                const ringMat = new THREE.MeshBasicMaterial({ color: 0xff4400, transparent: true, opacity: 0.3, wireframe: true });
+                this.ring = new THREE.Mesh(ringGeo, ringMat);
+                this.scene.add(this.ring);
+
+                // Background Dust (Starfield)
+                const dustCount = 5000;
+                const dustGeo = new THREE.BufferGeometry();
+                const dustPos = new Float32Array(dustCount * 3);
+                
+                for(let i=0; i<dustCount*3; i++) {
+                    dustPos[i] = (Math.random() - 0.5) * 150;
+                }
+                dustGeo.setAttribute('position', new THREE.Float32BufferAttribute(dustPos, 3));
+                const dustMat = new THREE.PointsMaterial({
+                    color: 0x444444,
+                    size: 0.15,
+                    transparent: true,
+                    opacity: 0.8
+                });
+                this.dust = new THREE.Points(dustGeo, dustMat);
+                this.scene.add(this.dust);
+
+                window.addEventListener('resize', () => this.onResize());
+                this.animate();
+            }
+
+            onResize() {
+                this.camera.aspect = window.innerWidth / window.innerHeight;
+                this.camera.updateProjectionMatrix();
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+            }
+
+            animate() {
+                requestAnimationFrame(() => this.animate());
+                const elapsed = this.clock.getElapsedTime();
+
+                this.material.uniforms.uTime.value = elapsed;
+                
+                // Complex rotation for the core
+                this.points.rotation.x = elapsed * 0.15;
+                this.points.rotation.y = elapsed * 0.2;
+                
+                // Counter-rotation for the ring
+                this.ring.rotation.x = elapsed * 0.1;
+                this.ring.rotation.y = elapsed * 0.1;
+                this.ring.scale.setScalar(1 + Math.sin(elapsed * 2) * 0.05);
+
+                // Slow drift for background
+                this.dust.rotation.y = -elapsed * 0.05;
+
+                // Camera subtle movement
+                this.camera.position.x = Math.sin(elapsed * 0.1) * 5;
+                this.camera.position.y = Math.cos(elapsed * 0.1) * 5;
+                this.camera.lookAt(0, 0, 0);
+
+                this.renderer.render(this.scene, this.camera);
+            }
+        }
+
+        new Singularity();
+    </script>
+</body>
+</html>
+</html><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FLUID CHAOS // DEMO</title>
+    <style>
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            background-color: #050505; 
+            font-family: 'Courier New', Courier, monospace; 
+        }
+        canvas { 
+            display: block; 
+        }
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #0ff;
+            text-transform: uppercase;
+            letter-spacing: 4px;
+            font-size: 10px;
+            pointer-events: none;
+            text-shadow: 0 0 10px #0ff;
+            opacity: 0.6;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div id="ui">System: Fluid_Dynamics // Vectors: Active</div>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        // Shader for the flowing particle field
+        const vertexShader = `
+            uniform float uTime;
+            uniform float uSpeed;
+            
+            varying float vDist;
+            varying vec2 vUv;
+
+            // Simplex noise function for organic movement
+            vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+            vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+            vec3 permute(vec3 x) { return mod289(((x*34.0)+1.0)*x); }
+            float snoise(vec2 v) {
+                const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439);
+                vec2 i  = floor(v + dot(v, C.yy) );
+                vec2 x0 = v -   i + dot(i, C.xx);
+                vec2 i1;
+                i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+                vec4 x12 = x0.xyxy + C.xxzz;
+                x12.xy -= i1;
+                i = mod289(i);
+                vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 )) + i.x + vec3(0.0, i1.x, 1.0 ));
+                vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
+                m = m*m ;
+                m = m*m ;
+                vec3 x = 2.0 * fract(p * C.www) - 1.0;
+                vec3 h = abs(x) - 0.5;
+                vec3 ox = floor(x + 0.5);
+                vec3 a0 = x - ox;
+                m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
+                vec3 g;
+                g.x  = a0.x  * x0.x  + h.x  * x0.y;
+                g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+                return 130.0 * dot(m, g);
+            }
+
+            void main() {
+                vUv = uv;
+                vec3 pos = position;
+
+                // Create a wave-like displacement
+                float noiseVal = snoise(vec2(pos.x * 0.5 + uTime * uSpeed, pos.y * 0.5));
+                
+                // Displace along normal
+                pos.z += noiseVal * 4.0;
+                pos.x += snoise(vec2(pos.y * 0.3 + uTime * uSpeed * 0.5, pos.z * 0.3)) * 2.0;
+                
+                vDist = noiseVal;
+
+                vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+                gl_PointSize = (8.0 * (200.0 / -mvPosition.z));
+                gl_Position = projectionMatrix * mvPosition;
+            }
+        `;
+
+        const fragmentShader = `
+            uniform float uTime;
+            varying float vDist;
+            varying vec2 vUv;
+
+            void main() {
+                vec2 coord = gl_PointCoord - vec2(0.5);
+                float dist = length(coord);
+                
+                // Soft circular particle
+                if (dist > 0.5) discard;
+
+                // Color logic based on distortion
+                vec3 colorA = vec3(0.0, 1.0, 1.0); // Cyan
+                vec3 colorB = vec3(0.0, 0.5, 1.0); // Deep Blue
+                vec3 colorC = vec3(0.8, 0.2, 0.8); // Purple highlight
+
+                float mixFactor = smoothstep(-1.0, 1.0, vDist);
+                vec3 finalColor = mix(colorB, colorA, mixFactor);
+
+                // Add highlights at peaks
+                if(mixFactor > 0.8) {
+                    finalColor = mix(finalColor, colorC, (mixFactor - 0.8) * 5.0);
+                }
+
+                // Edge glow
+                float alpha = 1.0 - smoothstep(0.3, 0.5, dist);
+                
+                // Subtle pulse
+                alpha *= 0.6 + 0.4 * sin(uTime * 3.0 + vUv.x * 10.0);
+
+                gl_FragColor = vec4(finalColor, alpha);
+            }
+        `;
+
+        class Demo {
+            constructor() {
+                this.scene = new THREE.Scene();
+                this.camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
+                this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
+                this.clock = new THREE.Clock();
+                
+                this.init();
+            }
+
+            init() {
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                document.body.appendChild(this.renderer.domElement);
+
+                // Create a flowing plane geometry
+                const geometry = new THREE.PlaneGeometry(40, 30, 100, 100);
+                
+                // Store original positions for wave calc
+                const originalPositions = geometry.attributes.position.array.slice();
+
+                this.material = new THREE.ShaderMaterial({
+                    uniforms: {
+                        uTime: { value: 0 },
+                        uSpeed: { value: 0.5 }
+                    },
+                    vertexShader,
+                    fragmentShader,
+                    transparent: true,
+                    depthWrite: false,
+                    blending: THREE.AdditiveBlending
+                });
+
+                this.mesh = new THREE.Points(geometry, this.material);
+                this.mesh.rotation.x = -Math.PI * 0.15; // Tilt slightly
+                this.scene.add(this.mesh);
+
+                // Grid helper for technical feel
+                const gridHelper = new THREE.GridHelper(50, 50, 0x003333, 0x001111);
+                gridHelper.position.y = -5;
+                gridHelper.material.transparent = true;
+                gridHelper.material.opacity = 0.2;
+                this.scene.add(gridHelper);
+
+                // Floating background geometric shapes
+                this.addFloatingGeometry();
+
+                window.addEventListener('resize', () => this.onResize());
+                this.animate();
+            }
+
+            addFloatingGeometry() {
+                const geo = new THREE.IcosahedronGeometry(0.5, 0);
+                const mat = new THREE.MeshBasicMaterial({ color: 0x00ffff, wireframe: true, transparent: true, opacity: 0.3 });
+                
+                this.geometries = [];
+                for(let i=0; i<5; i++) {
+                    const mesh = new THREE.Mesh(geo, mat);
+                    mesh.position.set((Math.random()-0.5)*20, (Math.random()-0.5)*10, (Math.random()-0.5)*10);
+                    mesh.userData = {
+                        speed: Math.random() * 0.02 + 0.01,
+                        rotSpeed: Math.random() * 0.02
+                    };
+                    this.scene.add(mesh);
+                    this.geometries.push(mesh);
+                }
+            }
+
+            onResize() {
+                this.camera.aspect = window.innerWidth / window.innerHeight;
+                this.camera.updateProjectionMatrix();
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+            }
+
+            animate() {
+                requestAnimationFrame(() => this.animate());
+                const elapsed = this.clock.getElapsedTime();
+
+                this.material.uniforms.uTime.value = elapsed;
+
+                // Rotate the entire plane slowly
+                this.mesh.rotation.z = Math.sin(elapsed * 0.1) * 0.1;
+                
+                // Animate floating shapes
+                this.geometries.forEach(mesh => {
+                    mesh.position.y += Math.sin(elapsed * mesh.userData.speed) * 0.02;
+                    mesh.rotation.x += mesh.userData.rotSpeed;
+                    mesh.rotation.y += mesh.userData.rotSpeed;
+                });
+
+                // Camera movement
+                const targetX = Math.sin(elapsed * 0.1) * 5;
+                const targetY = Math.cos(elapsed * 0.15) * 3;
+                this.camera.position.x += (targetX - this.camera.position.x) * 0.05;
+                this.camera.position.y += (targetY - this.camera.position.y) * 0.05;
+                this.camera.lookAt(0, 0, 0);
+
+                this.renderer.render(this.scene, this.camera);
+            }
+        }
+
+        new Demo();
+    </script>
+</body>
+</html>

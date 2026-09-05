@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solaris Drift // Ember Study</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { height: 100%; overflow: hidden; background: #0a0503; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+
+        #vignette {
+            position: fixed; inset: 0; pointer-events: none;
+            background: radial-gradient(ellipse at center, transparent 40%, rgba(10,4,2,0.85) 100%);
+            z-index: 3;
+        }
+        #scan {
+            position: fixed; inset: 0; pointer-events: none; z-index: 4;
+            background: repeating-linear-gradient(
+                to bottom,
+                rgba(0,0,0,0) 0px,
+                rgba(0,0,0,0) 2px,
+                rgba(255,120,40,0.03) 3px,
+                rgba(0,0,0,0) 4px
+            );
+            mix-blend-mode: screen;
+        }
+
+        #hud {
+            position: absolute; top: 28px; right: 30px; z-index: 6;
+            font-family: 'Courier New', Courier, monospace;
+            color: rgba(255, 176, 96, 0.85);
+            text-align: right;
+            font-size: 12px;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            text-shadow: 0 0 8px rgba(255,120,40,0.6), 0 0 2px rgba(255,200,120,0.9);
+            pointer-events: none;
+            line-height: 1.9;
+        }
+        #hud .big {
+            font-size: 22px;
+            letter-spacing: 6px;
+            color: rgba(255, 210, 150, 0.95);
+            text-shadow: 0 0 14px rgba(255,120,40,0.8);
+        }
+        #hud .sep { color: rgba(255,120,40,0.3); }
+        .blink { animation: blink 1.4s steps(2, jump-none) infinite; }
+        @keyframes blink { 50% { opacity: 0.15; } }
+
+        #bar {
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            width: 240px; height: 3px; background: rgba(255,120,40,0.12); z-index: 6;
+            pointer-events: none;
+        }
+        #barFill { height: 100%; width: 40%; background: linear-gradient(90deg, #8a1e00, #ff6a00, #ffd27a);
+            box-shadow: 0 0 10px rgba(255,120,40,0.7); transition: width 0.3s ease; }
+
+        #title {
+            position: absolute; bottom: 40px; left: 30px; z-index: 6;
+            font-family: 'Courier New', Courier, monospace;
+            color: rgba(255,176,96,0.5); font-size: 11px; letter-spacing: 4px;
+            text-transform: uppercase; pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="vignette"></div>
+    <div id="scan"></div>
+    <div id="hud">
+        <div class="big">Solaris</div>
+        <div>Drift <span class="sep">//</span> Ember Study</div>
+        <div class="sep">--------------------------------</div>
+        <div>Plasma Core&nbsp;&nbsp;<span id="plasma" class="blink">98.4</span>%</div>
+        <div>Accretion&nbsp;&nbsp;&nbsp;<span id="accretion">1.00</span>x</div>
+        <div>Photon Flux&nbsp;&nbsp;<span id="flux">000000</span></div>
+        <div>Frame&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span id="frame">0</span></div>
+    </div>
+    <div id="bar"><div id="barFill"></div></div>
+    <div id="title">Render: Three.js r160 &nbsp;·&nbsp; 14,000 motes</div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        const CONFIG = {
+            particleCount: 14000,
+            coreScale: 1.6,
+            palette: {
+                deep:   new THREE.Color('#3a0a02'),
+                ember:  new THREE.Color('#ff6a00'),
+                gold:   new THREE.Color('#ffd27a'),
+                white:  new THREE.Color('#fff3e0')
+            }
+        };
+
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x0a0503, 0.028);
+
+        const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 200);
+        camera.position.set(0, 4, 14);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+        renderer.setSize(innerWidth, innerHeight);
+        renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+        renderer.setClearColor(0x0a0503, 1);
+        document.body.appendChild(renderer.domElement);
+
+        const NOISE = `
+        vec3 mod289(vec3 x){return x - floor(x*(1.0/289.0))*289.0;}
+        vec4 mod289(vec4 x){return x - floor(x*(1.0/289.0))*289.0;}
+        vec4 permute(vec4 x){return mod289(((x*34.0)+1.0)*x);}
+        vec4 taylorInvSqrt(vec4 r){return 1.79284291400159 - 0.85373472095314*r;}
+        float snoise(vec3 v){
+            const vec2 C = vec2(1.0/6.0, 1.0/3.0);
+            const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+            vec3 i  = floor(v + dot(v, C.yyy));
+            vec3 x0 = v - i + dot(i, C.xxx);
+            vec3 g = step(x0.yzx, x0.xyz);
+            vec3 l = 1.0 - g;
+            vec3 i1 = min(g.xyz, l.zxy);
+            vec3 i2 = max(g.xyz, l.zxy);
+            vec3 x1 = x0 - i1 + C.xxx;
+            vec3 x2 = x0 - i2 + C.yyy;
+            vec3 x3 = x0 - 1.0 + C.zzz;
+            i = mod289(i);
+            vec4 p = permute(permute(permute(
+                i.z + vec4(0.0, i1.z, i2.z, 1.0))
+                + i.y + vec4(0.0, i1.y, i2.y, 1.0))
+                + i.x + vec4(0.0, i1.x, i2.x, 1.0));
+            float n_ = 0.142857142857;
+            vec3 ns = n_ * D.wyz - D.xzx;
+            vec4 j = p - 49.0*floor(p*ns.z*ns.z);
+            vec4 x_ = floor(j*ns.z);
+            vec4 y_ = floor(j - 7.0*x_);
+            vec4 x = x_*ns.x + ns.yyyy;
+            vec4 y = y_*ns.x + ns.yyyy;
+            vec4 h = 1.0 - abs(x) - abs(y);
+            vec4 b0 = vec4(x.xy, y.xy);
+            vec4 b1 = vec4(x.zw, y.zw);
+            vec4 s0 = floor(b0)*2.0 + 1.0;
+            vec4 s1 = floor(b1)*2.0 + 1.0;
+            vec4 sh = -step(h, vec4(0.0));
+            vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy;
+            vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww;
+            vec3 p0 = vec3(a0.xy, h.x);
+            vec3 p1 = vec3(a0.zw, h.y);
+            vec3 p2 = vec3(a1.xy, h.z);
+            vec3 p3 = vec3(a1.zw, h.h);
+            vec4 norm = taylorInvSqrt(vec4(dot(p0,p0),dot(p1,p1),dot(p2,p2),dot(p3,p3)));
+            p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
+            vec4 m = max(0.6 - vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)), 0.0);
+            m = m*m;
+            return 42.0*dot(m*m, vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));
+        }`;
+
+        // ---- CORE (molten torus knot) ----
+        const coreVert = `
+        uniform float uTime;
+        uniform float uMouse;
+        varying vec3 vNormal;
+        varying vec3 vView;
+        varying float vDisp;
+        ${NOISE}
+        void main(){
+            float n = snoise(vec3(position * 0.9 + uTime*0.35));
+            float n2 = snoise(vec3(position * 2.4 - uTime*0.2));
+            float disp = (n*0.7 + n2*0.3) * 0.45 * (1.0 + uMouse*1.4);
+            vec3 pos = position + normal * disp;
+            vDisp = disp;
+            vec4 mv = modelViewMatrix * vec4(pos, 1.0);
+            vView = normalize(-mv.xyz);
+            vNormal = normalize(normalMatrix * normal);
+            gl_Position = projectionMatrix * mv;
+        }`;
+
+        const coreFrag = `
+        uniform float uTime;
+        uniform vec3 uDeep;
+        uniform vec3 uEmber;
+        uniform vec3 uGold;
+        uniform vec3 uWhite;
+        varying vec3 vNormal;
+        varying vec3 vView;
+        varying float vDisp;
+        void main(){
+            float fres = pow(1.0 - abs(dot(normalize(vNormal), normalize(vView))), 2.0);
+            float heat = clamp(vDisp*1.4 + 0.5, 0.0, 1.0);
+            float flicker = 0.85 + 0.15*sin(uTime*3.0 + vDisp*8.0);
+            vec3 base = mix(uDeep, uEmber, heat);
+            base = mix(base, uGold, fres*0.9);
+            base = mix(base, uWhite, pow(fres, 3.0)*heat);
+            base *= flicker;
+            gl_FragColor = vec4(base, 1.0);
+        }`;
+
+        const coreGeo = new THREE.TorusKnotGeometry(CONFIG.coreScale, CONFIG.coreScale*0.28, 220, 40, 2, 3);
+        const coreMat = new THREE.ShaderMaterial({
+            vertexShader: coreVert, fragmentShader: coreFrag,
+            uniforms: {
+                uTime: { value: 0 }, uMouse: { value: 0 },
+                uDeep: { value: CONFIG.palette.deep },
+                uEmber: { value: CONFIG.palette.ember },
+                uGold: { value: CONFIG.palette.gold },
+                uWhite: { value: CONFIG.palette.white }
+            }
+        });
+        const core = new THREE.Mesh(coreGeo, coreMat);
+        scene.add(core);
+
+        // hot inner sphere glow
+        const glowGeo = new THREE.SphereGeometry(CONFIG.coreScale*0.9, 32, 32);
+        const glowMat = new THREE.ShaderMaterial({
+            transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+            vertexShader: `varying vec3 vN; varying vec3 vV; void main(){
+                vec4 mv = modelViewMatrix*vec4(position,1.0); vV = normalize(-mv.xyz);
+                vN = normalize(normalMatrix*normal); gl_Position = projectionMatrix*mv;}`,
+            fragmentShader: `uniform vec3 uC; varying vec3 vN; varying vec3 vV;
+                void main(){ float f = pow(1.0-abs(dot(normalize(vN),normalize(vV))),1.5);
+                gl_FragColor = vec4(uC*f, f); }`,
+            uniforms: { uC: { value: new THREE.Color('#ffb060') } }
+        });
+        scene.add(new THREE.Mesh(glowGeo, glowMat));
+
+        // ---- ACCRETION DISK (swirling motes) ----
+        const pCount = CONFIG.particleCount;
+        const positions = new Float32Array(pCount*3);
+        const aRadius = new Float32Array(pCount);
+        const aPhase  = new Float32Array(pCount);
+        const aSpeed  = new Float32Array(pCount);
+        const aY      = new Float32Array(pCount);
+        const aScale  = new Float32Array(pCount);
+        const aHeat   = new Float32Array(pCount);
+
+        for (let i = 0; i < pCount; i++){
+            const r = 3.2 + Math.pow(Math.random(), 1.6) * 12.0;
+            const arm = Math.floor(Math.random()*3);
+            const spiral = r*0.55 + arm*(Math.PI*2/3);
+            const ang = spiral + (Math.random()-0.5)*0.9;
+            const y = (Math.random()-0.5) * (2.4 - r*0.12) * Math.exp(-r*0.08);
+            positions[i*3]   = Math.cos(ang)*r;
+            positions[i*3+1] = y;
+            positions[i*3+2] = Math.sin(ang)*r;
+            aRadius[i] = r;
+            aPhase[i]  = ang;
+            aSpeed[i]  = 0.15 / Math.sqrt(r) + 0.02;
+            aY[i]      = y;
+            aScale[i]  = Math.random()*1.6 + 0.4;
+            aHeat[i]   = Math.max(0, 1 - r/15);
+        }
+        const pGeo = new THREE.BufferGeometry();
+        pGeo.setAttribute('position', new THREE.BufferAttribute(positions,3));
+        pGeo.setAttribute('aRadius', new THREE.BufferAttribute(aRadius,1));
+        pGeo.setAttribute('aPhase',  new THREE.BufferAttribute(aPhase,1));
+        pGeo.setAttribute('aSpeed',  new THREE.BufferAttribute(aSpeed,1));
+        pGeo.setAttribute('aY',      new THREE.BufferAttribute(aY,1));
+        pGeo.setAttribute('aScale',  new THREE.BufferAttribute(aScale,1));
+        pGeo.setAttribute('aHeat',   new THREE.BufferAttribute(aHeat,1));
+
+        const pMat = new THREE.ShaderMaterial({
+            transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+            vertexShader: `
+            uniform float uTime;
+            uniform float uSize;
+            attribute float aRadius; attribute float aPhase; attribute float aSpeed;
+            attribute float aY; attribute float aScale; attribute float aHeat;
+            varying float vHeat; varying float vFade;
+            void main(){
+                float ang = aPhase + uTime * aSpeed;
+                float r = aRadius + sin(uTime*0.4 + aPhase*3.0)*0.25;
+                float y = aY + sin(uTime*0.8 + aPhase*5.0)*0.15;
+                vec3 pos = vec3(cos(ang)*r, y, sin(ang)*r);
+                vec4 mv = modelViewMatrix * vec4(pos,1.0);
+                gl_PointSize = uSize * aScale * (14.0 / -mv.z);
+                gl_Position = projectionMatrix * mv;
+                vHeat = aHeat;
+                vFade = smoothstep(16.0, 4.0, r) * (0.4 + 0.6*aHeat);
+            }`,
+            fragmentShader: `
+            uniform vec3 uEmber; uniform vec3 uGold; uniform vec3 uWhite;
+            varying float vHeat; varying float vFade;
+            void main(){
+                vec2 c = gl_PointCoord - 0.5;
+                float d = length(c);
+                if(d > 0.5) discard;
+                float core = pow(1.0 - d*2.0, 1.8);
+                vec3 col = mix(uEmber, uGold, vHeat);
+                col = mix(col, uWhite, pow(vHeat,2.0)*core);
+                gl_FragColor = vec4(col * core, core * vFade * 0.9);
+            }`,
+            uniforms: {
+                uTime: { value: 0 }, uSize: { value: 4.5 },
+                uEmber: { value: CONFIG.palette.ember },
+                uGold: { value: CONFIG.palette.gold },
+                uWhite: { value: CONFIG.palette.white }
+            }
+        });
+        const disk = new THREE.Points(pGeo, pMat);
+        scene.add(disk);
+
+        // ---- INTERACTION ----
+        let target = 0, mouse = 0;
+        addEventListener('mousemove', e => {
+            target = ((e.clientX/innerWidth) + (e.clientY/innerHeight)) * 0.5;
+        });
+        addEventListener('mousedown', () => target = 1.4);
+        addEventListener('mouseup', () => target = 0.6);
+
+        addEventListener('resize', () => {
+            camera.aspect = innerWidth/innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(innerWidth, innerHeight);
+        });
+
+        // ---- LOOP ----
+        const clock = new THREE.Clock();
+        let frame = 0;
+        const el = {
+            plasma: document.getElementById('plasma'),
+            accretion: document.getElementById('accretion'),
+            flux: document.getElementById('flux'),
+            frame: document.getElementById('frame'),
+            bar: document.getElementById('barFill')
+        };
+
+        function animate(){
+            requestAnimationFrame(animate);
+            const t = clock.getElapsedTime();
+            mouse += (target - mouse) * 0.06;
+
+            coreMat.uniforms.uTime.value = t;
+            coreMat.uniforms.uMouse.value = mouse;
+            pMat.uniforms.uTime.value = t;
+
+            core.rotation.y = t * 0.15;
+            core.rotation.x = Math.sin(t*0.2) * 0.3;
+            disk.rotation.y = -t * 0.02;
+
+            camera.position.x = Math.sin(t*0.1) * 3.0;
+            camera.position.z = 14 + Math.cos(t*0.1) * 2.0;
+            camera.position.y = 4 + Math.sin(t*0.15) * 1.5 + mouse*2.0;
+            camera.lookAt(0, 0, 0);
+
+            frame++;
+            if (frame % 6 === 0){
+                el.frame.textContent = frame;
+                el.flux.textContent = String(Math.floor(100000 + Math.sin(t)*40000 + Math.random()*8000)).padStart(6,'0');
+                el.plasma.textContent = (95 + mouse*4 + Math.sin(t*2)*2).toFixed(1);
+                el.accretion.textContent = (0.8 + mouse*0.5 + Math.abs(Math.sin(t*0.3))*0.3).toFixed(2);
+                el.bar.style.width = Math.min(100, 40 + mouse*40 + Math.sin(t)*8) + '%';
+            }
+
+            renderer.render(scene, camera);
+        }
+        animate();
+    </script>
+</body>
+</html>

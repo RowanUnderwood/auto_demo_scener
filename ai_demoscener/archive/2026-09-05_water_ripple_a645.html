@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Water Surface</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #02060f; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
+<script>
+(function () {
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x02060f);
+
+  const camera = new THREE.PerspectiveCamera(
+    55, window.innerWidth / window.innerHeight, 0.1, 200
+  );
+  camera.position.set(0, 9, 13);
+  camera.lookAt(0, 0, 0);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  document.body.appendChild(renderer.domElement);
+
+  const ambient = new THREE.AmbientLight(0x0a1a2a, 0.6);
+  scene.add(ambient);
+
+  const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+  dirLight.position.set(12, 2.5, 9);
+  dirLight.target.position.set(0, 0, 0);
+  scene.add(dirLight);
+  scene.add(dirLight.target);
+
+  const geometry = new THREE.PlaneGeometry(20, 20, 200, 200);
+
+  const material = new THREE.MeshPhongMaterial({
+    color: 0x0a3550,            // deep teal leaning cobalt
+    specular: 0x66ffff,         // bright cyan specular
+    shininess: 120,
+    side: THREE.DoubleSide
+  });
+
+  const waveGLSL = `
+    float waveH(vec2 p, float t) {
+      return 0.55 * sin(dot(p, vec2( 0.5,  0.3)) * 2.0 + t * 1.0)
+           + 0.30 * sin(dot(p, vec2(-0.2,  0.8)) * 3.0 + t * 1.7)
+           + 0.20 * sin(dot(p, vec2( 0.7, -0.6)) * 4.5 + t * 0.6);
+    }
+    vec2 waveG(vec2 p, float t) {
+      return 0.55 * 2.0 * cos(dot(p, vec2( 0.5,  0.3)) * 2.0 + t * 1.0) * vec2( 0.5,  0.3)
+           + 0.30 * 3.0 * cos(dot(p, vec2(-0.2,  0.8)) * 3.0 + t * 1.7) * vec2(-0.2,  0.8)
+           + 0.20 * 4.5 * cos(dot(p, vec2( 0.7, -0.6)) * 4.5 + t * 0.6) * vec2( 0.7, -0.6);
+    }
+  `;
+
+  let shaderRef = null;
+  material.onBeforeCompile = function (shader) {
+    shader.uniforms.uTime = { value: 0 };
+    shader.vertexShader =
+      "uniform float uTime;\n" +
+      waveGLSL +
+      shader.vertexShader;
+
+    shader.vertexShader = shader.vertexShader.replace(
+      "#include <beginnormal_vertex>",
+      `#include <beginnormal_vertex>
+       {
+         vec2 g = waveG(position.xy, uTime);
+         objectNormal = normalize(vec3(-g.x, -g.y, 1.0));
+       }`
+    );
+
+    shader.vertexShader = shader.vertexShader.replace(
+      "#include <begin_vertex>",
+      `#include <begin_vertex>
+       transformed.z += waveH(position.xy, uTime);`
+    );
+
+    shaderRef = shader;
+  };
+
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.rotation.x = -Math.PI / 2;
+  scene.add(mesh);
+
+  const clock = new THREE.Clock();
+  function animate() {
+    requestAnimationFrame(animate);
+    const t = clock.getElapsedTime();
+    if (shaderRef) shaderRef.uniforms.uTime.value = t;
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  window.addEventListener('resize', function () {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+})();
+</script>
+</body>
+</html>

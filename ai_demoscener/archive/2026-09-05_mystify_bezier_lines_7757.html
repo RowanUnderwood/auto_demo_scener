@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Mystify</title>
+<style>
+  html, body { margin: 0; padding: 0; overflow: hidden; background: #000; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function () {
+  var W = 16, H = 9; // world bounds of the rectangle
+
+  var renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setClearColor(0x000000, 1);
+  document.body.appendChild(renderer.domElement);
+
+  var scene = new THREE.Scene();
+
+  var camera = new THREE.OrthographicCamera(
+    -W / 2, W / 2, H / 2, -H / 2, -100, 100
+  );
+  camera.position.z = 50;
+
+  var SNAPSHOTS = 30;
+
+  function rand(a, b) { return a + Math.random() * (b - a); }
+
+  function makePolygon() {
+    var pts = [], vels = [];
+    for (var i = 0; i < 4; i++) {
+      pts.push({ x: rand(-W / 2 + 1, W / 2 - 1), y: rand(-H / 2 + 1, H / 2 - 1) });
+      vels.push({
+        x: rand(-0.08, 0.08) || 0.05,
+        y: rand(-0.08, 0.08) || 0.05
+      });
+    }
+    return { pts: pts, vels: vels };
+  }
+
+  function stepPolygon(p) {
+    for (var i = 0; i < 4; i++) {
+      var pt = p.pts[i], v = p.vels[i];
+      pt.x += v.x;
+      pt.y += v.y;
+      if (pt.x < -W / 2) { pt.x = -W / 2; v.x = Math.abs(v.x); }
+      if (pt.x >  W / 2) { pt.x =  W / 2; v.x = -Math.abs(v.x); }
+      if (pt.y < -H / 2) { pt.y = -H / 2; v.y = Math.abs(v.y); }
+      if (pt.y >  H / 2) { pt.y =  H / 2; v.y = -Math.abs(v.y); }
+    }
+  }
+
+  var polygons = [makePolygon(), makePolygon()];
+
+  // Build 30 line slots per polygon. Geometry holds 5 points (closed loop).
+  var slots = []; // slots[polIdx][slotIdx] = { line, positions }
+  for (var p = 0; p < polygons.length; p++) {
+    slots[p] = [];
+    for (var s = 0; s < SNAPSHOTS; s++) {
+      var positions = new Float32Array(5 * 3);
+      var geom = new THREE.BufferGeometry();
+      geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      var mat = new THREE.LineBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        depthTest: false
+      });
+      var line = new THREE.Line(geom, mat);
+      line.frustumCulled = false;
+      scene.add(line);
+      slots[p][s] = { line: line, positions: positions };
+    }
+  }
+
+  var frame = 0;
+  var hueBase = Math.random();
+  var hueSpeed = 0.004;
+
+  function writeSnapshot(polIdx, slotIdx) {
+    var poly = polygons[polIdx];
+    var arr = slots[polIdx][slotIdx].positions;
+    for (var i = 0; i < 4; i++) {
+      arr[i * 3]     = poly.pts[i].x;
+      arr[i * 3 + 1] = poly.pts[i].y;
+      arr[i * 3 + 2] = 0;
+    }
+    // close the loop
+    arr[4 * 3]     = poly.pts[0].x;
+    arr[4 * 3 + 1] = poly.pts[0].y;
+    arr[4 * 3 + 2] = 0;
+    slots[polIdx][slotIdx].line.geometry.attributes.position.needsUpdate = true;
+  }
+
+  function refreshStyles() {
+    for (var p = 0; p < polygons.length; p++) {
+      for (var s = 0; s < SNAPSHOTS; s++) {
+        // slot s was written at frame s; age at current frame:
+        var age = (frame - s + SNAPSHOTS * 1000) % SNAPSHOTS;
+        var mat = slots[p][s].line.material;
+        var hue = (hueBase - age * 0.015 + 1) % 1;
+        mat.color.setHSL(hue, 1.0, 0.5);
+        var t = 1 - age / SNAPSHOTS;
+        mat.opacity = t * t; // fade with age
+      }
+    }
+  }
+
+  function animate() {
+    requestAnimationFrame(animate);
+
+    for (var p = 0; p < polygons.length; p++) stepPolygon(polygons[p]);
+
+    var slotIdx = frame % SNAPSHOTS;
+    for (var q = 0; q < polygons.length; q++) writeSnapshot(q, slotIdx);
+
+    hueBase = (hueBase + hueSpeed) % 1;
+    refreshStyles();
+
+    renderer.render(scene, camera);
+    frame++;
+  }
+
+  window.addEventListener('resize', function () {
+    var aspect = window.innerWidth / window.innerHeight;
+    if (aspect > W / H) {
+      var h = H, w = H * aspect;
+      camera.left = -w / 2; camera.right = w / 2;
+      camera.top = h / 2; camera.bottom = -h / 2;
+    } else {
+      var w2 = W, h2 = W / aspect;
+      camera.left = -w2 / 2; camera.right = w2 / 2;
+      camera.top = h2 / 2; camera.bottom = -h2 / 2;
+    }
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+  window.dispatchEvent(new Event('resize'));
+
+  animate();
+})();
+</script>
+</body>
+</html>

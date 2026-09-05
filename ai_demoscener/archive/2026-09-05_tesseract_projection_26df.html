@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>4D Hypercube</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #000; overflow: hidden; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 0, 5);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x000000);
+document.body.appendChild(renderer.domElement);
+
+// 16 vertices of the 4D hypercube
+const verts4 = [];
+for (let i = 0; i < 16; i++) {
+  verts4.push([
+    (i & 1) ? 1 : -1,
+    (i & 2) ? 1 : -1,
+    (i & 4) ? 1 : -1,
+    (i & 8) ? 1 : -1
+  ]);
+}
+
+// 32 edges: connect vertices that differ in exactly one coordinate
+const edges = [];
+for (let a = 0; a < 16; a++) {
+  for (let b = a + 1; b < 16; b++) {
+    let diff = 0;
+    for (let k = 0; k < 4; k++) if (verts4[a][k] !== verts4[b][k]) diff++;
+    if (diff === 1) edges.push([a, b]);
+  }
+}
+
+const colors = new Float32Array(edges.length * 2 * 3);
+edges.forEach((e, i) => {
+  const c = new THREE.Color().setHSL(i / edges.length, 1.0, 0.55);
+  for (let v = 0; v < 2; v++) {
+    colors[(i * 2 + v) * 3 + 0] = c.r;
+    colors[(i * 2 + v) * 3 + 1] = c.g;
+    colors[(i * 2 + v) * 3 + 2] = c.b;
+  }
+});
+
+const geometry = new THREE.BufferGeometry();
+const positions = new Float32Array(edges.length * 2 * 3);
+geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+const material = new THREE.LineBasicMaterial({ vertexColors: true });
+const lineSegments = new THREE.LineSegments(geometry, material);
+scene.add(lineSegments);
+
+function animate(t) {
+  requestAnimationFrame(animate);
+  const angle = t * 0.001 * 0.3;
+  const c = Math.cos(angle), s = Math.sin(angle);
+
+  // Rotate in XW and YW planes, project, fill positions
+  for (let i = 0; i < 16; i++) {
+    const v = verts4[i];
+    let x = v[0], y = v[1], z = v[2], w = v[3];
+
+    // XW rotation
+    const x1 = x * c - w * s;
+    const w1 = x * s + w * c;
+    // YW rotation
+    const y1 = y * c - w1 * s;
+    const w2 = y * s + w1 * c;
+
+    const scale = 3 / (3 - w2);
+    rotated[i * 3 + 0] = x1 * scale;
+    rotated[i * 3 + 1] = y1 * scale;
+    rotated[i * 3 + 2] = z * scale;
+  }
+
+  const pos = geometry.attributes.position.array;
+  for (let i = 0; i < edges.length; i++) {
+    const a = edges[i][0], b = edges[i][1];
+    pos[i * 6 + 0] = rotated[a * 3 + 0];
+    pos[i * 6 + 1] = rotated[a * 3 + 1];
+    pos[i * 6 + 2] = rotated[a * 3 + 2];
+    pos[i * 6 + 3] = rotated[b * 3 + 0];
+    pos[i * 6 + 4] = rotated[b * 3 + 1];
+    pos[i * 6 + 5] = rotated[b * 3 + 2];
+  }
+  geometry.attributes.position.needsUpdate = true;
+
+  renderer.render(scene, camera);
+}
+
+const rotated = new Float32Array(16 * 3);
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+requestAnimationFrame(animate);
+</script>
+</body>
+</html>

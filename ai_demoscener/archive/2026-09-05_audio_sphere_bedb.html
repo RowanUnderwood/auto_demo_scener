@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Throbing Energy Orb</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x000000);
+
+const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 100);
+camera.position.set(0, 0, 3.2);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+const uniforms = {
+  uTime: { value: 0 },
+  uMax: { value: 0.36 }
+};
+
+const vertexShader = `
+  uniform float uTime;
+  varying float vDisp;
+  void main() {
+    vec3 n = normalize(normal);
+    float theta = acos(clamp(n.y, -1.0, 1.0));
+    float phi   = atan(n.x, n.z);
+    float t = uTime;
+
+    // Layered sine waves reacting like invisible music
+    float d = 0.0;
+    d += sin(theta * 5.0  + t * 2.0) * 0.10;
+    d += sin(phi   * 7.0  - t * 3.0) * 0.08;
+    d += sin(theta * 12.0 + t * 4.0) * 0.05;
+    d += sin(phi   * 3.0  + t * 1.5) * 0.07;
+    d += sin(theta * 2.0 + phi * 2.0 + t * 2.5) * 0.04;
+    d += sin(theta * 20.0 + phi * 15.0 - t * 6.0) * 0.02;
+
+    vDisp = d;
+    vec3 pos = position + n * d;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+  }
+`;
+
+const fragmentShader = `
+  uniform float uMax;
+  varying float vDisp;
+  void main() {
+    float m = clamp(abs(vDisp) / uMax, 0.0, 1.0);
+    vec3 deepPurple   = vec3(0.13, 0.02, 0.35);
+    vec3 electricBlue = vec3(0.15, 0.55, 1.00);
+    vec3 white        = vec3(1.00, 1.00, 1.00);
+
+    vec3 col = mix(deepPurple, electricBlue, smoothstep(0.0, 0.65, m));
+    col = mix(col, white, smoothstep(0.65, 1.0, m));
+
+    gl_FragColor = vec4(col, 1.0);
+  }
+`;
+
+const material = new THREE.ShaderMaterial({
+  uniforms,
+  vertexShader,
+  fragmentShader
+});
+
+const geometry = new THREE.SphereGeometry(1, 256, 256);
+const orb = new THREE.Mesh(geometry, material);
+scene.add(orb);
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(innerWidth, innerHeight),
+  1.5,   // strength
+  0.5,   // radius
+  0.15   // threshold
+);
+composer.addPass(bloomPass);
+
+const clock = new THREE.Clock();
+function animate() {
+  requestAnimationFrame(animate);
+  uniforms.uTime.value = clock.getElapsedTime();
+  orb.rotation.y += 0.0015;
+  orb.rotation.x += 0.0007;
+  composer.render();
+}
+animate();
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

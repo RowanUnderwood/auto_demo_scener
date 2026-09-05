@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gradient Bars</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+canvas { display: block; }
+</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+const vertexShader = `
+varying vec2 vUv;
+void main() {
+    vUv = uv;
+    gl_Position = vec4(position, 1.0);
+}`;
+
+const fragmentShader = `
+precision highp float;
+uniform float uTime;
+varying vec2 vUv;
+
+void main() {
+    vec2 uv = vUv;
+    vec3 finalColor = vec3(0.02, 0.02, 0.05);
+    float totalIntensity = 0.0;
+
+    for (int i = 0; i < 8; i++) {
+        float fi = float(i);
+        float phase = fi * 0.75;
+
+        // Vertical position: sin(time + i*phase)*0.4 + 0.5
+        float centerY = sin(uTime + fi * phase) * 0.4 + 0.5;
+
+        // Smoothstep falloff in Y around center
+        float dist = abs(uv.y - centerY);
+        float barWidth = 0.035 + 0.01 * sin(fi * 1.3 + 0.5);
+        float intensity = 1.0 - smoothstep(0.0, barWidth, dist);
+        intensity = pow(intensity, 1.2);
+
+        // Color themes: highlight -> shadow
+        vec3 highlight, shadow;
+
+        if (i == 0)  { highlight = vec3(0.15, 0.5, 1.0);  shadow = vec3(0.03, 0.12, 0.35); }
+        else if (i == 1) { highlight = vec3(1.0, 0.15, 0.2); shadow = vec3(0.35, 0.04, 0.06); }
+        else if (i == 2) { highlight = vec3(1.0, 0.85, 0.1); shadow = vec3(0.35, 0.22, 0.04); }
+        else if (i == 3) { highlight = vec3(0.1, 1.0, 0.55); shadow = vec3(0.04, 0.3, 0.14); }
+        else if (i == 4) { highlight = vec3(1.0, 0.35, 0.7); shadow = vec3(0.35, 0.08, 0.25); }
+        else if (i == 5) { highlight = vec3(0.35, 0.75, 1.0); shadow = vec3(0.08, 0.2, 0.35); }
+        else if (i == 6) { highlight = vec3(1.0, 0.55, 0.15); shadow = vec3(0.35, 0.18, 0.04); }
+        else              { highlight = vec3(0.55, 0.25, 1.0); shadow = vec3(0.18, 0.06, 0.35); }
+
+        // Horizontal gradient within bar: shadow at edges, highlight at center
+        float xGrad = 1.0 - abs(uv.x - 0.5) * 2.0;
+        xGrad = pow(xGrad, 0.6);
+
+        // Mix shadow->highlight based on vertical intensity
+        vec3 barColor = mix(shadow, highlight, intensity);
+
+        // Apply horizontal gradient for extra depth
+        barColor = mix(barColor * 0.5, barColor, xGrad);
+
+        // Glow core - extra bright line right at center
+        float core = 1.0 - smoothstep(0.0, barWidth * 0.15, dist);
+        barColor += highlight * core * 0.4;
+
+        finalColor += barColor * intensity * 1.1;
+        totalIntensity += intensity;
+    }
+
+    // Subtle vignette
+    float vignette = 1.0 - 0.3 * pow(length(uv - 0.5) * 1.4, 2.0);
+    finalColor *= vignette;
+
+    // Tone mapping
+    finalColor = finalColor / (finalColor + 0.8);
+
+    gl_FragColor = vec4(finalColor, 1.0);
+}`;
+
+const uniforms = {
+    uTime: { value: 0.0 }
+};
+
+const material = new THREE.ShaderMaterial({
+    vertexShader,
+    fragmentShader,
+    uniforms
+});
+
+const geometry = new THREE.PlaneGeometry(2, 2);
+const mesh = new THREE.Mesh(geometry, material);
+scene.add(mesh);
+
+function animate(time) {
+    requestAnimationFrame(animate);
+    uniforms.uTime.value = time * 0.001;
+    renderer.render(scene, camera);
+}
+
+animate(0);
+
+window.addEventListener('resize', () => {
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+});
+</script>
+</body>
+</html>

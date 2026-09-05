@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+*{margin:0;padding:0}
+body{overflow:hidden;background:#000}
+canvas{display:block}
+#info{position:fixed;top:16px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,0.4);font:11px monospace;letter-spacing:3px;text-transform:uppercase;pointer-events:none}
+</style>
+</head>
+<body>
+<div id="info">prismatic vortex</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x000000, 0.018);
+const camera = new THREE.PerspectiveCamera(72, innerWidth/innerHeight, 0.1, 300);
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+const RINGS = 80;
+const SPACING = 2.8;
+const TOTAL = SPACING * RINGS;
+const rings = [];
+
+function makePolygonShape(sides, radius) {
+    const s = new THREE.Shape();
+    for (let i = 0; i <= sides; i++) {
+        const a = (i / sides) * Math.PI * 2 - Math.PI / 2;
+        const x = Math.cos(a) * radius;
+        const y = Math.sin(a) * radius;
+        i === 0 ? s.moveTo(x, y) : s.lineTo(x, y);
+    }
+    return s;
+}
+
+for (let i = 0; i < RINGS; i++) {
+    const group = new THREE.Group();
+    const baseRadius = 3.5 + Math.sin(i * 0.25) * 1.2;
+    const sides = 3 + (i % 5);
+    const geo = new THREE.ExtrudeGeometry(makePolygonShape(sides, baseRadius), {depth:0.08, bevelEnabled:false});
+    const mat = new THREE.MeshBasicMaterial({
+        color: new THREE.Color().setHSL(i/RINGS, 0.85, 0.45),
+        wireframe: true, transparent: true, opacity: 0.75,
+        blending: THREE.AdditiveBlending
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    group.add(mesh);
+
+    const innerSides = 3 + ((i+2) % 5);
+    const innerGeo = new THREE.ExtrudeGeometry(makePolygonShape(innerSides, baseRadius*0.55), {depth:0.06, bevelEnabled:false});
+    const innerMat = new THREE.MeshBasicMaterial({
+        color: new THREE.Color().setHSL((i+0.4)/RINGS, 0.95, 0.55),
+        wireframe: true, transparent: true, opacity: 0.45,
+        blending: THREE.AdditiveBlending
+    });
+    const innerMesh = new THREE.Mesh(innerGeo, innerMat);
+    group.add(innerMesh);
+
+    const ringGeo = new THREE.TorusGeometry(baseRadius*1.15, 0.02, 6, sides*4);
+    const ringMat = new THREE.MeshBasicMaterial({
+        color: new THREE.Color().setHSL((i+0.7)/RINGS, 0.7, 0.35),
+        transparent: true, opacity: 0.4,
+        blending: THREE.AdditiveBlending
+    });
+    group.add(new THREE.Mesh(ringGeo, ringMat));
+
+    group.position.z = -i * SPACING;
+    scene.add(group);
+    rings.push({
+        group, mesh, innerMesh,
+        speed: (i%3===0 ? -1:1) * (0.2 + (i*0.008)),
+        speed2: (i%2===0 ? 1:-1) * (0.4 + (i*0.005)),
+        phase: i * 0.4,
+        baseRadius
+    });
+}
+
+// Central core
+const coreGeo = new THREE.IcosahedronGeometry(1.2, 2);
+const coreMat = new THREE.MeshBasicMaterial({
+    color: 0xffffff, wireframe: true, transparent: true, opacity: 0.3,
+    blending: THREE.AdditiveBlending
+});
+const core = new THREE.Mesh(coreGeo, coreMat);
+scene.add(core);
+
+const coreGlow = new THREE.PointLight(0xffffff, 2, 30);
+scene.add(coreGlow);
+
+// Spiral particles
+const PCOUNT = 3000;
+const pGeo = new THREE.BufferGeometry();
+const pPos = new Float32Array(PCOUNT * 3);
+const pData = [];
+for (let i = 0; i < PCOUNT; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const rad = 1.5 + Math.random() * 4;
+    const z = -Math.random() * TOTAL;
+    pPos[i*3] = Math.cos(angle) * rad;
+    pPos[i*3+1] = Math.sin(angle) * rad;
+    pPos[i*3+2] = z;
+    pData.push({
+        angle, rad, z,
+        angSpd: 0.3 + Math.random()*0.7,
+        radSpd: (Math.random()-0.5)*0.3,
+        zSpd: 0.5 + Math.random()*1.5,
+        size: 0.02 + Math.random()*0.04
+    });
+}
+pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+const pMat = new THREE.PointsMaterial({
+    color: 0xffffff, size: 0.04, transparent: true, opacity: 0.5,
+    blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true
+});
+scene.add(new THREE.Points(pGeo, pMat));
+
+// Ambient floating dust
+const DUST = 800;
+const dGeo = new THREE.BufferGeometry();
+const dPos = new Float32Array(DUST*3);
+for (let i=0;i<DUST;i++){
+    dPos[i*3]=(Math.random()-0.5)*20;
+    dPos[i*3+1]=(Math.random()-0.5)*20;
+    dPos[i*3+2]=-Math.random()*TOTAL;
+}
+dGeo.setAttribute('position', new THREE.BufferAttribute(dPos,3));
+const dMat = new THREE.PointsMaterial({color:0x4488ff,size:0.03,transparent:true,opacity:0.2,blending:THREE.AdditiveBlending,depthWrite:false});
+scene.add(new THREE.Points(dGeo,dMat));
+
+let time = 0;
+let camZ = 0;
+const clock = new THREE.Clock();
+
+function animate() {
+    requestAnimationFrame(animate);
+    const dt = Math.min(clock.getDelta(), 0.05);
+    time += dt;
+    camZ -= dt * 4;
+    if (camZ < -TOTAL) camZ += TOTAL;
+    camera.position.set(
+        Math.sin(time*0.3)*0.8,
+        Math.cos(time*0.2)*0.6,
+        camZ
+    );
+    camera.fov = 72 + Math.sin(time*1.5)*4;
+    camera.updateProjectionMatrix();
+    camera.lookAt(0, 0, camZ - 20);
+
+    core.position.z = camZ - 8;
+    core.rotation.x += dt*0.5;
+    core.rotation.y += dt*0.7;
+    const corePulse = 1 + Math.sin(time*3)*0.3;
+    core.scale.setScalar(corePulse);
+    coreMat.color.setHSL((time*0.15)%1, 0.5, 0.8);
+    coreGlow.color.setHSL((time*0.15)%1, 0.8, 0.7);
+
+    const breath = 1 + Math.sin(time * 0.8) * 0.12;
+
+    for (let i = 0; i < RINGS; i++) {
+        const r = rings[i];
+        let relZ = -i * SPACING - camZ;
+        while (relZ > TOTAL/2) relZ -= TOTAL;
+        while (relZ < -TOTAL/2) relZ += TOTAL;
+        r.group.position.z = camZ + relZ;
+
+        r.group.rotation.z += r.speed * dt;
+        r.innerMesh.rotation.z -= r.speed2 * dt;
+        r.innerMesh.rotation.x += dt * 0.3;
+
+        const pulse = breath * (1 + Math.sin(time*2.5 + r.phase)*0.08);
+        r.mesh.scale.setScalar(pulse);
+        r.innerMesh.scale.setScalar(pulse * 0.9);
+
+        const hue = (time*0.08 + i/RINGS + Math.sin(time*0.5)*0.1) % 1;
+        r.mesh.material.color.setHSL(hue, 0.85, 0.45);
+        r.innerMesh.material.color.setHSL((hue+0.35)%1, 0.95, 0.55);
+        const dist = Math.abs(relZ) / (TOTAL/2);
+        const fade = 1 - dist*dist;
+        r.mesh.material.opacity = 0.75 * fade;
+        r.innerMesh.material.opacity = 0.45 * fade;
+    }
+
+    const pos = pGeo.attributes.position.array;
+    for (let i = 0; i < PCOUNT; i++) {
+        const p = pData[i];
+        p.angle += p.angSpd * dt;
+        p.rad += Math.sin(time + i)*0.002;
+        p.z += p.zSpd * dt;
+        if (p.z > 0) p.z -= TOTAL;
+
+        let relZ = p.z - camZ;
+        while (relZ > TOTAL/2) relZ -= TOTAL;
+        while (relZ < -TOTAL/2) relZ += TOTAL;
+
+        pos[i*3] = Math.cos(p.angle) * p.rad;
+        pos[i*3+1] = Math.sin(p.angle) * p.rad;
+        pos[i*3+2] = camZ + relZ;
+    }
+    pGeo.attributes.position.needsUpdate = true;
+
+    const dp = dGeo.attributes.position.array;
+    for (let i=0;i<DUST;i++){
+        dp[i*3+2] += dt*0.5;
+        if (dp[i*3+2] > camZ) dp[i*3+2] -= TOTAL;
+    }
+    dGeo.attributes.position.needsUpdate = true;
+
+    renderer.render(scene, camera);
+}
+animate();
+
+window.addEventListener('resize', ()=>{
+    camera.aspect = innerWidth/innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

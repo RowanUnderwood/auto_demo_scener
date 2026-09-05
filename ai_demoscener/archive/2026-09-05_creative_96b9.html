@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Möbius Garden</title>
+<style>
+*{margin:0;padding:0;overflow:hidden}
+body{background:#000}
+canvas{display:block}
+</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+const W=window.innerWidth,H=window.innerHeight;
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(W,H);
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+document.body.appendChild(renderer.domElement);
+
+const scene=new THREE.Scene();
+scene.fog=new THREE.FogExp2(0x000000,0.012);
+const cam=new THREE.PerspectiveCamera(60,W/H,0.1,200);
+cam.position.set(0,3,12);
+
+// --- Möbius Strip ---
+function mobiusGeo(w,h,uSeg,vSeg){
+const g=new THREE.BufferGeometry();
+const pos=[],idx=[],uv=[];
+for(let j=0;j<=vSeg;j++){
+for(let i=0;i<=uSeg;i++){
+const u=i/uSeg*Math.PI*2;
+const v=(j/vSeg-0.5)*w;
+const x=(h+v*Math.cos(u/2))*Math.cos(u);
+const y=(h+v*Math.cos(u/2))*Math.sin(u);
+const z=v*Math.sin(u/2);
+pos.push(x,y,z);
+uv.push(i/uSeg,j/vSeg);
+}
+}
+for(let j=0;j<vSeg;j++){
+for(let i=0;i<uSeg;i++){
+const a=j*(uSeg+1)+i;
+const b=a+uSeg+1;
+idx.push(a,b,a+1,b,b+1,a+1);
+}
+}
+g.setIndex(idx);
+g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
+g.computeVertexNormals();
+return g;
+}
+
+const mGeo=mobiusGeo(1.8,2.5,120,12);
+const mMat=new THREE.MeshStandardMaterial({
+color:0x111122,metalness:0.9,roughness:0.3,
+side:THREE.DoubleSide,emissive:0x0a0a1a,emissiveIntensity:0.5
+});
+const mobius=new THREE.Mesh(mGeo,mMat);
+scene.add(mobius);
+
+const mWire=new THREE.Mesh(mGeo.clone(),new THREE.MeshBasicMaterial({
+color:0x4444ff,wireframe:true,transparent:true,opacity:0.15
+}));
+scene.add(mWire);
+
+// Store original positions for animation
+const mPos=mGeo.attributes.position;
+const mOrig=mPos.array.slice();
+const mWirePos=mWire.geometry.attributes.position;
+const mWireOrig=mWirePos.array.slice();
+
+// --- Crystal Garden ---
+const crystals=[];
+const crystalGroup=new THREE.Group();
+scene.add(crystalGroup);
+
+function makeCrystal(x,y,z,scale,geo){
+const g=geo||new THREE.IcosahedronGeometry(0.15*scale,0);
+const mat=new THREE.MeshStandardMaterial({
+color:0xffffff,metalness:0.95,roughness:0.1,
+emissive:0x000000,emissiveIntensity:1.5,
+transparent:true,opacity:0.9
+});
+const m=new THREE.Mesh(g,mat);
+m.position.set(x,y,z);
+m.scale.setScalar(scale);
+m.userData={phase:Math.random()*Math.PI*2,speed:0.5+Math.random()*1.5,scale:scale,baseY:y};
+crystals.push(m);
+crystalGroup.add(m);
+}
+
+// Place crystals along the Möbius strip
+const shapes=[
+new THREE.IcosahedronGeometry(1,0),
+new THREE.OctahedronGeometry(1,0),
+new THREE.TetrahedronGeometry(1,0),
+new THREE.DodecahedronGeometry(1,0),
+new THREE.OctahedronGeometry(1,1)
+];
+
+for(let k=0;k<80;k++){
+const u=Math.random()*Math.PI*2;
+const v=(Math.random()-0.5)*1.8;
+const x=(2.5+v*Math.cos(u/2))*Math.cos(u);
+const y=(2.5+v*Math.cos(u/2))*Math.sin(u);
+const z=v*Math.sin(u/2);
+const s=0.15+Math.random()*0.5;
+const geo=shapes[Math.floor(Math.random()*shapes.length)];
+makeCrystal(x,y,z,s,geo);
+}
+
+// --- Inner Core ---
+const coreGeo=new THREE.IcosahedronGeometry(0.8,2);
+const coreMat=new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0.6});
+const core=new THREE.Mesh(coreGeo,coreMat);
+scene.add(core);
+
+const coreWire=new THREE.Mesh(new THREE.IcosahedronGeometry(1.2,1),
+new THREE.MeshBasicMaterial({color:0x6666ff,wireframe:true,transparent:true,opacity:0.3}));
+scene.add(coreWire);
+
+// --- Particle System ---
+const P_COUNT=4000;
+const pGeo=new THREE.BufferGeometry();
+const pPos=new Float32Array(P_COUNT*3);
+const pCol=new Float32Array(P_COUNT*3);
+const pVel=[];
+for(let i=0;i<P_COUNT;i++){
+const r=3+Math.random()*10;
+const theta=Math.random()*Math.PI*2;
+const phi=Math.acos(2*Math.random()-1);
+pPos[i*3]=r*Math.sin(phi)*Math.cos(theta);
+pPos[i*3+1]=r*Math.sin(phi)*Math.sin(theta);
+pPos[i*3+2]=r*Math.cos(phi);
+pVel.push({
+cx:Math.random()*Math.PI*2,
+cy:Math.random()*Math.PI*2,
+cz:Math.random()*Math.PI*2,
+sx:0.2+Math.random()*0.5,
+sy:0.3+Math.random()*0.4,
+sz:0.2+Math.random()*0.3,
+r:3+Math.random()*10
+});
+}
+pGeo.setAttribute('position',new THREE.BufferAttribute(pPos,3));
+pGeo.setAttribute('color',new THREE.BufferAttribute(pCol,3));
+const pMat=new THREE.PointsMaterial({
+size:0.06,vertexColors:true,transparent:true,opacity:0.8,
+blending:THREE.AdditiveBlending,depthWrite:false
+});
+const particles=new THREE.Points(pGeo,pMat);
+scene.add(particles);
+
+// --- Orbiting Rings ---
+const rings=[];
+for(let i=0;i<3;i++){
+const rGeo=new THREE.TorusGeometry(3.5+i*0.8,0.02,8,128);
+const rMat=new THREE.MeshBasicMaterial({
+color:0x8888ff,transparent:true,opacity:0.25-i*0.05,
+blending:THREE.AdditiveBlending
+});
+const ring=new THREE.Mesh(rGeo,rMat);
+ring.rotation.x=Math.PI/2+i*0.3;
+ring.rotation.y=i*0.5;
+rings.push(ring);
+scene.add(ring);
+}
+
+// --- Light ---
+const light=new THREE.PointLight(0xffffff,2,50);
+light.position.set(0,0,0);
+scene.add(light);
+const amb=new THREE.AmbientLight(0x111122,0.5);
+scene.add(amb);
+
+// --- Animation ---
+const clock=new THREE.Clock();
+let t=0;
+
+function hsl(h,s,l){
+const c=new THREE.Color();
+c.setHSL(((h%1)+1)%1,s,l);
+return c;
+}
+
+function animate(){
+requestAnimationFrame(animate);
+const dt=clock.getDelta();
+t+=dt;
+
+// Color cycle
+const hue=(t*0.05)%1;
+
+// Möbius breathing
+for(let i=0;i<mPos.count;i++){
+const ix=i*3;
+const ox=mOrig[ix],oy=mOrig[ix+1],oz=mOrig[ix+2];
+const d=Math.sqrt(ox*ox+oy*oy+oz*oz);
+const wave=Math.sin(d*2-t*3)*0.08+Math.sin(ox*3+oy*2+t*2)*0.04;
+const s=1+wave;
+mPos.array[ix]=ox*s;
+mPos.array[ix+1]=oy*s;
+mPos.array[ix+2]=oz*s;
+mWirePos.array[ix]=ox*s;
+mWirePos.array[ix+1]=oy*s;
+mWirePos.array[ix+2]=oz*s;
+}
+mPos.needsUpdate=true;
+mWirePos.needsUpdate=true;
+
+mobius.rotation.y=t*0.15;
+mobius.rotation.x=Math.sin(t*0.3)*0.1;
+mWire.rotation.copy(mobius.rotation);
+
+// Core pulse
+const pulse=1+Math.sin(t*4)*0.15;
+core.scale.setScalar(pulse);
+coreWire.rotation.x=t*0.5;
+coreWire.rotation.y=t*0.7;
+coreMat.color=hsl(hue,0.3,0.7);
+coreMat.opacity=0.4+Math.sin(t*4)*0.2;
+
+// Crystals
+for(let i=0;i<crystals.length;i++){
+const c=crystals[i];
+const ph=c.userData.phase;
+const sp=c.userData.speed;
+const s=c.userData.scale;
+const pulse2=1+Math.sin(t*sp+ph)*0.3;
+c.scale.setScalar(s*pulse2);
+c.rotation.x=t*sp*0.5+ph;
+c.rotation.y=t*sp*0.3+ph*2;
+c.position.y=c.userData.baseY+Math.sin(t*0.8+ph)*0.1;
+const ch=(hue+ph/(Math.PI*2))%1;
+c.material.emissive=hsl(ch,0.8,0.4);
+c.material.color=hsl(ch,0.5,0.3);
+}
+crystalGroup.rotation.copy(mobius.rotation);
+
+// Particles
+const pa=pGeo.attributes.position.array;
+const ca=pGeo.attributes.color.array;
+for(let i=0;i<P_COUNT;i++){
+const v=pVel[i];
+const px=v.r*Math.sin(v.sx*t+v.cx)*Math.cos(v.sy*t+v.cy);
+const py=v.r*Math.sin(v.sx*t+v.cx)*Math.sin(v.sy*t+v.cy);
+const pz=v.r*Math.cos(v.sz*t+v.cz);
+pa[i*3]=px;pa[i*3+1]=py;pa[i*3+2]=pz;
+const ph2=(i/P_COUNT+hue)%1;
+const c2=hsl(ph2,0.9,0.3+0.2*Math.sin(t+i*0.1));
+ca[i*3]=c2.r;ca[i*3+1]=c2.g;ca[i*3+2]=c2.b;
+}
+pGeo.attributes.position.needsUpdate=true;
+pGeo.attributes.color.needsUpdate=true;
+
+// Rings
+for(let i=0;i<rings.length;i++){
+rings[i].rotation.x+=dt*(0.2+i*0.1);
+rings[i].rotation.z+=dt*(0.1+i*0.05);
+rings[i].material.color=hsl((hue+i*0.15)%1,0.6,0.4);
+}
+
+// Light
+light.color=hsl(hue,0.5,0.8);
+light.intensity=1.5+Math.sin(t*3)*0.5;
+
+// Camera
+const cr=12+Math.sin(t*0.2)*2;
+const ca2=t*0.1;
+cam.position.x=cr*Math.sin(ca2);
+cam.position.z=cr*Math.cos(ca2);
+cam.position.y=3+Math.sin(t*0.3)*2;
+cam.lookAt(0,0,0);
+
+renderer.render(scene,cam);
+}
+
+window.addEventListener('resize',()=>{
+const w=innerWidth,h=innerHeight;
+cam.aspect=w/h;
+cam.updateProjectionMatrix();
+renderer.setSize(w,h);
+});
+
+animate();
+})();
+</script>
+</body>
+</html>

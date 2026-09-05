@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Quantum Fractal Resonance</title>
+    <style>
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            background: #000;
+        }
+        canvas { 
+            display: block; 
+        }
+    </style>
+</head>
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Scene setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Create quantum particles
+        const particlesGeometry = new THREE.BufferGeometry();
+        const particleCount = 20000;
+        const posArray = new Float32Array(particleCount * 3);
+        const colorArray = new Float32Array(particleCount * 3);
+        
+        for (let i = 0; i < particleCount * 3; i += 3) {
+            // Position particles in a torus
+            const radius = 5 + Math.random() * 5;
+            const angle = Math.random() * Math.PI * 2;
+            const height = (Math.random() - 0.5) * 10;
+            
+            posArray[i] = Math.cos(angle) * radius;
+            posArray[i + 1] = height;
+            posArray[i + 2] = Math.sin(angle) * radius;
+            
+            // Color based on position
+            colorArray[i] = Math.random() * 0.5 + 0.5;
+            colorArray[i + 1] = Math.random() * 0.5;
+            colorArray[i + 2] = Math.random() * 0.5 + 0.5;
+        }
+        
+        particlesGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+        particlesGeometry.setAttribute('color', new THREE.BufferAttribute(colorArray, 3));
+        
+        // Particle material
+        const particlesMaterial = new THREE.PointsMaterial({
+            size: 0.05,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.8,
+            sizeAttenuation: true
+        });
+        
+        const particlesMesh = new THREE.Points(particlesGeometry, particlesMaterial);
+        scene.add(particlesMesh);
+        
+        // Create fractal torus
+        const torusGeometry = new THREE.TorusGeometry(3, 0.5, 16, 100);
+        const torusMaterial = new THREE.MeshPhongMaterial({
+            color: 0x00ffff,
+            wireframe: true,
+            transparent: true,
+            opacity: 0.7
+        });
+        
+        const torusMesh = new THREE.Mesh(torusGeometry, torusMaterial);
+        scene.add(torusMesh);
+        
+        // Add multiple nested tori
+        for (let i = 0; i < 5; i++) {
+            const scale = 1 + i * 0.8;
+            const newTorus = torusMesh.clone();
+            newTorus.scale.set(scale, scale, scale);
+            scene.add(newTorus);
+        }
+        
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.2);
+        scene.add(ambientLight);
+        
+        const pointLight = new THREE.PointLight(0x00ffff, 1, 100);
+        pointLight.position.set(5, 5, 5);
+        scene.add(pointLight);
+        
+        // Camera position
+        camera.position.z = 15;
+        
+        // Add a pulsing cube in the center
+        const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
+        const cubeMaterial = new THREE.MeshPhongMaterial({
+            color: 0xff00ff,
+            transparent: true,
+            opacity: 0.3,
+            wireframe: true
+        });
+        
+        const cubeMesh = new THREE.Mesh(cubeGeometry, cubeMaterial);
+        scene.add(cubeMesh);
+        
+        // Add a rotating sphere
+        const sphereGeometry = new THREE.SphereGeometry(1.5, 32, 32);
+        const sphereMaterial = new THREE.MeshPhongMaterial({
+            color: 0xffff00,
+            transparent: true,
+            opacity: 0.2,
+            wireframe: true
+        });
+        
+        const sphereMesh = new THREE.Mesh(sphereGeometry, sphereMaterial);
+        scene.add(sphereMesh);
+        
+        // Add a rotating pyramid
+        const pyramidGeometry = new THREE.ConeGeometry(1, 2, 4);
+        const pyramidMaterial = new THREE.MeshPhongMaterial({
+            color: 0x00ff00,
+            transparent: true,
+            opacity: 0.3,
+            wireframe: true
+        });
+        
+        const pyramidMesh = new THREE.Mesh(pyramidGeometry, pyramidMaterial);
+        pyramidMesh.rotation.x = Math.PI;
+        scene.add(pyramidMesh);
+        
+        // Animation loop
+        let time = 0;
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            time += 0.01;
+            
+            // Animate particles
+            const positions = particlesGeometry.attributes.position.array;
+            for (let i = 0; i < particleCount * 3; i += 3) {
+                const x = positions[i];
+                const y = positions[i + 1];
+                const z = positions[i + 2];
+                
+                // Quantum field effect
+                positions[i] += Math.sin(time + x * 0.1) * 0.001;
+                positions[i + 1] += Math.cos(time + y * 0.1) * 0.001;
+                positions[i + 2] += Math.sin(time + z * 0.1) * 0.001;
+            }
+            particlesGeometry.attributes.position.needsUpdate = true;
+            
+            // Rotate tori
+            scene.children.forEach((child, index) => {
+                if (child.isMesh && child !== particlesMesh) {
+                    child.rotation.x += 0.005;
+                    child.rotation.y += 0.003;
+                    
+                    // Resonance effect - scale based on time
+                    const scale = 1 + Math.sin(time * 0.5 + index) * 0.1;
+                    child.scale.set(scale, scale, scale);
+                }
+            });
+            
+            // Animate central objects
+            cubeMesh.rotation.x += 0.01;
+            cubeMesh.rotation.y += 0.01;
+            cubeMesh.scale.x = 1 + Math.sin(time) * 0.2;
+            cubeMesh.scale.y = 1 + Math.cos(time) * 0.2;
+            
+            sphereMesh.rotation.x += 0.007;
+            sphereMesh.rotation.y += 0.005;
+            
+            pyramidMesh.rotation.y += 0.015;
+            
+            // Camera orbit
+            camera.position.x = Math.sin(time * 0.3) * 15;
+            camera.position.z = Math.cos(time * 0.3) * 15;
+            camera.lookAt(scene.position);
+            
+            renderer.render(scene, camera);
+        }
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        
+        animate();
+    </script>
+</body>
+</html>

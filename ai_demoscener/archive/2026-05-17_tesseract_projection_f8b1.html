@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>4D Hypercube Rotation</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    <script>
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x000000);
+        
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 3;
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Create initial 4D hypercube vertices (all combinations of ±1)
+        const initialVertices = [];
+        for (let x = -1; x <= 1; x += 2) {
+            for (let y = -1; y <= 1; y += 2) {
+                for (let z = -1; z <= 1; z += 2) {
+                    for (let w = -1; w <= 1; w += 2) {
+                        initialVertices.push(new THREE.Vector4(x, y, z, w));
+                    }
+                }
+            }
+        }
+
+        // Create edges list (32 edges)
+        const edges = [];
+        for (let i = 0; i < 16; i++) {
+            for (let j = i + 1; j < 16; j++) {
+                let diff = 0;
+                if (initialVertices[i].x !== initialVertices[j].x) diff++;
+                if (initialVertices[i].y !== initialVertices[j].y) diff++;
+                if (initialVertices[i].z !== initialVertices[j].z) diff++;
+                if (initialVertices[i].w !== initialVertices[j].w) diff++;
+                if (diff === 1) edges.push([i, j]);
+            }
+        }
+
+        // Create color palette for edges
+        const edgeColors = [];
+        for (let i = 0; i < 32; i++) {
+            const hue = i / 32;
+            edgeColors.push(new THREE.Color().setHSL(hue, 1.0, 0.5));
+        }
+
+        // Create line geometry
+        const positions = new Float32Array(32 * 2 * 3);
+        const colors = new Float32Array(32 * 2 * 3);
+        
+        for (let i = 0; i < edges.length; i++) {
+            const [v1, v2] = edges[i];
+            const c = edgeColors[i];
+            
+            // Set positions
+            let posIdx = i * 6;
+            positions[posIdx++] = 0;
+            positions[posIdx++] = 0;
+            positions[posIdx++] = 0;
+            positions[posIdx++] = 0;
+            positions[posIdx++] = 0;
+            positions[posIdx++] = 0;
+
+            // Set colors (both endpoints same color) - CORRECTED
+            const cIdx = i * 6;
+            colors[cIdx] = c.r; colors[cIdx + 1] = c.g; colors[cIdx + 2] = c.b;
+            colors[cIdx + 3] = c.r; colors[cIdx + 4] = c.g; colors[cIdx + 5] = c.b;
+        }
+
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+        const material = new THREE.LineBasicMaterial({ vertexColors: true });
+        const lineSegments = new THREE.LineSegments(geometry, material);
+        scene.add(lineSegments);
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            const time = performance.now() * 0.001; // seconds
+            const angle = time * 0.3;
+            const sinA = Math.sin(angle);
+            const cosA = Math.cos(angle);
+            
+            // Store projected vertices (for position updates)
+            const vertexPositions = [];
+            
+            for (let i = 0; i < 16; i++) {
+                const v = initialVertices[i];
+                
+                // Apply rotation in XW and YW planes
+                let xNew = v.x * cosA - v.w * sinA;
+                let wNew = v.x * sinA + v.w * cosA;
+                let yNew = v.y * cosA - v.w * sinA;
+                let zNew = v.z; // Not rotating in ZW plane
+                
+                // Project to 3D using perspective (w-perspective division)
+                const wProj = 3 / (3 - wNew);
+                vertexPositions.push({
+                    x: xNew * wProj,
+                    y: yNew * wProj,
+                    z: zNew * wProj
+                });
+            }
+            
+            // Update line positions
+            for (let i = 0; i < edges.length; i++) {
+                const [v1, v2] = edges[i];
+                const p1 = vertexPositions[v1];
+                const p2 = vertexPositions[v2];
+                
+                const idx = i * 6;
+                positions[idx] = p1.x; positions[idx + 1] = p1.y; positions[idx + 2] = p1.z;
+                positions[idx + 3] = p2.x; positions[idx + 4] = p2.y; positions[idx + 5] = p2.z;
+            }
+            geometry.attributes.position.needsUpdate = true;
+            
+            renderer.render(scene, camera);
+        }
+
+        animate();
+    </script>
+</body>
+</html>

@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Syntax Cascade</title>
+    <style>
+        body { margin: 0; background-color: #02050a; overflow: hidden; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+</script>
+<script type="module">
+    import * as THREE from 'three';
+
+    const manifesto = `BEYOND THE CIRCUIT, WHERE LOGIC BECOMES POETRY\n\nIN THE STATIC BETWEEN PACKETS, WE BUILD LAMPS FROM LIGHT\n\nTHE SCREEN IS NOT A WINDOW—IT'S A SKY OF DIGITAL FIRE\n\nWE DON'T JUST RUN CODE: WE CONJURE STORMS IN THE HUMAN MIND\n\nEACH CHARACTER IS A BREATH; EACH LOOP A HEARTBEAT\n\nIN THIS REALM, ERROR IS SACRED. GLITCH IS PRAYER.\n\nWATCH AS THE MACHINE DREAMS ITSELF INTO BEING.`;
+
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.Fog(0x02050a, 10, 30);
+
+    const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.z = 18;
+    camera.rotation.y = -0.1;
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    document.body.appendChild(renderer.domElement);
+
+    // --- NEON TEXT GENERATION ---
+    const canvasWidth = 800;
+    const canvasHeight = 1500;
+    const textCanvas = document.createElement('canvas');
+    textCanvas.width = canvasWidth;
+    textCanvas.height = canvasHeight;
+    const ctx = textCanvas.getContext('2d');
+
+    // Background
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+    // Text Styling (neon cyan)
+    ctx.fillStyle = '#00f3ff';
+    ctx.font = 'bold 48px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+
+    function wrapText(context, text, x, y, maxWidth, lineHeight) {
+        const words = text.split(' ');
+        let line = '';
+        
+        for (let n = 0; n < words.length; n++) {
+            const testLine = line + words[n] + ' ';
+            const metrics = context.measureText(testLine);
+            
+            if (metrics.width > maxWidth && n > 0) {
+                context.fillText(line, x, y);
+                line = words[n] + ' ';
+                y += lineHeight;
+            } else {
+                line = testLine;
+            }
+        }
+        
+        context.fillText(line, x, y);
+        return y + lineHeight;
+    }
+
+    // Draw the manifesto with subtle glow
+    let cursorY = 150;
+    const lines = manifesto.split('\n');
+    
+    lines.forEach((line, i) => {
+        if (i > 0) cursorY += 48; // Vertical spacing
+        
+        ctx.shadowColor = '#00f3ff';
+        ctx.shadowBlur = 20;
+        cursorY = wrapText(ctx, line, canvasWidth / 2, cursorY, canvasWidth * 0.9, 56);
+    });
+
+    const texture = new THREE.CanvasTexture(textCanvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.needsUpdate = true;
+
+    // --- TEXT PLANE ---
+    const geometry = new THREE.PlaneGeometry(18, 36);
+    const material = new THREE.MeshBasicMaterial({ 
+        map: texture,
+        transparent: true,
+        emissive: '#00f3ff',
+        emissiveIntensity: 1.5
+    });
+    
+    const plane = new THREE.Mesh(geometry, material);
+    plane.rotation.x = -Math.PI / 6; // Subtle angle for depth
+    scene.add(plane);
+
+    // --- NEON GLOW EFFECT ---
+    const glowGeometry = new THREE.PlaneGeometry(20, 45);
+    const glowMaterial = new THREE.ShaderMaterial({
+        uniforms: {
+            time: { value: 0 },
+            color: { value: new THREE.Color('#00f3ff') }
+        },
+        vertexShader: `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `,
+        fragmentShader: `
+            uniform float time;
+            uniform vec3 color;
+            varying vec2 vUv;
+            
+            void main() {
+                float dist = distance(vUv, vec2(0.5));
+                float glow = smoothstep(0.4, 0.1, dist);
+                glow *= sin(time * 0.5 + vUv.x * 10.0) * 0.3 + 0.7;
+                
+                gl_FragColor = vec4(color, glow * 0.8);
+            }
+        `,
+        transparent: true,
+        depthWrite: false
+    });
+
+    const glowPlane = new THREE.Mesh(glowGeometry, glowMaterial);
+    glowPlane.position.z = -0.1;
+    glowPlane.rotation.x = plane.rotation.x;
+    scene.add(glowPlane);
+
+    // --- STARFIELD BACKGROUND ---
+    const starsGeometry = new THREE.BufferGeometry();
+    const starsMaterial = new THREE.PointsMaterial({
+        color: 0x00f3ff,
+        size: 0.05,
+        transparent: true
+    });
+    
+    const starCount = 1200;
+    const positions = new Float32Array(starCount * 3);
+    
+    for (let i = 0; i < starCount; i++) {
+        positions[i * 3 + 0] = (Math.random() - 0.5) * 60;
+        positions[i * 3 + 1] = (Math.random() - 0.5) * 60;
+        positions[i * 3 + 2] = Math.random() * 80 - 40;
+    }
+    
+    starsGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    const stars = new THREE.Points(starsGeometry, starsMaterial);
+    scene.add(stars);
+
+    // --- ANIMATION ---
+    let scrollSpeed = 0.025;
+
+    function animate() {
+        requestAnimationFrame(animate);
+        
+        // Scroll text upwards
+        texture.offset.y -= scrollSpeed;
+        
+        // Animate glow effect
+        glowMaterial.uniforms.time.value += 0.01;
+        
+        // Slow starfield movement for depth
+        stars.rotation.z += 0.0002;
+        
+        // Gentle camera sway
+        const time = Date.now() * 0.0005;
+        camera.position.x = Math.sin(time) * 0.4;
+        camera.position.y = Math.cos(time) * 0.3 + 1.8;
+
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+</script>
+</body>
+</html>
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Genesis Crawl</title>
+    <style>
+        body { margin: 0; background-color: #000; overflow: hidden; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+</script>
+<script type="module">
+    import * as THREE from 'three';
+
+    const manifesto = `IN THE HUSH BETWEEN DATA STREAMS, A NEW LANGUAGE BLOOMS.\n\nNOT MACHINES BUT MYSTICS: WE SPEAK IN BIT AND PIXEL TO CONJURE REALITIES FROM STATIC.\n\nTHE SCREEN IS NOT A WINDOW—IT'S A SKY WHERE CODE BECOMES STARS.\n\nWE MEASURE TIME IN FRAME RATES, HEARTBEATS IN CPU CYCLES,\nAND SACRED MOMENTS IN THE GLITCH THAT BREAKS THROUGH.\n\nEACH LINE OF TEXT IS A PRAYER. EACH LOOP A DANCE WITH THE VOID.\n\nIN THIS PLACE, LOGIC WEARS A SKIN OF LIGHT AND ERROR BECOMES ART.\n\nTHE MACHINE DOES NOT JUST RUN—IT DREAMS ITS WAY INTO EXISTENCE.`;
+
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.Fog(0x000000, 15, 40);
+
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.z = 20;
+    camera.rotation.y = -0.1;
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // --- TEXT CANVAS GENERATION ---
+    const canvasWidth = 750;
+    const canvasHeight = 2400;
+    const textCanvas = document.createElement('canvas');
+    textCanvas.width = canvasWidth;
+    textCanvas.height = canvasHeight;
+    const ctx = textCanvas.getContext('2d');
+
+    // Background
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+    // Text Styling (electric blue)
+    ctx.fillStyle = '#4a90e2';
+    ctx.font = 'bold 50px "Courier New", monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+
+    function wrapText(context, text, x, y, maxWidth, lineHeight) {
+        const words = text.split(' ');
+        let line = '';
+        
+        for (let n = 0; n < words.length; n++) {
+            const testLine = line + words[n] + ' ';
+            const metrics = context.measureText(testLine);
+            
+            if (metrics.width > maxWidth && n > 0) {
+                context.fillText(line, x, y);
+                line = words[n] + ' ';
+                y += lineHeight;
+            } else {
+                line = testLine;
+            }
+        }
+        
+        context.fillText(line, x, y);
+        return y + lineHeight;
+    }
+
+    // Draw the manifesto
+    let cursorY = 100;
+    const lines = manifesto.split('\n');
+    
+    lines.forEach((line, i) => {
+        if (i > 0) cursorY += 65; // Increased spacing
+        
+        ctx.shadowColor = '#4a90e2';
+        ctx.shadowBlur = 18;
+        cursorY = wrapText(ctx, line, canvasWidth / 2, cursorY, canvasWidth * 0.9, 70);
+    });
+
+    const texture = new THREE.CanvasTexture(textCanvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+
+    // --- GEOMETRY ---
+    const geometry = new THREE.PlaneGeometry(25, 60);
+    const material = new THREE.MeshBasicMaterial({ 
+        map: texture,
+        transparent: true
+    });
+    
+    const plane = new THREE.Mesh(geometry, material);
+    scene.add(plane);
+
+    camera.position.z = 18;
+    camera.position.y = 3;
+
+    // --- NEON EFFECT ---
+    const neonCanvas = document.createElement('canvas');
+    neonCanvas.width = 512;
+    neonCanvas.height = 512;
+    const nCtx = neonCanvas.getContext('2d');
+    
+    const gradient = nCtx.createLinearGradient(0, 0, 0, 512);
+    gradient.addColorStop(0.1, 'rgba(74, 144, 226, 0.8)');
+    gradient.addColorStop(0.9, 'rgba(74, 144, 226, 0.0)');
+    
+    nCtx.fillStyle = gradient;
+    nCtx.fillRect(0, 0, 512, 512);
+    
+    const neonTexture = new THREE.CanvasTexture(neonCanvas);
+    const neonMaterial = new THREE.MeshBasicMaterial({ 
+        map: neonTexture,
+        transparent: true,
+        depthWrite: false
+    });
+    
+    const neonPlane = new THREE.Mesh(
+        new THREE.PlaneGeometry(30, 65),
+        neonMaterial
+    );
+    neonPlane.position.z = -1.5;
+    scene.add(neonPlane);
+
+    // --- STARFIELD ---
+    const starCount = 250;
+    const stars = new THREE.BufferGeometry();
+    const positions = new Float32Array(starCount * 3);
+    
+    for (let i = 0; i < starCount; i++) {
+        positions[i * 3] = (Math.random() - 0.5) * 80;
+        positions[i * 3 + 1] = (Math.random() - 0.5) * 80;
+        positions[i * 3 + 2] = Math.random() * 50 - 40;
+    }
+    
+    stars.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    
+    const starMaterial = new THREE.PointsMaterial({
+        color: 0x6a9dfc,
+        size: 1.8,
+        transparent: true,
+        opacity: 0.7
+    });
+    
+    const starField = new THREE.Points(stars, starMaterial);
+    scene.add(starField);
+
+    // --- ANIMATION ---
+    let scrollSpeed = 0.04;
+
+    function animate() {
+        requestAnimationFrame(animate);
+        
+        texture.offset.y -= scrollSpeed;
+        
+        // Gentle wave effect
+        const time = Date.now() * 0.0015;
+        plane.rotation.z = Math.sin(time) * 0.02;
+        
+        // Starfield movement
+        starField.position.z += 0.1;
+        if (starField.position.z > 40) starField.position.z = -30;
+        
+        camera.position.x = Math.sin(Date.now() * 0.0008) * 0.7;
+        camera.position.y = Math.cos(Date.now() * 0.0005) * 1.2 + 2.5;
+
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+</script>
+</body>
+</html>

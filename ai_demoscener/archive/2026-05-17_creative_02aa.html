@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Neon Grid Pulse</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+        #info {
+            position: absolute;
+            top: 10px;
+            width: 100%;
+            text-align: center;
+            color: #fff;
+            font-family: monospace;
+            pointer-events: none;
+            user-select: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">Neon Grid Pulse - Demoscene Effect</div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Initialize scene, camera, renderer
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x000000);
+        scene.fog = new THREE.Fog(0x000000, 10, 100);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 0, 15);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setClearColor(0x000000);
+        document.body.appendChild(renderer.domElement);
+
+        // Create grid geometry
+        const gridGeometry = new THREE.PlaneGeometry(100, 100, 50, 50);
+        const gridMaterial = new THREE.MeshBasicMaterial({
+            color: 0x00ffff,
+            transparent: true,
+            opacity: 0.8,
+            side: THREE.DoubleSide
+        });
+
+        const grid = new THREE.Mesh(gridGeometry, gridMaterial);
+        grid.rotation.x = -Math.PI / 2;
+        scene.add(grid);
+
+        // Create pulse effect
+        const pulseMaterial = new THREE.MeshBasicMaterial({
+            color: 0x00ffff,
+            transparent: true,
+            opacity: 0.8,
+            side: THREE.DoubleSide
+        });
+
+        const pulseGeometry = new THREE.PlaneGeometry(100, 100, 10, 10);
+        const pulse = new THREE.Mesh(pulseGeometry, pulseMaterial);
+        pulse.position.set(0, 0, 0);
+        scene.add(pulse);
+
+        // Create neon lines for grid
+        const lines = [];
+        for (let x = -50; x <= 50; x++) {
+            for (let z = -50; z <= 50; z++) {
+                const lineGeometry = new THREE.BufferGeometry();
+                const vertices = [];
+                vertices.push(new THREE.Vector3(x, 0, z));
+                vertices.push(new THREE.Vector3(x, 0, z + 1));
+                vertices.push(new THREE.Vector3(x + 1, 0, z));
+                vertices.push(new THREE.Vector3(x + 1, 0, z + 1));
+                
+                lineGeometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+                
+                const lineMaterial = new THREE.LineBasicMaterial({
+                    color: 0x00ffff,
+                    transparent: true,
+                    opacity: 0.7
+                });
+                
+                const line = new THREE.LineSegments(lineGeometry, lineMaterial);
+                scene.add(line);
+                lines.push(line);
+            }
+        }
+
+        // Add some floating particles
+        const particlesGeometry = new THREE.BufferGeometry();
+        const particlesCount = 1000;
+        const positions = new Float32Array(particlesCount * 3);
+        const colors = new Float32Array(particlesCount * 3);
+
+        for (let i = 0; i < particlesCount; i++) {
+            const i3 = i * 3;
+            positions[i3] = (Math.random() - 0.5) * 100;
+            positions[i3 + 1] = Math.random() * 20;
+            positions[i3 + 2] = (Math.random() - 0.5) * 100;
+            colors[i3] = Math.random();
+            colors[i3 + 1] = Math.random();
+            colors[i3 + 2] = Math.random();
+        }
+
+        particlesGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        particlesGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+        const particlesMaterial = new THREE.PointsMaterial({
+            size: 1.5,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.8
+        });
+
+        const particles = new THREE.Points(particlesGeometry, particlesMaterial);
+        scene.add(particles);
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Pulse effect
+            pulse.rotation.x += 0.01;
+            pulse.rotation.y += 0.01;
+
+            // Rotate grid slightly
+            grid.rotation.y += 0.005;
+
+            // Move particles
+            const positions = particlesGeometry.attributes.position.array;
+            for (let i = 0; i < positions.length; i += 3) {
+                positions[i] += (Math.random() - 0.5) * 0.1;
+                positions[i + 2] += (Math.random() - 0.5) * 0.1;
+            }
+
+            particlesGeometry.attributes.position.needsUpdate = true;
+
+            // Update camera position
+            camera.position.x = Math.sin(Date.now() * 0.001) * 50;
+            camera.position.z = Math.cos(Date.now() * 0.001) * 50;
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
