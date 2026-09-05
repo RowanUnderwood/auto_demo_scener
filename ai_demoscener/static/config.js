@@ -33,7 +33,9 @@ function populateForm(c) {
   set('wUpdate',   c.generate_mode_weights?.update   ?? 1, 'wUpdateV');
   set('wStock',    c.generate_mode_weights?.stock    ?? 2, 'wStockV');
 
-  // LM Studio
+  // LLM Provider
+  setProvider(c.llm_provider || 'lm_studio', false);
+
   setVal('lmUrl',       c.lm_studio?.base_url ?? '');
   setVal('lmMaxTokens', c.lm_studio?.max_tokens ?? 8192);
   setVal('lmTimeout',   c.lm_studio?.request_timeout_seconds ?? 180);
@@ -44,7 +46,19 @@ function populateForm(c) {
   document.getElementById('surpriseLastField').style.display =
     (c.lm_studio?.surprise_me) ? '' : 'none';
   // Model dropdown gets populated by refreshModels() if called
-  populateModelDropdown([c.lm_studio?.model ?? ''], c.lm_studio?.model ?? '');
+  populateModelDropdown('lmModel', [c.lm_studio?.model ?? ''], c.lm_studio?.model ?? '');
+
+  setVal('ninferUrl',       c.ninfer?.base_url ?? '');
+  setVal('ninferMaxTokens', c.ninfer?.max_tokens ?? 8192);
+  setVal('ninferTimeout',   c.ninfer?.request_timeout_seconds ?? 180);
+  setVal('ninferCeiling',   c.ninfer?.context_ceiling_tokens ?? 16384);
+  set('ninferTemp', c.ninfer?.temperature ?? 0.9, 'ninferTempV');
+  setChecked('ninferSurpriseMe', c.ninfer?.surprise_me ?? false);
+  document.getElementById('surpriseLastFieldNinfer').style.display =
+    (c.ninfer?.surprise_me) ? '' : 'none';
+  setVal('ninferThinkingEffort', c.ninfer?.thinking_effort ?? 'low');
+  setChecked('ninferVideoCheck', c.ninfer?.video_check_enabled ?? false);
+  populateModelDropdown('ninferModel', [c.ninfer?.model ?? ''], c.ninfer?.model ?? '');
 
   // Display
   setVal('demoRuntime',        c.display?.demo_runtime_seconds ?? 60);
@@ -90,7 +104,10 @@ async function saveSection(section) {
         stock:    +getVal('wStock'),
       };
       break;
-    case 'lmStudio':
+    case 'llmProvider':
+      cfg.llm_provider = document.getElementById('providerNinfer')?.classList.contains('active')
+        ? 'ninfer' : 'lm_studio';
+
       cfg.lm_studio.base_url                 = getVal('lmUrl');
       cfg.lm_studio.model                    = getVal('lmModel');
       cfg.lm_studio.max_tokens               = +getVal('lmMaxTokens');
@@ -99,6 +116,16 @@ async function saveSection(section) {
       cfg.lm_studio.context_ceiling_tokens   = +getVal('lmCeiling');
       cfg.lm_studio.surprise_me              = getChecked('lmSurpriseMe');
       cfg.lm_fallback_to_replay = getChecked('lmFallback');
+
+      cfg.ninfer.base_url                = getVal('ninferUrl');
+      cfg.ninfer.model                   = getVal('ninferModel');
+      cfg.ninfer.max_tokens              = +getVal('ninferMaxTokens');
+      cfg.ninfer.temperature             = +getVal('ninferTemp');
+      cfg.ninfer.request_timeout_seconds = +getVal('ninferTimeout');
+      cfg.ninfer.context_ceiling_tokens  = +getVal('ninferCeiling');
+      cfg.ninfer.surprise_me             = getChecked('ninferSurpriseMe');
+      cfg.ninfer.thinking_effort         = getVal('ninferThinkingEffort');
+      cfg.ninfer.video_check_enabled     = getChecked('ninferVideoCheck');
       break;
     case 'display':
       cfg.display.demo_runtime_seconds  = +getVal('demoRuntime');
@@ -138,9 +165,10 @@ async function saveSection(section) {
   });
   if (r.ok) {
     const modeChanged = section === 'mode' && cfg.boot_mode !== currentCfg.boot_mode;
+    const providerChanged = section === 'llmProvider' && cfg.llm_provider !== currentCfg.llm_provider;
     currentCfg = cfg;
     flash(`${section}Saved`);
-    if (modeChanged) {
+    if (modeChanged || providerChanged) {
       fetch('/api/skip', { method: 'POST' });
     }
   }
@@ -153,16 +181,27 @@ function setMode(mode, save = false) {
   if (save) saveSection('mode');
 }
 
-// ── Models dropdown ───────────────────────────────────────────────────────────
-async function refreshModels() {
-  const r = await fetch('/api/models');
-  const data = await r.json();
-  if (data.error) { alert('LM Studio error: ' + data.error); return; }
-  populateModelDropdown(data.models, currentCfg.lm_studio?.model ?? '');
+// ── LLM provider UI ───────────────────────────────────────────────────────────
+function setProvider(provider, save = false) {
+  document.getElementById('providerLmStudio').classList.toggle('active', provider === 'lm_studio');
+  document.getElementById('providerNinfer').classList.toggle('active',   provider === 'ninfer');
+  document.getElementById('lmStudioFields').style.display = provider === 'ninfer' ? 'none' : '';
+  document.getElementById('ninferFields').style.display   = provider === 'ninfer' ? '' : 'none';
+  if (save) saveSection('llmProvider');
 }
 
-function populateModelDropdown(models, selected) {
-  const sel = document.getElementById('lmModel');
+// ── Models dropdown ───────────────────────────────────────────────────────────
+async function refreshModels(provider) {
+  const r = await fetch(`/api/models?provider=${encodeURIComponent(provider)}`);
+  const data = await r.json();
+  if (data.error) { alert(`${provider} error: ` + data.error); return; }
+  const selectId = provider === 'ninfer' ? 'ninferModel' : 'lmModel';
+  const selected = provider === 'ninfer' ? (currentCfg.ninfer?.model ?? '') : (currentCfg.lm_studio?.model ?? '');
+  populateModelDropdown(selectId, data.models, selected);
+}
+
+function populateModelDropdown(selectId, models, selected) {
+  const sel = document.getElementById(selectId);
   sel.innerHTML = '';
   const opts = models.length ? models : [selected || '(none)'];
   for (const m of opts) {
@@ -315,21 +354,24 @@ function connectStatusWS() {
       const msg = JSON.parse(ev.data);
       if (msg.type === 'state') updateStateDisplay(msg.state);
       if (msg.type === 'model_selected') {
+        // Provider isn't included on the message; harmlessly update both — only the
+        // field for the currently active provider is visible anyway.
         document.getElementById('surpriseLastModel').textContent = msg.model;
+        document.getElementById('surpriseLastModelNinfer').textContent = msg.model;
       }
     } catch (e) {}
   };
   ws.onclose = () => setTimeout(connectStatusWS, 3000);
 }
 
-function toggleSurpriseLastField(cb) {
-  document.getElementById('surpriseLastField').style.display = cb.checked ? '' : 'none';
+function toggleSurpriseLastField(cb, fieldId) {
+  document.getElementById(fieldId).style.display = cb.checked ? '' : 'none';
 }
 
 function updateStateDisplay(state) {
   document.getElementById('stateLabel').textContent = state;
   const dot = document.getElementById('stateDot');
-  dot.className = ['GENERATE','DISPLAY','REPLAY'].includes(state) ? 'active'
+  dot.className = ['GENERATE','DISPLAY','REPLAY','VIDEO_IMPROVE'].includes(state) ? 'active'
                 : ['DISCARD','REPAIR'].includes(state) ? 'error' : '';
 }
 

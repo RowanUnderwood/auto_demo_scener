@@ -38,6 +38,7 @@ def chat_stream(
     max_tokens: int,
     temperature: float,
     timeout: int = 180,
+    extra_params: dict | None = None,
 ):
     """Yield content-delta strings from a streaming chat completion.
 
@@ -51,6 +52,8 @@ def chat_stream(
         "temperature": temperature,
         "stream": True,
     }
+    if extra_params:
+        payload.update(extra_params)
     log.debug("LLM request: model=%s max_tokens=%d input_msgs=%d", model, max_tokens, len(messages))
 
     try:
@@ -104,6 +107,7 @@ def chat(
     max_tokens: int | None = 128,
     temperature: float = 0.7,
     timeout: int = 30,
+    extra_params: dict | None = None,
 ) -> str:
     """Non-streaming chat completion. Returns the full response string."""
     payload = {
@@ -114,6 +118,8 @@ def chat(
     }
     if max_tokens is not None:
         payload["max_tokens"] = max_tokens
+    if extra_params:
+        payload.update(extra_params)
     try:
         r = requests.post(f"{base_url}/v1/chat/completions", json=payload, timeout=timeout)
         r.raise_for_status()

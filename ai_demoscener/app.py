@@ -67,15 +67,23 @@ def ws_handler(ws):
     ws.send(json.dumps({"type": "config_push", "config": cfg}))
     try:
         while True:
+            # receive(timeout=30) returns None on a benign idle timeout (connection
+            # still alive) — a genuine disconnect raises ConnectionClosed instead, caught
+            # below. Treating a None timeout as a disconnect here was closing the socket
+            # every ~30s of silence (e.g. during any longer demo_runtime_seconds display,
+            # or the video-improve recording wait), forcing spurious reconnects that could
+            # silently drop one-shot broadcasts like record_video sent during that window.
             raw = ws.receive(timeout=30)
             if raw is None:
-                break
+                continue
             try:
                 msg = json.loads(raw)
             except json.JSONDecodeError:
                 continue
             if msg.get("type") == "audit_result":
                 validator.receive_result(msg)
+            elif msg.get("type") == "record_error":
+                validator.receive_recording({"status": "error", "error": msg.get("error")})
     except Exception:
         pass
     finally:
@@ -145,15 +153,45 @@ def api_set_config():
     return jsonify({"ok": True})
 
 
-# ── API: LM Studio models ──────────────────────────────────────────────────────
+# ── API: LLM provider models ────────────────────────────────────────────────────
 @app.route("/api/models")
 def api_models():
     cfg = cfg_mod.load()
+    provider = request.args.get("provider") or cfg.get("llm_provider", "lm_studio")
+    if provider not in ("lm_studio", "ninfer"):
+        provider = "lm_studio"
     try:
-        models = lm_client.list_models(cfg["lm_studio"]["base_url"])
+        models = lm_client.list_models(cfg[provider]["base_url"])
         return jsonify({"models": models})
     except lm_client.LMClientError as e:
         return jsonify({"error": str(e)}), 502
+
+
+# ── API: video-improve recording upload ─────────────────────────────────────────
+# The probe's fetch() runs inside the demo iframe, which is sandbox="allow-scripts" with no
+# allow-same-origin — that gives it an opaque origin, so the browser treats this upload as
+# cross-origin (CORS) even though it's hitting the same Flask app. Explicit CORS headers
+# (including handling the preflight OPTIONS request ourselves) are required or the browser
+# silently blocks the POST before it's ever sent.
+@app.route("/api/upload_recording", methods=["POST", "OPTIONS"])
+def api_upload_recording():
+    if request.method == "OPTIONS":
+        resp = Response(status=204)
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        resp.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        return resp
+
+    record_id = request.args.get("record_id", "x")
+    data = request.get_data()
+    if not data:
+        return jsonify({"ok": False, "error": "empty body"}), 400
+    dest = TEMP_DIR / f"recording_{record_id}.webm"
+    dest.write_bytes(data)
+    validator.receive_recording({"status": "uploaded", "path": str(dest)})
+    resp = jsonify({"ok": True})
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    return resp
 
 
 # ── API: orchestrator control ──────────────────────────────────────────────────
@@ -392,7 +430,8 @@ def api_generate_title_cards():
             # Determine which models are currently available
             available: set = set()
             try:
-                available = set(lm_client.list_models(cfg["lm_studio"]["base_url"]))
+                _, provider_cfg = orc._active_provider_cfg(cfg)
+                available = set(lm_client.list_models(provider_cfg["base_url"]))
             except Exception:
                 pass
             # Sort so demos from the same model are processed together,
@@ -458,10 +497,20 @@ def api_status():
 
 # ── Entry point ────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
+    import shutil
     import sys
     import webbrowser
 
     port = int(next((sys.argv[i + 1] for i, a in enumerate(sys.argv) if a == "--port"), 8080))
+
+    _startup_cfg = cfg_mod.load()
+    if _startup_cfg.get("ninfer", {}).get("video_check_enabled") and shutil.which("ffmpeg") is None:
+        log.warning(
+            "Ninfer video-check is enabled but ffmpeg was not found on PATH — "
+            "install it (e.g. 'sudo apt install ffmpeg') or the video-improve pass "
+            "will silently skip every cycle."
+        )
+
     orc.start()
     if "--launch" in sys.argv:
         webbrowser.open(f"http://localhost:{port}/display")

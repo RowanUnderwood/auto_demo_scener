@@ -49,26 +49,58 @@
     </div>
   </div>
 
-  <!-- LM Studio -->
+  <!-- LLM Provider -->
   <div class="section">
-    <div class="section-header" onclick="toggle(this)"><h2>LM STUDIO</h2><span class="arrow">▾</span></div>
-    <div class="section-body">
-      <div class="field"><label>Base URL</label><input type="url" id="lmUrl" placeholder="http://192.168.x.x:1234"></div>
-      <div class="field">
-        <label>Model <button class="btn btn-sm btn-muted" onclick="refreshModels()" style="margin-left:0.5rem">Refresh</button></label>
-        <select id="lmModel"></select>
+    <div class="section-header" onclick="toggle(this)"><h2>LLM PROVIDER</h2><span class="arrow">▾</span></div>
+    <div class="section-body full">
+      <div class="mode-toggle">
+        <div class="mode-btn" id="providerLmStudio" onclick="setProvider('lm_studio', true)">LM STUDIO</div>
+        <div class="mode-btn" id="providerNinfer"   onclick="setProvider('ninfer', true)">NINFER</div>
       </div>
-      <div class="field"><label>Max tokens</label><input type="number" id="lmMaxTokens" min="512" max="32768"></div>
-      <div class="field"><label>Temperature</label>
-        <div class="range-row"><input type="range" id="lmTemp" min="0" max="2" step="0.05" oninput="showW(this,'lmTempV')"><span class="range-val" id="lmTempV">0.9</span></div>
+
+      <div class="section-body" id="lmStudioFields" style="padding:0.75rem 0 0">
+        <div class="field"><label>Base URL</label><input type="url" id="lmUrl" placeholder="http://192.168.x.x:1234"></div>
+        <div class="field">
+          <label>Model <button class="btn btn-sm btn-muted" onclick="refreshModels('lm_studio')" style="margin-left:0.5rem">Refresh</button></label>
+          <select id="lmModel"></select>
+        </div>
+        <div class="field"><label>Max tokens</label><input type="number" id="lmMaxTokens" min="512" max="32768"></div>
+        <div class="field"><label>Temperature</label>
+          <div class="range-row"><input type="range" id="lmTemp" min="0" max="2" step="0.05" oninput="showW(this,'lmTempV')"><span class="range-val" id="lmTempV">0.9</span></div>
+        </div>
+        <div class="field"><label>Timeout (seconds)</label><input type="number" id="lmTimeout" min="30" max="600"></div>
+        <div class="field"><label>Context ceiling (tokens)</label><input type="number" id="lmCeiling" min="4096" max="131072"></div>
+        <div class="field"><label class="check-row"><input type="checkbox" id="lmFallback"> Auto-replay if provider unreachable</label></div>
+        <div class="field"><label class="check-row"><input type="checkbox" id="lmSurpriseMe" onchange="toggleSurpriseLastField(this,'surpriseLastField')"> Surprise me (random model each cycle)</label></div>
+        <div class="field" id="surpriseLastField" style="display:none"><label style="font-size:0.75rem;color:var(--c-muted)">Last picked: <span id="surpriseLastModel">—</span></label></div>
       </div>
-      <div class="field"><label>Timeout (seconds)</label><input type="number" id="lmTimeout" min="30" max="600"></div>
-      <div class="field"><label>Context ceiling (tokens)</label><input type="number" id="lmCeiling" min="4096" max="131072"></div>
-      <div class="field"><label class="check-row"><input type="checkbox" id="lmFallback"> Auto-replay if LM Studio unreachable</label></div>
-      <div class="field"><label class="check-row"><input type="checkbox" id="lmSurpriseMe" onchange="toggleSurpriseLastField(this)"> Surprise me (random model each cycle)</label></div>
-      <div class="field" id="surpriseLastField" style="display:none"><label style="font-size:0.75rem;color:var(--c-muted)">Last picked: <span id="surpriseLastModel">—</span></label></div>
+
+      <div class="section-body" id="ninferFields" style="padding:0.75rem 0 0; display:none">
+        <div class="field"><label>Base URL</label><input type="url" id="ninferUrl" placeholder="http://192.168.x.x:8000"></div>
+        <div class="field">
+          <label>Model <button class="btn btn-sm btn-muted" onclick="refreshModels('ninfer')" style="margin-left:0.5rem">Refresh</button></label>
+          <select id="ninferModel"></select>
+        </div>
+        <div class="field"><label>Max tokens</label><input type="number" id="ninferMaxTokens" min="512" max="32768"></div>
+        <div class="field"><label>Temperature</label>
+          <div class="range-row"><input type="range" id="ninferTemp" min="0" max="2" step="0.05" oninput="showW(this,'ninferTempV')"><span class="range-val" id="ninferTempV">0.9</span></div>
+        </div>
+        <div class="field"><label>Timeout (seconds)</label><input type="number" id="ninferTimeout" min="30" max="600"></div>
+        <div class="field"><label>Context ceiling (tokens)</label><input type="number" id="ninferCeiling" min="4096" max="131072"></div>
+        <div class="field"><label class="check-row"><input type="checkbox" id="ninferSurpriseMe" onchange="toggleSurpriseLastField(this,'surpriseLastFieldNinfer')"> Surprise me (random model each cycle)</label></div>
+        <div class="field" id="surpriseLastFieldNinfer" style="display:none"><label style="font-size:0.75rem;color:var(--c-muted)">Last picked: <span id="surpriseLastModelNinfer">—</span></label></div>
+        <div class="field"><label>Thinking effort</label>
+          <select id="ninferThinkingEffort">
+            <option value="none">none</option>
+            <option value="low">low</option>
+            <option value="medium">medium</option>
+            <option value="xhigh">xhigh</option>
+          </select>
+        </div>
+        <div class="field"><label class="check-row"><input type="checkbox" id="ninferVideoCheck"> Improve demo via video check (~30s capture + vision review)</label></div>
+      </div>
     </div>
-    <div style="padding:0 1rem 0.75rem"><div class="save-row"><button class="btn btn-primary" onclick="saveSection('lmStudio')">Save</button><span class="save-msg" id="lmSaved"></span></div></div>
+    <div style="padding:0 1rem 0.75rem"><div class="save-row"><button class="btn btn-primary" onclick="saveSection('llmProvider')">Save</button><span class="save-msg" id="llmProviderSaved"></span></div></div>
   </div>
 
   <!-- Display -->

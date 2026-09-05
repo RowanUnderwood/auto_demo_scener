@@ -8,6 +8,7 @@ DEFAULTS: dict = {
     "boot_mode": "generate",
     "lm_fallback_to_replay": True,
     "generate_mode_weights": {"creative": 1, "update": 1, "stock": 2},
+    "llm_provider": "lm_studio",
     "lm_studio": {
         "base_url": "http://192.168.2.192:1234",
         "model": "",
@@ -16,6 +17,18 @@ DEFAULTS: dict = {
         "request_timeout_seconds": 180,
         "context_ceiling_tokens": 16384,
         "surprise_me": False,
+    },
+    "ninfer": {
+        "base_url": "http://192.168.2.192:8000",
+        "model": "",
+        "max_tokens": 8192,
+        "temperature": 0.9,
+        "request_timeout_seconds": 180,
+        "context_ceiling_tokens": 16384,
+        "surprise_me": False,
+        "thinking_effort": "low",
+        "video_check_enabled": False,
+        "video_max_tokens": 16384,
     },
     "display": {
         "fullscreen": True,
@@ -65,6 +78,14 @@ DEFAULTS: dict = {
             "The HTML below failed to run. The error or symptom is: {error}. "
             "Fix the file and output the corrected complete HTML. "
             "Output ONLY the HTML, no commentary, no markdown fences."
+        ),
+        "video_improve": (
+            "You are an expert creative coder reviewing a running three.js demo. "
+            "Attached is a short video capture of the demo actually running, followed by its "
+            "complete HTML source. Watch how it looks and moves, then make any improvements you "
+            "feel are relevant to make it more visually appealing — timing, color, composition, "
+            "motion, contrast, or polish — while keeping the core idea and effect intact. "
+            "Output ONLY the complete corrected HTML file, no commentary, no markdown fences."
         ),
         "title": (
             "You are a creative naming assistant for demoscene visuals. "

@@ -48,10 +48,11 @@ python app.py --launch
 ## Requirements
 
 - Python 3.10+
-- [LM Studio](https://lmstudio.ai/) running on the local network with a model loaded
+- An LLM provider: [LM Studio](https://lmstudio.ai/) (default) or [Ninfer](https://github.com/Neroued/ninfer) — either running on the local network with a model loaded
 - A modern browser with WebGL support (Chromium recommended for kiosk use)
+- **Only if using Ninfer's "improve demo via video check" feature:** `ffmpeg` on PATH (`sudo apt install ffmpeg` on Debian/Ubuntu) — used to transcode the browser's screen capture into the H.264 MP4 format the vision model expects. Not needed for anything else; the app runs fine without it as long as that checkbox is off.
 
-No GPU required on the host machine — LM Studio handles inference, the browser handles WebGL rendering.
+No GPU required on the host machine — the LLM provider handles inference, the browser handles WebGL rendering.
 
 ---
 
@@ -61,8 +62,11 @@ Edit settings at `http://localhost:8080/config` while the server is running. All
 
 | Setting | Default | Description |
 |---|---|---|
-| LM Studio URL | `http://192.168.2.192:1234` | Address of your LM Studio instance |
+| LLM Provider | LM Studio | Choose **LM Studio** or **Ninfer** as the active backend; each keeps its own connection settings |
+| Base URL | `http://192.168.2.192:1234` (LM Studio) | Address of the active provider |
 | Model | — | Which model to use; or enable **Surprise Me** for random selection each cycle |
+| Thinking effort | low | **Ninfer only** — `none`/`low`/`medium`/`xhigh`, passed as `reasoning_effort` on every generation/repair call |
+| Improve demo via video check | off | **Ninfer only** — records ~30s at 2fps *while the demo plays normally* (no added time for this part), then sends the video + HTML to Qwen for a visual-improvement pass. The display switches to the coding view ("UPDATING BASED ON VIDEO…") while Qwen works, then re-validates and re-displays the result before archiving if it passes. Adds time only when an improvement is actually produced (LLM round-trip + a second display); requires `ffmpeg` |
 | Demo runtime | 60 s | How long each demo runs before the next cycle |
 | Mode weights | stock 2 / creative 1 / update 1 | Probability of each generation sub-mode |
 | Palette | Amber CRT | Display colour scheme (7 built-in options) |
@@ -78,6 +82,11 @@ Edit settings at `http://localhost:8080/config` while the server is running. All
 - **Creative** — given the full prompt list as inspiration, invents something new
 - **Update** — takes a previous archive file and produces a fresh aesthetic take on it
 - **Replay** — no generation; cycles through the archive
+
+### LLM providers
+
+- **LM Studio** — the default; any OpenAI-compatible model it serves works.
+- **Ninfer** — a GPU-hosted OpenAI-compatible server for Qwen models ([github.com/Neroued/ninfer](https://github.com/Neroued/ninfer); requires an RTX 5090, so it runs on a separate machine from the orchestrator like LM Studio does). Selecting it unlocks the **thinking effort** dropdown and the **video-improve** checkbox above. Video-improve is scoped to generate mode only (stock/creative/update) — it doesn't touch replay mode or already-archived demos.
 
 ---
 
@@ -201,7 +210,7 @@ Failure rates across 29 models tested on Three.js demo generation. Sorted alphab
 ai_demoscener/
 ├── app.py              Flask server + WebSocket hub + all API routes
 ├── orchestrator.py     Generation state machine (IDLE → GENERATE → DISPLAY → ARCHIVE)
-├── lm_client.py        LM Studio streaming API client
+├── lm_client.py        OpenAI-compatible streaming API client (LM Studio + Ninfer)
 ├── validator.py        Probe injection, fence-stripping, validation sync
 ├── archive.py          Save / version / prune / delete archived demos; archive_index.json
 ├── stats.py            Run/failure/deletion tracking per effect+model → prompt_stats.json

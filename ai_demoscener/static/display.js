@@ -126,6 +126,24 @@ function handleMsg(msg) {
     case 'audition':       startAudition(msg.url, msg.seconds); break;
     case 'config_push':    applyConfig(msg.config); break;
     case 'model_selected': modelInfo.textContent = `[${msg.model}]`; break;
+    case 'record_video':   relayRecordCommand(msg); break;
+  }
+}
+
+// Relay a video-improve recording command into the iframe. The iframe is sandboxed
+// (allow-scripts only, no allow-same-origin) so postMessage is the only way in — the probe
+// injected into the demo listens for this and does the actual canvas.captureStream() work.
+function relayRecordCommand(msg) {
+  console.log('[display] record_video received from server:', msg,
+    'demoFrame.contentWindow present:', !!(demoFrame && demoFrame.contentWindow));
+  if (demoFrame && demoFrame.contentWindow) {
+    demoFrame.contentWindow.postMessage(
+      { type: 'start_recording', seconds: msg.seconds, fps: msg.fps, record_id: msg.record_id },
+      '*'
+    );
+    console.log('[display] posted start_recording into iframe');
+  } else {
+    console.warn('[display] cannot relay start_recording — no demoFrame.contentWindow');
   }
 }
 
@@ -170,6 +188,18 @@ function handleState(msg) {
       modeChip.textContent = (msg.mode || '').toUpperCase();
       modelInfo.textContent = msg.model ? `[${msg.model}]` : '';
       setStatus('WRITING…');
+      startSpinner();
+      break;
+
+    case 'VIDEO_IMPROVE':
+      hideIdle();
+      showMockOS();
+      hideDemoFrame();
+      resetEditor();
+      resetTitleCard();
+      modeChip.textContent = 'VIDEO';
+      modelInfo.textContent = msg.model ? `[${msg.model}]` : '';
+      setStatus('UPDATING BASED ON VIDEO…');
       startSpinner();
       break;
 
@@ -614,8 +644,10 @@ function handleKey(key) {
 document.addEventListener('keydown', (e) => handleKey(e.key));
 
 // Catch keys relayed from inside the iframe via the probe (iframe steals focus when demo loads)
+// Also relays video-recording failures so the orchestrator can fail fast instead of timing out.
 window.addEventListener('message', (ev) => {
   if (ev.data?.type === 'probe_keydown') handleKey(ev.data.key);
+  else if (ev.data?.type === 'probe_record_error') sendWS({ type: 'record_error', error: ev.data.error });
 });
 
 // Refocus parent after each iframe load so the parent keydown listener also works

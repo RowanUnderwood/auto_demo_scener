@@ -32,6 +32,33 @@ def wait_for_result(timeout: float) -> dict | None:
         return _result
 
 
+# ── Video-recording synchronisation ─────────────────────────────────────────────
+_rec_event = threading.Event()
+_rec_result: dict | None = None
+_rec_lock = threading.Lock()
+
+
+def start_recording() -> None:
+    global _rec_result
+    with _rec_lock:
+        _rec_result = None
+    _rec_event.clear()
+
+
+def receive_recording(result: dict) -> None:
+    global _rec_result
+    with _rec_lock:
+        _rec_result = result
+    _rec_event.set()
+    log.debug("Recording result received: %s", result.get("status"))
+
+
+def wait_for_recording(timeout: float) -> dict | None:
+    _rec_event.wait(timeout=timeout)
+    with _rec_lock:
+        return _rec_result
+
+
 # ── HTML manipulation ──────────────────────────────────────────────────────────
 
 PROBE_JS = r"""
@@ -102,6 +129,56 @@ PROBE_JS = r"""
   /* Relay keydown events to parent so 'd' works even when iframe has focus */
   document.addEventListener('keydown',function(e){
     send({type:'probe_keydown',key:e.key});
+  });
+
+  /* Video-improve recording: dormant unless the parent sends a start_recording command,
+     which only the orchestrator does, and only when Ninfer + video-check are enabled. */
+  var _mediaRecorder=null, _recordedChunks=[];
+  window.addEventListener('message',function(ev){
+    var m=ev.data;
+    if(!m||m.type!=='start_recording')return;
+    console.log('[probe] received start_recording',m,'glCtxs count:',_glCtxs.length);
+    try{
+      var canvas=null;
+      for(var i=_glCtxs.length-1;i>=0;i--){ if(_glCtxs[i].canvas){ canvas=_glCtxs[i].canvas; break; } }
+      if(!canvas){ console.warn('[probe] no canvas found among',_glCtxs.length,'stashed contexts'); send({type:'probe_record_error',error:'no canvas found'}); return; }
+      if(!canvas.captureStream){ console.warn('[probe] canvas.captureStream unsupported'); send({type:'probe_record_error',error:'canvas.captureStream unsupported in this browser'}); return; }
+      if(!window.MediaRecorder){ console.warn('[probe] MediaRecorder unsupported'); send({type:'probe_record_error',error:'MediaRecorder unsupported in this browser'}); return; }
+      var stream=canvas.captureStream(m.fps||2);
+      console.log('[probe] captureStream ok, tracks:',stream.getTracks().length);
+      /* Try the widest reasonable set of containers/codecs — whatever we end up with,
+         ffmpeg on the server side re-encodes it to H.264 MP4 regardless, so any of these
+         working is fine. Some Linux browsers (WebKitGTK in particular) lack VP8/VP9 support
+         without extra GStreamer plugins but do support H.264 in either container. */
+      var candidates=['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm;codecs=h264',
+                       'video/webm','video/mp4;codecs=h264','video/mp4'];
+      var mimeType='';
+      for(var ci=0;ci<candidates.length;ci++){
+        if(MediaRecorder.isTypeSupported(candidates[ci])){ mimeType=candidates[ci]; break; }
+      }
+      if(!mimeType){
+        console.warn('[probe] no supported mimeType among',candidates);
+        send({type:'probe_record_error',
+              error:'no supported MediaRecorder mimeType (tried: '+candidates.join(', ')+')'});
+        return;
+      }
+      console.log('[probe] using mimeType:',mimeType);
+      _recordedChunks=[];
+      _mediaRecorder=new MediaRecorder(stream,{mimeType:mimeType});
+      _mediaRecorder.ondataavailable=function(e){ if(e.data&&e.data.size)_recordedChunks.push(e.data); console.log('[probe] chunk received, size:',e.data&&e.data.size); };
+      _mediaRecorder.onstop=function(){
+        console.log('[probe] recorder stopped, chunks:',_recordedChunks.length,'uploading…');
+        var blob=new Blob(_recordedChunks,{type:mimeType||'video/webm'});
+        fetch('/api/upload_recording?record_id='+encodeURIComponent(m.record_id||''),{method:'POST',body:blob})
+          .then(function(){ console.log('[probe] upload complete'); send({type:'probe_record_done',record_id:m.record_id}); })
+          .catch(function(e){ console.error('[probe] upload failed',e); send({type:'probe_record_error',error:String(e)}); });
+      };
+      _mediaRecorder.start();
+      console.log('[probe] recorder started, state:',_mediaRecorder.state,'will stop in',(m.seconds||30),'s');
+      setTimeout(function(){
+        if(_mediaRecorder&&_mediaRecorder.state!=='inactive')_mediaRecorder.stop();
+      },(m.seconds||30)*1000);
+    }catch(e){ console.error('[probe] recording setup threw',e); send({type:'probe_record_error',error:String(e)}); }
   });
 
   send({type:'probe_ready'});
