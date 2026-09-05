@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>4D Hypercube</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
+</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 100);
+camera.position.set(0, 0, 6);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setClearColor(0x000000);
+document.body.appendChild(renderer.domElement);
+
+// 16 vertices: all +/-1 combinations in 4D
+const verts4D = [];
+for (let i = 0; i < 16; i++) {
+  verts4D.push([
+    (i & 1) ? 1 : -1,
+    (i & 2) ? 1 : -1,
+    (i & 4) ? 1 : -1,
+    (i & 8) ? 1 : -1
+  ]);
+}
+
+// 32 edges: connect vertices differing in exactly one bit
+const edges = [];
+for (let i = 0; i < 16; i++) {
+  for (let bit = 0; bit < 4; bit++) {
+    const j = i ^ (1 << bit);
+    if (j > i) edges.push([i, j]);
+  }
+}
+
+// Palette: hue spread across edge index
+const edgeColors = edges.map((e, idx) => {
+  const c = new THREE.Color().setHSL(idx / edges.length, 1, 0.55);
+  return [c, c];
+});
+
+const positions = new Float32Array(32 * 2 * 3);
+const colors = new Float32Array(32 * 2 * 3);
+for (let e = 0; e < 32; e++) {
+  const c = edgeColors[e][0];
+  colors[e*6+0] = c.r; colors[e*6+1] = c.g; colors[e*6+2] = c.b;
+  colors[e*6+3] = c.r; colors[e*6+4] = c.g; colors[e*6+5] = c.b;
+}
+
+const geo = new THREE.BufferGeometry();
+geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+const mat = new THREE.LineBasicMaterial({ vertexColors: true });
+const lines = new THREE.LineSegments(geo, mat);
+scene.add(lines);
+
+function rotate4D(v, angle) {
+  const [x, y, z, w] = v;
+  const c = Math.cos(angle), s = Math.sin(angle);
+  // XW rotation
+  const x1 = x * c - w * s;
+  const w1 = x * s + w * c;
+  // YW rotation (on already-rotated coords)
+  const y1 = y * c - w1 * s;
+  const w2 = y * s + w1 * c;
+  return [x1, y1, z, w2];
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = performance.now() / 1000;
+  const angle = t * 0.3;
+
+  const proj = verts4D.map(v => {
+    const r = rotate4D(v, angle);
+    const f = 3 / (3 - r[3]);
+    return [r[0] * f, r[1] * f, r[2] * f];
+  });
+
+  for (let e = 0; e < 32; e++) {
+    const a = proj[edges[e][0]];
+    const b = proj[edges[e][1]];
+    positions[e*6+0] = a[0]; positions[e*6+1] = a[1]; positions[e*6+2] = a[2];
+    positions[e*6+3] = b[0]; positions[e*6+4] = b[1]; positions[e*6+5] = b[2];
+  }
+  geo.attributes.position.needsUpdate = true;
+
+  renderer.render(scene, camera);
+}
+animate();
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

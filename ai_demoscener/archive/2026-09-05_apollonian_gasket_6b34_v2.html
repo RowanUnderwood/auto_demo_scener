@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Bioluminal Lattice</title>
+<style>
+  html,body{margin:0;height:100%;background:#080414;overflow:hidden}
+  canvas{display:block}
+</style>
+</head>
+<body>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+(function(){
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x080414);
+
+  const frustum = 6;
+  const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 100);
+  camera.position.set(0,0,14);
+
+  const renderer = new THREE.WebGLRenderer({antialias:true});
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+  document.body.appendChild(renderer.domElement);
+
+  // soft ambient glow backdrop
+  (function(){
+    const c = document.createElement('canvas'); c.width = c.height = 512;
+    const g = c.getContext('2d');
+    const grd = g.createRadialGradient(256,256,0,256,256,256);
+    grd.addColorStop(0.0,'rgba(120,40,140,0.55)');
+    grd.addColorStop(0.4,'rgba(40,20,90,0.28)');
+    grd.addColorStop(1.0,'rgba(8,4,20,0)');
+    g.fillStyle = grd; g.fillRect(0,0,512,512);
+    const tex = new THREE.CanvasTexture(c);
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({map:tex, depthTest:false, transparent:true}));
+    spr.scale.setScalar(30);
+    spr.position.z = -6;
+    scene.add(spr);
+  })();
+
+  const group = new THREE.Group();
+  scene.add(group);
+
+  function depthColor(depth, maxDepth){
+    const t = depth / maxDepth;
+    // warm coral -> teal -> deep blue, luminous
+    const hue = (0.94 - t*0.85 + 1) % 1;
+    const light = 0.62 - t*0.10;
+    return new THREE.Color().setHSL(hue, 0.95, light);
+  }
+
+  const MAX_DEPTH = 7;
+  const SEG = 96;
+  const glow = [];
+
+  function addCircle(x, y, r, depth){
+    const color = depthColor(depth, MAX_DEPTH);
+    const geo = new THREE.CircleGeometry(Math.max(0.001, r), SEG);
+    const mat = new THREE.MeshBasicMaterial({
+      color, side: THREE.DoubleSide, transparent: true,
+      opacity: 0.4, blending: THREE.AdditiveBlending, depthWrite: false
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(x, y, 0);
+    mesh.frustumCulled = false;
+    group.add(mesh);
+    glow.push({mesh, depth, base: 0.4 - depth*0.02});
+  }
+
+  function newCircle(a,b,c){
+    const k = a.k + b.k + c.k + 2*Math.sqrt(a.k*b.k + b.k*c.k + c.k*a.k);
+    const r4 = 1/k;
+    const ra = 1/a.k, rb = 1/b.k, rc = 1/c.k;
+    const da = ra + r4, db = rb + r4;
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const d = Math.hypot(dx,dy);
+    const A2 = (da*da - db*db + d*d)/(2*d);
+    const h = Math.sqrt(Math.max(0, da*da - A2*A2));
+    const mx = a.x + A2*dx/d, my = a.y + A2*dy/d;
+    const px = -dy/d, py = dx/d;
+    const p1 = {x:mx + h*px, y:my + h*py};
+    const p2 = {x:mx - h*px, y:my - h*py};
+    const target = rc + r4;
+    const e1 = Math.abs(Math.hypot(p1.x-c.x, p1.y-c.y) - target);
+    const e2 = Math.abs(Math.hypot(p2.x-c.x, p2.y-c.y) - target);
+    const p = (e1 < e2) ? p1 : p2;
+    return {x:p.x, y:p.y, k:k, r:r4};
+  }
+
+  // three mutually tangent circles of unequal radii (1, 2, 3)
+  const A = {x:0, y:0, k:1, r:1};
+  const B = {x:3, y:0, k:0.5, r:2};
+  const C = {x:0, y:4, k:1/3, r:3};
+  [A,B,C].forEach(c => addCircle(c.x, c.y, c.r, 0));
+
+  function recurse(a, b, c, depth){
+    if(depth >= MAX_DEPTH) return;
+    const D = newCircle(a,b,c);
+    if(D.r < 0.0006) return;
+    addCircle(D.x, D.y, D.r, depth);
+    recurse(D,a,b, depth+1);
+    recurse(D,b,c, depth+1);
+    recurse(D,c,a, depth+1);
+  }
+
+  recurse(A,B,C, 0);
+
+  group.position.set(-1.5, -2, 0);
+
+  const mouse = {x:0, y:0};
+  window.addEventListener('mousemove', e=>{
+    mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = (e.clientY / window.innerHeight) * 2 - 1;
+  });
+
+  let t = 0;
+  let rotX = 0, rotY = 0;
+  function animate(){
+    requestAnimationFrame(animate);
+    t += 0.016;
+    group.rotation.z = t * 0.05;
+    rotX += ((-mouse.y*0.35) - rotX) * 0.04;
+    rotY += (( mouse.x*0.35) - rotY) * 0.04;
+    group.rotation.x = rotX;
+    group.rotation.y = rotY;
+    const breathe = 1 + 0.06*Math.sin(t*0.5);
+    group.scale.setScalar(breathe);
+    for(const g of glow){
+      const pulse = 0.5 + 0.5*Math.sin(t*1.3 + g.depth*0.7);
+      g.mesh.material.opacity = g.base * (0.55 + 0.9*pulse);
+    }
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  window.addEventListener('resize', ()=>{
+    const w = window.innerWidth, h = window.innerHeight;
+    camera.aspect = w/h;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w, h);
+  });
+})();
+</script>
+</body>
+</html>

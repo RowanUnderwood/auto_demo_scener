@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Nested Icosa Pulse</title>
+<style>
+  html, body { margin: 0; padding: 0; overflow: hidden; background: #000; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function () {
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  document.body.appendChild(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x000000, 0.045);
+
+  const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+  camera.position.set(0, 0, 6.5);
+
+  // ---- Shells -----------------------------------------------------------
+  const shellDefs = [
+    { r: 1.00, detail: 2, color: 0xffffff, opacity: 0.90, amp: 0.10, morph: 0.15, speed: 1.2,  rot: 0.15, dir: 1 },
+    { r: 1.55, detail: 1, color: 0x66ccff, opacity: 0.65, amp: 0.22, morph: 0.30, speed: 0.9,  rot: 0.28, dir: -1 },
+    { r: 2.15, detail: 1, color: 0x3388ff, opacity: 0.45, amp: 0.32, morph: 0.45, speed: 0.7,  rot: 0.42, dir: 1 },
+    { r: 2.85, detail: 0, color: 0x2255cc, opacity: 0.30, amp: 0.45, morph: 0.65, speed: 0.55, rot: 0.60, dir: -1 },
+    { r: 3.65, detail: 0, color: 0x1133aa, opacity: 0.18, amp: 0.60, morph: 0.85, speed: 0.4,  rot: 0.80, dir: 1 }
+  ];
+
+  const shells = [];
+
+  for (const d of shellDefs) {
+    const base = new THREE.IcosahedronGeometry(d.r, d.detail);
+    const wire = new THREE.WireframeGeometry(base);
+    const mat = new THREE.LineBasicMaterial({
+      color: d.color,
+      transparent: true,
+      opacity: d.opacity,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+    const lines = new THREE.LineSegments(wire, mat);
+    scene.add(lines);
+
+    const posAttr = wire.attributes.position;
+    const count = posAttr.count;
+    const basePos = new Float32Array(count * 3);
+    const normal  = new Float32Array(count * 3);
+    const phase   = new Float32Array(count);
+
+    for (let i = 0; i < count; i++) {
+      const x = posAttr.getX(i), y = posAttr.getY(i), z = posAttr.getZ(i);
+      basePos[i * 3] = x; basePos[i * 3 + 1] = y; basePos[i * 3 + 2] = z;
+      const inv = 1 / Math.sqrt(x * x + y * y + z * z);
+      normal[i * 3] = x * inv; normal[i * 3 + 1] = y * inv; normal[i * 3 + 2] = z * inv;
+      phase[i] = Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453 % 6.283;
+    }
+
+    shells.push({ lines, posAttr, basePos, normal, phase, def: d });
+  }
+
+  // ---- Particle cloud (radiating energy) --------------------------------
+  const P_COUNT = 1200;
+  const pGeo = new THREE.BufferGeometry();
+  const pPos = new Float32Array(P_COUNT * 3);
+  const pSeed = new Float32Array(P_COUNT);
+  for (let i = 0; i < P_COUNT; i++) {
+    const u = Math.random() * 2 - 1;
+    const a = Math.random() * Math.PI * 2;
+    const s = Math.sqrt(1 - u * u);
+    const rad = 1.2 + Math.pow(Math.random(), 0.6) * 4.5;
+    pPos[i * 3]     = s * Math.cos(a) * rad;
+    pPos[i * 3 + 1] = u * rad;
+    pPos[i * 3 + 2] = s * Math.sin(a) * rad;
+    pSeed[i] = Math.random() * Math.PI * 2;
+  }
+  pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grad.addColorStop(0, 'rgba(160,220,255,1)');
+  grad.addColorStop(0.4, 'rgba(90,160,255,0.5)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 64, 64);
+  const sprite = new THREE.CanvasTexture(canvas);
+
+  const pMat = new THREE.PointsMaterial({
+    size: 0.09,
+    map: sprite,
+    color: 0x66aaff,
+    transparent: true,
+    opacity: 0.7,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    sizeAttenuation: true
+  });
+  const points = new THREE.Points(pGeo, pMat);
+  scene.add(points);
+
+  // ---- Animate -----------------------------------------------------------
+  const clock = new THREE.Clock();
+  const posArr = shells[0].posAttr.array;
+
+  function animate() {
+    requestAnimationFrame(animate);
+    const t = clock.getElapsedTime();
+    const dt = Math.min(clock.getDelta() || 0.016, 0.05);
+
+    for (const s of shells) {
+      const { lines, posAttr, basePos, normal, phase, def } = s;
+
+      const breath = 0.5 + 0.5 * Math.sin(t * def.speed * 0.6);
+      const ampNow = def.amp * (0.4 + 0.9 * breath);
+      const morphNow = 0.5 + 0.5 * Math.sin(t * def.speed * 0.35 + def.r);
+
+      const arr = posAttr.array;
+      for (let i = 0; i < basePos.length / 3; i++) {
+        const i3 = i * 3;
+        const nX = normal[i3], nY = normal[i3 + 1], nZ = normal[i3 + 2];
+        const ripple = Math.sin(t * def.speed + phase[i]) * ampNow;
+        const baseLen = Math.sqrt(basePos[i3]*basePos[i3] + basePos[i3+1]*basePos[i3+1] + basePos[i3+2]*basePos[i3+2]);
+        const sphereLen = def.r * (1 + ripple * 0.25);
+        const k = 1 - morphNow * 0.5;
+        const len = baseLen * (1 + ripple) * (1 - morphNow) + sphereLen * morphNow;
+        arr[i3]     = nX * len;
+        arr[i3 + 1] = nY * len;
+        arr[i3 + 2] = nZ * len;
+      }
+      posAttr.needsUpdate = true;
+
+      const r = def.rot * def.dir * dt;
+      lines.rotation.y += r;
+      lines.rotation.x += r * 0.6 * Math.sin(t * 0.2 + def.r);
+      lines.rotation.z -= r * 0.3;
+
+      lines.material.opacity = def.opacity * (0.55 + 0.45 * breath);
+    }
+
+    points.rotation.y += dt * 0.05;
+    points.rotation.x += dt * 0.02;
+    pMat.opacity = 0.45 + 0.3 * Math.sin(t * 0.8);
+    pMat.size = 0.08 + 0.04 * (0.5 + 0.5 * Math.sin(t * 0.5));
+
+    camera.position.x = Math.sin(t * 0.1) * 0.8;
+    camera.position.y = Math.cos(t * 0.13) * 0.5;
+    camera.lookAt(0, 0, 0);
+
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+})();
+</script>
+</body>
+</html>

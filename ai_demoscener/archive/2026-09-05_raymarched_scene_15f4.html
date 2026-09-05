@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Raymarched Tiled SDF</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #000; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const renderer = new THREE.WebGLRenderer({ antialias: false });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+const uniforms = {
+  uTime:  { value: 0.0 },
+  uAspect:{ value: window.innerWidth / window.innerHeight }
+};
+
+const vert = `
+  void main() {
+    gl_Position = vec4(position.xy, 0.0, 1.0);
+  }
+`;
+
+const frag = `
+  precision highp float;
+
+  uniform float uTime;
+  uniform float uAspect;
+
+  float smin(float a, float b, float k) {
+    float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+    return mix(b, a, h) - k * h * (1.0 - h);
+  }
+
+  float sdSphere(vec3 p, float r) {
+    return length(p) - r;
+  }
+
+  float sdBox(vec3 p, vec3 b) {
+    vec3 q = abs(p) - b;
+    return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
+  }
+
+  float map(vec3 p) {
+    p = mod(p, 4.0) - 2.0;
+    float s = sdSphere(p, 0.6);
+    float b = sdBox(p, vec3(0.5));
+    return smin(s, b, 0.3);
+  }
+
+  vec3 calcNormal(vec3 p) {
+    const vec2 e = vec2(1.0, -1.0);
+    const float h = 0.001;
+    return normalize(
+      e.xyy * map(p + e.xyy * h) +
+      e.yyx * map(p + e.yyx * h) +
+      e.yxy * map(p + e.yxy * h) +
+      e.xxx * map(p + e.xxx * h)
+    );
+  }
+
+  void main() {
+    vec2 uv = gl_FragCoord.xy / vec2(uAspect, 1.0) * vec2(1.0 / uAspect, 1.0);
+    // simpler: compute uv from gl_FragCoord
+    vec2 px = gl_FragCoord.xy;
+    vec2 size = vec2(uAspect * 1.0, 1.0); // not used directly; use full buffer
+    // Robust uv:
+    uv = gl_FragCoord.xy / (uAspect * 1.0); // will be corrected below
+
+    // Use a proper resolution-independent uv via gl_FragCoord and aspect:
+    vec2 rUv = gl_FragCoord.xy / (vec2(uAspect, 1.0) * 1.0);
+    // The renderer's drawing buffer has aspect = width/height, so:
+    rUv = gl_FragCoord.xy / (vec2(gl_FragCoord.x / gl_FragCoord.y, 1.0));
+
+    vec3 ro = vec3(0.0, 0.0, 5.0);
+    vec3 rd = normalize(vec3((rUv - 0.5) * vec2(uAspect, 1.0), -1.5));
+
+    float t = 0.0;
+    bool hit = false;
+    for (int i = 0; i < 80; i++) {
+      vec3 pos = ro + rd * t;
+      float d = map(pos);
+      if (d < 0.001) {
+        hit = true;
+        break;
+      }
+      t += d;
+      if (t > 40.0) break;
+    }
+
+    // deep navy fog
+    vec3 fogColor = vec3(0.02, 0.04, 0.14);
+    vec3 col = fogColor;
+
+    if (hit) {
+      vec3 pos = ro + rd * t;
+      vec3 n = calcNormal(pos);
+
+      vec3 lightDir = normalize(vec3(0.5, 0.8, 0.6));
+      float diff = max(dot(n, lightDir), 0.0);
+
+      vec3 brightMagenta = vec3(1.0, 0.05, 0.75);
+      vec3 tealAmbient = vec3(0.0, 0.35, 0.35) * 0.35;
+
+      // spec for a little sheen
+      vec3 hv = normalize(lightDir - rd);
+      float spec = pow(max(dot(n, hv), 0.0), 32.0) * 0.5;
+
+      vec3 surface = tealAmbient + brightMagenta * diff + vec3(spec);
+
+      // distance fog toward deep navy; t can exceed 40 -> heavy fog
+      float fogFactor = 1.0 - exp(-t * t * 0.0006);
+      col = mix(surface, fogColor, clamp(fogFactor, 0.0, 1.0));
+    }
+
+    gl_FragColor = vec4(col, 1.0);
+  }
+`;
+
+const material = new THREE.ShaderMaterial({ uniforms, vertexShader: vert, fragmentShader: frag });
+
+const quad = new THREE.BufferGeometry();
+quad.setAttribute('position', new THREE.Float32BufferAttribute([-1, -1, 0, 1, -1, 0, -1, 1, 0, 1, 1, 0], 3));
+quad.setIndex([0, 1, 2, 2, 1, 3]);
+
+const scene = new THREE.Scene();
+scene.add(new THREE.Mesh(quad, material));
+
+window.addEventListener('resize', () => {
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  uniforms.uAspect.value = window.innerWidth / window.innerHeight;
+});
+
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => {
+  uniforms.uTime.value = clock.getElapsedTime();
+  renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>

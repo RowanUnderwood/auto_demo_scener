@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Hyperspace Bloom</title>
+<style>
+*{margin:0;padding:0;overflow:hidden;background:#000}
+canvas{display:block}
+#title{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);font-family:'Courier New',monospace;font-size:11px;color:rgba(180,220,255,0.5);letter-spacing:4px;text-transform:uppercase;pointer-events:none}
+</style>
+</head>
+<body>
+<div id="title">hyperspace bloom</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer({antialias:true, alpha:false});
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setClearColor(0x020208);
+document.body.appendChild(renderer.domElement);
+
+camera.position.set(0, 2, 14);
+
+const N = 6000;
+const pos4D = [];
+const seeds = [];
+
+for (let i = 0; i < N; i++) {
+    const t = i / N;
+    const ring = Math.floor(t * 12) % 12;
+    const layer = Math.floor(t * 24) % 24;
+    const angle1 = (ring / 12) * Math.PI * 2 + layer * 0.1;
+    const angle2 = (layer / 24) * Math.PI * 2 + ring * 0.15;
+    const r = 2.0 + Math.sin(angle1 * 3) * 0.8 + Math.cos(angle2 * 2) * 0.6;
+    const w = Math.sin(t * Math.PI * 6) * 1.5;
+    
+    const x = r * Math.cos(angle1) * Math.sin(angle2);
+    const y = r * Math.sin(angle1) * Math.sin(angle2);
+    const z = r * Math.cos(angle2);
+    const ww = w;
+    
+    pos4D.push([x, y, z, ww]);
+    seeds.push(t);
+}
+
+const geometry = new THREE.BufferGeometry();
+const positions = new Float32Array(N * 3);
+const colors = new Float32Array(N * 3);
+const sizes = new Float32Array(N);
+geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
+geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+
+const particleMat = new THREE.ShaderMaterial({
+    uniforms: {
+        time: { value: 0 },
+        pixelRatio: { value: Math.min(devicePixelRatio, 2) }
+    },
+    vertexShader: `
+        attribute float aSize;
+        attribute vec3 aColor;
+        varying vec3 vColor;
+        varying float vAlpha;
+        uniform float time;
+        uniform float pixelRatio;
+        void main() {
+            vColor = aColor;
+            vec4 mv = modelViewMatrix * vec4(position, 1.0);
+            float dist = length(mv.xyz);
+            vAlpha = clamp(1.5 - dist/18.0, 0.15, 1.0);
+            gl_PointSize = max(aSize * pixelRatio * (30.0 / dist), 2.0);
+            gl_Position = projectionMatrix * mv;
+        }
+    `,
+    fragmentShader: `
+        varying vec3 vColor;
+        varying float vAlpha;
+        void main() {
+            vec2 uv = gl_PointCoord - 0.5;
+            float d = length(uv);
+            if(d > 0.5) discard;
+            float glow = exp(-d * 5.0) * 1.2 + exp(-d * 15.0) * 0.8;
+            gl_FragColor = vec4(vColor, glow * vAlpha);
+        }
+    `,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    transparent: true
+});
+
+const points = new THREE.Points(geometry, particleMat);
+scene.add(points);
+
+const MAX_LINES = 8000;
+const lineGeo = new THREE.BufferGeometry();
+const linePos = new Float32Array(MAX_LINES * 6);
+const lineCol = new Float32Array(MAX_LINES * 6);
+lineGeo.setAttribute('position', new THREE.BufferAttribute(linePos, 3));
+lineGeo.setAttribute('color', new THREE.BufferAttribute(lineCol, 3));
+
+const lineMat = new THREE.LineBasicMaterial({
+    vertexColors: true,
+    blending: THREE.AdditiveBlending,
+    transparent: true,
+    opacity: 0.3,
+    depthWrite: false
+});
+const lines = new THREE.LineSegments(lineGeo, lineMat);
+scene.add(lines);
+
+const starN = 1500;
+const starGeo = new THREE.BufferGeometry();
+const starPos = new Float32Array(starN * 3);
+const starCol = new Float32Array(starN * 3);
+for (let i = 0; i < starN; i++) {
+    const r = 40 + Math.random() * 60;
+    const th = Math.random() * Math.PI * 2;
+    const ph = Math.acos(2 * Math.random() - 1);
+    starPos[i*3] = r * Math.sin(ph) * Math.cos(th);
+    starPos[i*3+1] = r * Math.sin(ph) * Math.sin(th);
+    starPos[i*3+2] = r * Math.cos(ph);
+    const b = 0.1 + Math.random() * 0.15;
+    starCol[i*3] = b * 0.7;
+    starCol[i*3+1] = b * 0.8;
+    starCol[i*3+2] = b * 1.0;
+}
+starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+starGeo.setAttribute('color', new THREE.BufferAttribute(starCol, 3));
+const starMat = new THREE.PointsMaterial({size:0.5, vertexColors:true, blending:THREE.AdditiveBlending, depthWrite:false, transparent:true, opacity:0.8});
+scene.add(new THREE.Points(starGeo, starMat));
+
+function rotate4D(p, plane, angle) {
+    const c = Math.cos(angle), s = Math.sin(angle);
+    const [a, b] = plane;
+    const va = p[a], vb = p[b];
+    p[a] = va * c - vb * s;
+    p[b] = va * s + vb * c;
+}
+
+function buildConnections(pos3, n) {
+    const cellSize = 1.2;
+    const grid = {};
+    for (let i = 0; i < n; i++) {
+        const cx = Math.floor(pos3[i*3] / cellSize);
+        const cy = Math.floor(pos3[i*3+1] / cellSize);
+        const cz = Math.floor(pos3[i*3+2] / cellSize);
+        const key = cx + ',' + cy + ',' + cz;
+        if (!grid[key]) grid[key] = [];
+        grid[key].push(i);
+    }
+    
+    let lineCount = 0;
+    const maxDist = 1.4;
+    const maxDist2 = maxDist * maxDist;
+    
+    for (let i = 0; i < n && lineCount < MAX_LINES; i++) {
+        const cx = Math.floor(pos3[i*3] / cellSize);
+        const cy = Math.floor(pos3[i*3+1] / cellSize);
+        const cz = Math.floor(pos3[i*3+2] / cellSize);
+        
+        for (let dx = -1; dx <= 1; dx++) {
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dz = -1; dz <= 1; dz++) {
+                    const key = (cx+dx) + ',' + (cy+dy) + ',' + (cz+dz);
+                    const cell = grid[key];
+                    if (!cell) continue;
+                    for (let j of cell) {
+                        if (j <= i) continue;
+                        const ddx = pos3[i*3] - pos3[j*3];
+                        const ddy = pos3[i*3+1] - pos3[j*3+1];
+                        const ddz = pos3[i*3+2] - pos3[j*3+2];
+                        const d2 = ddx*ddx + ddy*ddy + ddz*ddz;
+                        if (d2 < maxDist2 && lineCount < MAX_LINES) {
+                            const idx = lineCount * 6;
+                            linePos[idx] = pos3[i*3];
+                            linePos[idx+1] = pos3[i*3+1];
+                            linePos[idx+2] = pos3[i*3+2];
+                            linePos[idx+3] = pos3[j*3];
+                            linePos[idx+4] = pos3[j*3+1];
+                            linePos[idx+5] = pos3[j*3+2];
+                            const fade = 1.0 - Math.sqrt(d2) / maxDist;
+                            const ci = i * 3, cj = j * 3;
+                            lineCol[idx] = colors[ci] * fade;
+                            lineCol[idx+1] = colors[ci+1] * fade;
+                            lineCol[idx+2] = colors[ci+2] * fade;
+                            lineCol[idx+3] = colors[cj] * fade;
+                            lineCol[idx+4] = colors[cj+1] * fade;
+                            lineCol[idx+5] = colors[cj+2] * fade;
+                            lineCount++;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    lineGeo.setDrawRange(0, lineCount * 2);
+    lineGeo.attributes.position.needsUpdate = true;
+    lineGeo.attributes.color.needsUpdate = true;
+}
+
+function getColor(t, time, intensity) {
+    const phase = t * Math.PI * 2 + time * 0.3;
+    const r = (0.15 + 0.45 * Math.sin(phase * 0.7 + 1.0)) * intensity;
+    const g = (0.5 + 0.5 * Math.sin(phase * 1.1)) * intensity;
+    const b = (0.8 + 0.4 * Math.sin(phase * 0.5 + 2.0)) * intensity;
+    const pulse = 0.6 + 0.4 * Math.sin(time * 2.0 + t * 20.0);
+    return [r * pulse, g * pulse, b * pulse];
+}
+
+let time = 0;
+function animate() {
+    requestAnimationFrame(animate);
+    time += 0.004;
+    
+    const speed1 = time * 0.4;
+    const speed2 = time * 0.25;
+    const speed3 = time * 0.15;
+    const breathe = 1.0 + 0.15 * Math.sin(time * 0.8);
+    
+    for (let i = 0; i < N; i++) {
+        const p = pos4D[i].slice();
+        
+        rotate4D(p, [0,1], speed1);
+        rotate4D(p, [2,3], speed2);
+        rotate4D(p, [0,3], speed3);
+        rotate4D(p, [1,2], speed1 * 0.5);
+        rotate4D(p, [0,2], speed2 * 0.7);
+        
+        const w = 1.0 + p[3] * 0.5;
+        const scale = breathe / Math.max(w, 0.3);
+        
+        positions[i*3] = p[0] * scale;
+        positions[i*3+1] = p[1] * scale;
+        positions[i*3+2] = p[2] * scale;
+        
+        const seed = seeds[i];
+        const intensity = 0.5 + 0.5 * Math.sin(time * 1.5 + seed * 30.0);
+        const [r, g, b] = getColor(seed, time, intensity);
+        colors[i*3] = r;
+        colors[i*3+1] = g;
+        colors[i*3+2] = b;
+        
+        sizes[i] = 2.0 + 2.0 * Math.sin(seed * 40.0 + time * 3.0) * 0.5 + 1.5;
+    }
+    
+    geometry.attributes.position.needsUpdate = true;
+    geometry.attributes.aColor.needsUpdate = true;
+    geometry.attributes.aSize.needsUpdate = true;
+    
+    if (Math.floor(time * 60) % 3 === 0) {
+        buildConnections(positions, N);
+    }
+    
+    const camAngle = time * 0.15;
+    const camRadius = 13 + 2 * Math.sin(time * 0.3);
+    const camY = 2 + Math.sin(time * 0.2) * 3;
+    camera.position.x = Math.cos(camAngle) * camRadius;
+    camera.position.z = Math.sin(camAngle) * camRadius;
+    camera.position.y = camY;
+    camera.lookAt(0, 0, 0);
+    
+    starGeo.rotateY(0.0003);
+    
+    particleMat.uniforms.time.value = time;
+    renderer.render(scene, camera);
+}
+
+animate();
+
+window.addEventListener('resize', () => {
+    camera.aspect = innerWidth / innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+    particleMat.uniforms.pixelRatio.value = Math.min(devicePixelRatio, 2);
+});
+</script>
+</body>
+</html>

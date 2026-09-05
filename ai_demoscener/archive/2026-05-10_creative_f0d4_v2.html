@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>MOLTED // aurora drift</title>
+    <style>
+        html, body { margin: 0; height: 100%; overflow: hidden; background: #06070f; }
+        canvas { display: block; }
+        #ui {
+            position: absolute; bottom: 26px; left: 26px;
+            color: #f0c878; opacity: .85; pointer-events: none;
+            font-family: "Courier New", monospace; font-size: 11px;
+            letter-spacing: 4px; text-transform: uppercase;
+            text-shadow: 0 0 12px rgba(240,180,90,.5);
+        }
+        #ui span { color: #7fd8ff; }
+        #tag {
+            position: absolute; top: 24px; left: 26px;
+            color: #6b7099; pointer-events: none;
+            font-family: "Courier New", monospace; font-size: 10px; letter-spacing: 6px;
+        }
+        #vignette {
+            position: fixed; inset: 0; pointer-events: none;
+            background: radial-gradient(ellipse at center, transparent 40%, rgba(3,4,10,.85) 100%);
+        }
+    </style>
+</head>
+<body>
+    <div id="tag">FIELD &middot; 04</div>
+    <div id="vignette"></div>
+    <div id="ui">molten_core &middot; <span>resonance</span> active</div>
+
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        /*
+         * "MOLTEN DRIFT"
+         * A bioluminescent swarm of soft light orbiting a breathing molten core.
+         * Warm amber aurora against deep indigo, with a fresnel-glowing nucleus.
+         * Slow, meditative, recursive depth.
+         */
+
+        const COUNT = 22000;
+
+        let scene, camera, renderer, clock, points, core, coreMat;
+        let uTime, uPR;
+
+        function coreRadius(t){ return 11.0 + 2.6 * Math.sin(t * 0.45); }
+
+        function makeGlowTexture(){
+            const c = document.createElement('canvas');
+            c.width = c.height = 64;
+            const ctx = c.getContext('2d');
+            const g = ctx.createRadialGradient(32,32,0,32,32,32);
+            g.addColorStop(0, 'rgba(255,255,255,1)');
+            g.addColorStop(0.25, 'rgba(255,255,255,0.6)');
+            g.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = g; ctx.fillRect(0,0,64,64);
+            return new THREE.CanvasTexture(c);
+        }
+
+        function init(){
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x06070f, 0.011);
+
+            camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 2000);
+            camera.position.set(0, 6, 58);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+            renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+            renderer.setSize(innerWidth, innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            clock = new THREE.Clock();
+
+            createCore();
+            createSwarm();
+
+            addEventListener('resize', onResize);
+            animate();
+        }
+
+        function createCore(){
+            const geo = new THREE.IcosahedronGeometry(1, 4);
+            coreMat = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: { value: 0 },
+                    uColorA: { value: new THREE.Color(0xff7a2f) },
+                    uColorB: { value: new THREE.Color(0xffd98a) },
+                    uGlow:  { value: new THREE.Color(0xff5a1e) }
+                },
+                vertexShader: `
+                    uniform float uTime;
+                    varying vec3 vN; varying vec3 vPos;
+                    void main(){
+                        vN = normalize(normalMatrix * normal);
+                        vPos = position;
+                        vec3 p = position;
+                        p += normal * (0.15 * sin(p.x*3.0 + uTime*1.5) * sin(p.y*3.0 - uTime));
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+                    }`,
+                fragmentShader: `
+                    uniform float uTime;
+                    uniform vec3 uColorA; uniform vec3 uColorB; uniform vec3 uGlow;
+                    varying vec3 vN; varying vec3 vPos;
+                    void main(){
+                        float fres = pow(1.0 - abs(dot(vN, vec3(0.0,0.0,1.0))), 2.2);
+                        float pulse = 0.6 + 0.4 * sin(uTime*0.9);
+                        vec3 base = mix(uColorA, uColorB, 0.5 + 0.5*sin(vPos.y*2.0 + uTime*0.6));
+                        vec3 col = base * 0.35 + uGlow * fres * 2.4 * pulse;
+                        col += uColorB * pow(fres, 3.0) * 2.0;
+                        gl_FragColor = vec4(col, 1.0);
+                    }`
+            });
+            core = new THREE.Mesh(geo, coreMat);
+            scene.add(core);
+
+            // soft halo
+            const halo = new THREE.Sprite(new THREE.SpriteMaterial({
+                map: makeGlowTexture(), color: 0xff6a24,
+                transparent: true, opacity: 0.55,
+                blending: THREE.AdditiveBlending, depthWrite: false
+            }));
+            halo.scale.set(40, 40, 1);
+            core.add(halo);
+        }
+
+        function createSwarm(){
+            const geo = new THREE.BufferGeometry();
+            const pos = new Float32Array(COUNT*3);
+            const col = new Float32Array(COUNT*3);
+            const alpha = new Float32Array(COUNT);
+            const size = new Float32Array(COUNT);
+            const life = new Float32Array(COUNT);
+            const seed = new Float32Array(COUNT);
+
+            for (let i=0;i<COUNT;i++){
+                respawn(pos, i);
+                life[i] = Math.random();
+                seed[i] = Math.random();
+                size[i] = 0.5 + Math.random()*2.4;
+                alpha[i] = 0;
+            }
+
+            geo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+            geo.setAttribute('aColor', new THREE.BufferAttribute(col,3));
+            geo.setAttribute('aAlpha', new THREE.BufferAttribute(alpha,1));
+            geo.setAttribute('aSize', new THREE.BufferAttribute(size,1));
+
+            const mat = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: { value: 0 },
+                    uPR: { value: Math.min(devicePixelRatio,2) },
+                    uMap: { value: makeGlowTexture() }
+                },
+                transparent: true,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending,
+                vertexShader: `
+                    attribute float aSize; attribute float aAlpha; attribute vec3 aColor;
+                    uniform float uPR;
+                    varying vec3 vColor; varying float vAlpha;
+                    void main(){
+                        vColor = aColor; vAlpha = aAlpha;
+                        vec4 mv = modelViewMatrix * vec4(position,1.0);
+                        gl_PointSize = aSize * uPR * (180.0 / -mv.z);
+                        gl_Position = projectionMatrix * mv;
+                    }`,
+                fragmentShader: `
+                    uniform sampler2D uMap;
+                    varying vec3 vColor; varying float vAlpha;
+                    void main(){
+                        float a = texture2D(uMap, gl_PointCoord).a;
+                        gl_FragColor = vec4(vColor, a * vAlpha);
+                        if (gl_FragColor.a < 0.001) discard;
+                    }`
+            });
+
+            points = new THREE.Points(geo, mat);
+            scene.add(points);
+        }
+
+        function respawn(pos, i){
+            const r = 24 + Math.random()*34;
+            const th = Math.random()*Math.PI*2;
+            const ph = Math.acos(2*Math.random()-1);
+            pos[i*3]   = r*Math.sin(ph)*Math.cos(th);
+            pos[i*3+1] = r*Math.sin(ph)*Math.sin(th)*0.7;
+            pos[i*3+2] = r*Math.cos(ph);
+        }
+
+        // palette: warm amber (near) -> teal (far)
+        const cNear = new THREE.Color(0xffb45a);
+        const cMid  = new THREE.Color(0xff7a3a);
+        const cFar  = new THREE.Color(0x54e6d8);
+        const tmp = new THREE.Color();
+
+        function update(dt, t){
+            const g = points.geometry;
+            const pos = g.attributes.position.array;
+            const col = g.attributes.aColor.array;
+            const alp = g.attributes.aAlpha.array;
+            const R = coreRadius(t);
+            const step = Math.min(dt, 0.05);
+
+            for (let i=0;i<COUNT;i++){
+                const ix = i*3;
+                let x = pos[ix], y = pos[ix+1], z = pos[ix+2];
+                const d = Math.sqrt(x*x+y*y+z*z) + 0.0001;
+
+                // tangential swirl around Y
+                const sw = 7.0 / (0.3 + d*0.05);
+                let vx = (-z/d) * sw;
+                let vz = ( x/d) * sw;
+                let vy = 0;
+
+                // gentle vertical breathing wave
+                vy += Math.sin(x*0.12 + t*0.5) * 1.4;
+
+                // pull toward shell (magnetic)
+                const pull = (R - d) * 0.15;
+                vx += (-x/d)*pull; vy += (-y/d)*pull; vz += (-z/d)*pull;
+
+                // turbulence
+                vx += Math.sin(y*0.14 + t*0.7) * 1.2;
+                vy += Math.sin(z*0.14 - t*0.6) * 1.2;
+                vz += Math.sin(x*0.14 + t*0.8) * 1.2;
+
+                x += vx * step; y += vy * step; z += vz * step;
+
+                const nd = Math.sqrt(x*x+y*y+z*z);
+                let life = alp[i] + step * 0.12;
+                if (nd < 3.0 || nd > 70.0 || life > 1.0){
+                    respawn(pos, i);
+                    life = 0;
+                    x = pos[ix]; y = pos[ix+1]; z = pos[ix+2];
+                    pos[ix]=x; pos[ix+1]=y; pos[ix+2]=z;
+                    alp[i] = 0;
+                    continue;
+                }
+                pos[ix]=x; pos[ix+1]=y; pos[ix+2]=z;
+                alp[i] = life;
+
+                // envelope fade
+                const env = Math.sin(life * Math.PI);
+                // distance-based color
+                const k = THREE.MathUtils.clamp((nd - 4) / 45, 0, 1);
+                if (k < 0.5) tmp.copy(cMid).lerp(cNear, k*2);
+                else tmp.copy(cNear).lerp(cFar, (k-0.5)*2);
+                col[ix]   = tmp.r;
+                col[ix+1] = tmp.g;
+                col[ix+2] = tmp.b;
+                alp[i] = env;
+            }
+            g.attributes.position.needsUpdate = true;
+            g.attributes.aColor.needsUpdate = true;
+            g.attributes.aAlpha.needsUpdate = true;
+        }
+
+        function animate(){
+            requestAnimationFrame(animate);
+            const dt = clock.getDelta();
+            const t = clock.getElapsedTime();
+
+            update(dt, t);
+
+            points.material.uniforms.uTime.value = t;
+            coreMat.uniforms.uTime.value = t;
+            const R = coreRadius(t);
+            core.scale.setScalar(R);
+            core.rotation.y += dt * 0.15;
+
+            // slow drift + parallax
+            const mx = (mouse.x) * 6;
+            const my = (mouse.y) * 4;
+            camera.position.x += (Math.sin(t*0.15)*10 + mx - camera.position.x) * 0.02;
+            camera.position.y += (Math.cos(t*0.2)*5 + my + 4 - camera.position.y) * 0.02;
+            camera.lookAt(0,0,0);
+
+            points.rotation.y += dt * 0.02;
+
+            renderer.render(scene, camera);
+        }
+
+        const mouse = { x: 0, y: 0 };
+        addEventListener('pointermove', e=>{
+            mouse.x = (e.clientX/innerWidth - 0.5);
+            mouse.y = (e.clientY/innerHeight - 0.5);
+        });
+
+        function onResize(){
+            camera.aspect = innerWidth/innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(innerWidth, innerHeight);
+            const pr = Math.min(devicePixelRatio,2);
+            renderer.setPixelRatio(pr);
+            points.material.uniforms.uPR.value = pr;
+        }
+
+        init();
+    </script>
+</body>
+</html>

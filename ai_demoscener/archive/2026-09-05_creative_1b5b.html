@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>CHROMATIC FOLD</title>
+<style>
+*{margin:0;padding:0;overflow:hidden}
+body{background:#000}
+canvas{display:block}
+#title{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);font-family:'Courier New',monospace;font-size:18px;color:rgba(255,255,255,0.7);letter-spacing:12px;text-transform:uppercase;pointer-events:none;z-index:10;text-shadow:0 0 20px rgba(100,200,255,0.5)}
+</style>
+</head>
+<body>
+<div id="title">CHROMATIC FOLD</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const scene=new THREE.Scene();
+scene.fog=new THREE.FogExp2(0x000000,0.015);
+const camera=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,0.1,200);
+const renderer=new THREE.WebGLRenderer({antialias:true,alpha:false});
+renderer.setSize(innerWidth,innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+document.body.appendChild(renderer.domElement);
+
+const seg=256;
+const geo=new THREE.PlaneGeometry(30,30,seg,seg);
+const posAttr=geo.attributes.position;
+const origPos=new Float32Array(posAttr.array);
+
+const mat=new THREE.ShaderMaterial({
+uniforms:{
+uTime:{value:0},
+uBeat:{value:0}
+},
+vertexShader:`
+uniform float uTime;
+uniform float uBeat;
+varying float vDepth;
+varying vec3 vPos;
+varying float vAngle;
+
+void main(){
+vec3 p=position;
+float t=uTime*0.3;
+float a=p.x*0.25+t;
+float b=p.y*0.25-t*0.7;
+float c=t*0.5+length(p)*0.1;
+float d=cos(a)*sin(b)+sin(c)*cos(a*0.5);
+float fold=d*4.0+sin(p.x*0.8+t*2.0)*cos(p.y*0.6-t*1.5)*2.0;
+fold+=uBeat*1.5*sin(a*3.0)*sin(b*3.0);
+fold+=sin(p.x*1.5+p.y*0.5+t*3.0)*0.5*cos(p.x*0.3-t);
+p.z+=fold;
+float twist=fold*0.15;
+float ct=cos(twist),st=sin(twist);
+p.xz=mat2(ct,-st,st,ct)*p.xz;
+vDepth=abs(fold)/6.0;
+vPos=p;
+vAngle=fold;
+gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.0);
+}`,
+fragmentShader:`
+uniform float uTime;
+uniform float uBeat;
+varying float vDepth;
+varying vec3 vPos;
+varying float vAngle;
+
+vec3 iridescent(float t){
+vec3 c1=vec3(0.1,0.4,1.0);
+vec3 c2=vec3(1.0,0.2,0.6);
+vec3 c3=vec3(0.2,1.0,0.8);
+vec3 c4=vec3(1.0,0.7,0.1);
+float s=t*4.0;
+float i=mod(s,4.0);
+if(i<1.0)return mix(c1,c2,i);
+if(i<2.0)return mix(c2,c3,i-1.0);
+if(i<3.0)return mix(c3,c4,i-2.0);
+return mix(c4,c1,i-3.0);
+}
+
+void main(){
+float t=vDepth+uTime*0.1;
+vec3 col=iridescent(t);
+float spec=pow(max(0.0,1.0-vDepth),3.0)*0.8;
+col+=spec*vec3(1.0);
+float crease=smoothstep(0.0,0.15,vDepth);
+col*=mix(0.2,1.0,crease);
+col+=uBeat*0.3*vec3(0.5,0.8,1.0);
+float rim=abs(sin(vAngle*2.0))*0.3;
+col+=rim*iridescent(t+0.5);
+float ao=smoothstep(0.0,0.4,vDepth);
+col*=mix(0.4,1.0,ao);
+gl_FragColor=vec4(col,1.0);
+}`,
+side:THREE.DoubleSide
+});
+const mesh=new THREE.Mesh(geo,mat);
+scene.add(mesh);
+
+const wireMat=new THREE.ShaderMaterial({
+uniforms:{uTime:{value:0},uBeat:{value:0}},
+vertexShader:mat.vertexShader,
+fragmentShader:`
+uniform float uTime;
+uniform float uBeat;
+varying float vDepth;
+varying vec3 vPos;
+varying float vAngle;
+void main(){
+float t=vDepth+uTime*0.15;
+vec3 col=mix(vec3(0.0,0.3,0.8),vec3(1.0,0.3,0.8),sin(t*3.0)*0.5+0.5);
+float alpha=0.15+uBeat*0.1;
+gl_FragColor=vec4(col,alpha);
+}`,
+wireframe:true,transparent:true,depthWrite:false
+});
+const wire=new THREE.Mesh(geo,wireMat);
+scene.add(wire);
+
+const pCount=3000;
+const pGeo=new THREE.BufferGeometry();
+const pPos=new Float32Array(pCount*3);
+const pVel=new Float32Array(pCount*3);
+const pLife=new Float32Array(pCount);
+const pSeed=new Float32Array(pCount);
+for(let i=0;i<pCount;i++){
+pPos[i*3]=(Math.random()-0.5)*30;
+pPos[i*3+1]=(Math.random()-0.5)*30;
+pPos[i*3+2]=(Math.random()-0.5)*10;
+pLife[i]=Math.random();
+pSeed[i]=Math.random()*100;
+}
+pGeo.setAttribute('position',new THREE.BufferAttribute(pPos,3));
+pGeo.setAttribute('aLife',new THREE.BufferAttribute(pLife,1));
+pGeo.setAttribute('aSeed',new THREE.BufferAttribute(pSeed,1));
+
+const pMat=new THREE.ShaderMaterial({
+uniforms:{uTime:{value:0}},
+vertexShader:`
+uniform float uTime;
+attribute float aLife;
+attribute float aSeed;
+varying float vLife;
+varying float vSeed;
+void main(){
+vLife=aLife;
+vSeed=aSeed;
+vec3 p=position;
+p.z+=sin(uTime*2.0+aSeed)*1.5;
+p.x+=cos(uTime*1.5+aSeed*2.0)*0.5;
+p.y+=sin(uTime*1.8+aSeed*0.5)*0.5;
+gl_PointSize=max(1.0,(1.0-aLife)*4.0*(1.0+sin(aSeed*10.0)*0.5));
+gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.0);
+}`,
+fragmentShader:`
+uniform float uTime;
+varying float vLife;
+varying float vSeed;
+void main(){
+float d=length(gl_PointCoord-0.5);
+if(d>0.5)discard;
+float alpha=(1.0-d*2.0)*(1.0-vLife)*0.6;
+float hue=mod(vSeed*0.1+uTime*0.2,1.0);
+vec3 col=vec3(
+0.5+0.5*cos(6.28*(hue+0.0)),
+0.5+0.5*cos(6.28*(hue+0.33)),
+0.5+0.5*cos(6.28*(hue+0.66))
+);
+gl_FragColor=vec4(col,alpha);
+}`,
+transparent:true,depthWrite:false,blending:THREE.AdditiveBlending
+});
+const particles=new THREE.Points(pGeo,pMat);
+scene.add(particles);
+
+const sCount=2000;
+const sGeo=new THREE.BufferGeometry();
+const sPos=new Float32Array(sCount*3);
+for(let i=0;i<sCount;i++){
+const r=50+Math.random()*100;
+const theta=Math.random()*Math.PI*2;
+const phi=Math.acos(2*Math.random()-1);
+sPos[i*3]=r*Math.sin(phi)*Math.cos(theta);
+sPos[i*3+1]=r*Math.sin(phi)*Math.sin(theta);
+sPos[i*3+2]=r*Math.cos(phi);
+}
+sGeo.setAttribute('position',new THREE.BufferAttribute(sPos,3));
+const sMat=new THREE.PointsMaterial({size:0.15,color:0x4488cc,transparent:true,opacity:0.4,blending:THREE.AdditiveBlending,depthWrite:false});
+scene.add(new THREE.Points(sGeo,sMat));
+
+let beatPhase=0;
+const BPM=120;
+const beatInterval=60/BPM;
+
+function animate(){
+requestAnimationFrame(animate);
+const t=performance.now()*0.001;
+beatPhase=(t%beatInterval)/beatInterval;
+const beat=Math.pow(1.0-beatPhase,4.0);
+const slowBeat=Math.sin(t*Math.PI*2/BPM*0.5)*0.5+0.5;
+
+mat.uniforms.uTime.value=t;
+mat.uniforms.uBeat.value=beat*0.5+slowBeat*0.3;
+wireMat.uniforms.uTime.value=t;
+wireMat.uniforms.uBeat.value=beat;
+pMat.uniforms.uTime.value=t;
+
+const lifeAttr=pGeo.attributes.aLife;
+for(let i=0;i<pCount;i++){
+lifeAttr.array[i]+=0.003+Math.random()*0.002;
+if(lifeAttr.array[i]>1.0){
+lifeAttr.array[i]=0;
+const idx=(Math.random()*posAttr.count)|0;
+pPos[i*3]=origPos[idx*3]+(Math.random()-0.5)*2;
+pPos[i*3+1]=origPos[idx*3+1]+(Math.random()-0.5)*2;
+pPos[i*3+2]=(Math.random()-0.5)*8;
+}
+}
+pGeo.attributes.position.needsUpdate=true;
+lifeAttr.needsUpdate=true;
+
+const ct=t*0.4;
+const cx=18*Math.sin(ct)*Math.cos(ct*0.7);
+const cy=12*Math.sin(ct*1.3);
+const cz=18*Math.cos(ct*0.5)+beat*2;
+camera.position.set(cx,cy,cz);
+camera.lookAt(0,0,0);
+
+mesh.rotation.x=Math.sin(t*0.1)*0.2;
+mesh.rotation.y=t*0.05;
+
+renderer.render(scene,camera);
+}
+animate();
+
+window.addEventListener('resize',()=>{
+camera.aspect=innerWidth/innerHeight;
+camera.updateProjectionMatrix();
+renderer.setSize(innerWidth,innerHeight);
+});
+</script>
+</body>
+</html>

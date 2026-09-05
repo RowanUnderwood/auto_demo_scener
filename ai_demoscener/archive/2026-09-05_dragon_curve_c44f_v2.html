@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Dragon Ember — L-System</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#060410}
+  canvas{display:block}
+  #label{position:fixed;left:18px;bottom:14px;color:#6d5a8a;font:11px/1.5 "Courier New",monospace;letter-spacing:3px;text-transform:uppercase;pointer-events:none;opacity:.7}
+</style>
+</head>
+<body>
+<div id="label">heighway dragon · ember</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* ---------- L-system: axiom FX, X -> X+YF+, Y -> -FX-Y, 12 iterations ---------- */
+let str = 'FX';
+for (let i = 0; i < 12; i++) {
+  let out = '';
+  for (let j = 0; j < str.length; j++) {
+    const c = str[j];
+    out += c === 'X' ? 'X+YF+' : c === 'Y' ? '-FX-Y' : c;
+  }
+  str = out;
+}
+
+/* ---------- Turtle interpretation ---------- */
+const pts = [];
+let px = 0, py = 0, dir = 0;
+pts.push(px, py);
+for (let i = 0; i < str.length; i++) {
+  const c = str[i];
+  if (c === '+') dir += 90;
+  else if (c === '-') dir -= 90;
+  else {
+    const a = dir * Math.PI / 180;
+    px += Math.cos(a);
+    py += Math.sin(a);
+    pts.push(px, py);
+  }
+}
+
+/* ---------- Center & scale ---------- */
+let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+for (let i = 0; i < pts.length; i += 2) {
+  if (pts[i] < minX) minX = pts[i];
+  if (pts[i] > maxX) maxX = pts[i];
+  if (pts[i+1] < minY) minY = pts[i+1];
+  if (pts[i+1] > maxY) maxY = pts[i+1];
+}
+const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+const scale = 24 / Math.max(maxX - minX, maxY - minY);
+const n = pts.length / 2;
+
+/* ---------- Ember palette: deep violet -> magenta -> amber ---------- */
+function ember(t) {
+  // smooth multi-stop gradient
+  const stops = [
+    [0.10, 0.05, 0.30],
+    [0.45, 0.10, 0.55],
+    [0.90, 0.25, 0.40],
+    [1.00, 0.70, 0.30],
+    [1.00, 0.95, 0.60]
+  ];
+  const f = t * (stops.length - 1);
+  const i = Math.min(stops.length - 2, Math.floor(f));
+  const u = f - i;
+  const a = stops[i], b = stops[i+1];
+  return [a[0]+(b[0]-a[0])*u, a[1]+(b[1]-a[1])*u, a[2]+(b[2]-a[2])*u];
+}
+
+/* ---------- Scene ---------- */
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x060410, 0.014);
+
+const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1, 200);
+camera.position.set(0, -6, 42);
+camera.lookAt(0, 0, 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.setClearColor(0x060410);
+document.body.appendChild(renderer.domElement);
+
+/* ---------- Dragon line ---------- */
+const pos = new Float32Array(n * 3);
+const col = new Float32Array(n * 3);
+for (let i = 0; i < n; i++) {
+  pos[i*3]   = (pts[i*2]   - cx) * scale;
+  pos[i*3+1] = (pts[i*3+1] - cy) * scale;
+  pos[i*3+2] = 0;
+  const c = ember(i / (n - 1));
+  col[i*3] = c[0]; col[i*3+1] = c[1]; col[i*3+2] = c[2];
+}
+const geo = new THREE.BufferGeometry();
+geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+
+const lineMat = new THREE.LineBasicMaterial({
+  vertexColors: true,
+  blending: THREE.AdditiveBlending,
+  transparent: true,
+  opacity: 0.9,
+  fog: true
+});
+const dragon = new THREE.Line(geo, lineMat);
+scene.add(dragon);
+
+/* ---------- Ghost duplicate: wider breathing halo ---------- */
+const haloMat = new THREE.LineBasicMaterial({
+  vertexColors: true,
+  blending: THREE.AdditiveBlending,
+  transparent: true,
+  opacity: 0.18,
+  fog: true
+});
+const halo = new THREE.Line(geo, haloMat);
+halo.scale.set(1.015, 1.015, 1);
+scene.add(halo);
+
+/* ---------- Ember head: soft glowing sprite ---------- */
+function makeGlowTexture(inner, outer) {
+  const s = 128, cv = document.createElement('canvas');
+  cv.width = cv.height = s;
+  const ctx = cv.getContext('2d');
+  const g = ctx.createRadialGradient(s/2, s/2, 0, s/2, s/2, s/2);
+  g.addColorStop(0, inner);
+  g.addColorStop(0.35, outer);
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, s, s);
+  return new THREE.CanvasTexture(cv);
+}
+const headTex = makeGlowTexture('rgba(255,240,200,1)', 'rgba(255,120,80,0.5)');
+const headMat = new THREE.SpriteMaterial({
+  map: headTex, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false
+});
+const head = new THREE.Sprite(headMat);
+head.scale.set(2.6, 2.6, 1);
+scene.add(head);
+
+/* ---------- Drifting embers: tiny particles ---------- */
+const pCount = 260;
+const pPos = new Float32Array(pCount * 3);
+const pVel = new Float32Array(pCount);
+for (let i = 0; i < pCount; i++) {
+  pPos[i*3]   = (Math.random()-0.5) * 60;
+  pPos[i*3+1] = (Math.random()-0.5) * 60;
+  pPos[i*3+2] = (Math.random()-0.5) * 40;
+  pVel[i] = 0.2 + Math.random() * 0.6;
+}
+const pGeo = new THREE.BufferGeometry();
+pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+const pMat = new THREE.PointsMaterial({
+  map: makeGlowTexture('rgba(255,180,120,0.9)', 'rgba(180,60,120,0.4)'),
+  size: 0.55, transparent: true, opacity: 0.6,
+  blending: THREE.AdditiveBlending, depthWrite: false
+});
+const embers = new THREE.Points(pGeo, pMat);
+scene.add(embers);
+
+/* ---------- Animation: slow 3D tumble, draw-on, breathing ---------- */
+const clock = new THREE.Clock();
+const DRAW = 14, FADE = 4, HOLD = 3, CYCLE = DRAW + FADE + HOLD;
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime() % CYCLE;
+
+  // draw / fade / hold phases
+  let count, opacity;
+  if (t < DRAW) {
+    const p = t / DRAW;
+    const e = p * p * (3 - 2 * p); // smoothstep
+    count = Math.max(2, 1 + Math.floor(e * (n - 1)));
+    opacity = 0.9;
+  } else if (t < DRAW + FADE) {
+    const p = (t - DRAW) / FADE;
+    count = n;
+    opacity = 0.9 * (1 - p * p * (3 - 2 * p));
+  } else {
+    count = n;
+    const p = (t - DRAW - FADE) / HOLD;
+    opacity = 0.9 * (0.15 + 0.85 * (1 - Math.abs(Math.sin(p * Math.PI))));
+  }
+  geo.setDrawRange(0, count);
+  lineMat.opacity = opacity;
+  haloMat.opacity = opacity * 0.2;
+
+  // head follows the current tip
+  const hi = Math.min(count, n) - 1;
+  head.position.set(pos[hi*3], pos[hi*3+1], pos[hi*3+2]);
+  head.scale.setScalar(2.2 + Math.sin(clock.getElapsedTime() * 5) * 0.5);
+  headMat.opacity = opacity;
+
+  // slow tumble on tilted axis + breathing
+  const e2 = clock.getElapsedTime();
+  dragon.rotation.set(Math.sin(e2 * 0.11) * 0.5, e2 * 0.06, Math.cos(e2 * 0.07) * 0.25);
+  halo.rotation.copy(dragon.rotation);
+  const br = 1 + Math.sin(e2 * 0.4) * 0.02;
+  dragon.scale.set(br, br, 1);
+  halo.scale.set(1.015 * br, 1.015 * br, 1);
+
+  // embers drift
+  const arr = pGeo.attributes.position.array;
+  for (let i = 0; i < pCount; i++) {
+    arr[i*3+1] += pVel[i] * 0.016;
+    if (arr[i*3+1] > 30) arr[i*3+1] = -30;
+  }
+  pGeo.attributes.position.needsUpdate = true;
+  embers.rotation.y = e2 * 0.02;
+
+  // gentle camera sway
+  camera.position.x = Math.sin(e2 * 0.15) * 4;
+  camera.position.y = -6 + Math.cos(e2 * 0.1) * 2;
+  camera.lookAt(0, 0, 0);
+
+  renderer.render(scene, camera);
+}
+animate();
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

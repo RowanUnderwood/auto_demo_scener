@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Recursive Tetrahedron Subdivision</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0b14; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const scene = new THREE.Scene();
+
+const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 100);
+camera.position.set(0, 0, 7);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+document.body.appendChild(renderer.domElement);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+
+const light = new THREE.DirectionalLight(0xffffff, 1.1);
+light.position.set(4, 6, 3);
+scene.add(light);
+
+const ambient = new THREE.AmbientLight(0x404040, 0.6);
+scene.add(ambient);
+
+// ---- Base regular tetrahedron vertices ----
+const V = [
+  new THREE.Vector3( 1,  1,  1),
+  new THREE.Vector3( 1, -1, -1),
+  new THREE.Vector3(-1,  1, -1),
+  new THREE.Vector3(-1, -1,  1)
+];
+
+// ---- Local leaf geometry: corner tetrahedron at vertex 0 ----
+const A0 = V[0];
+const local = [
+  new THREE.Vector3(0, 0, 0),
+  V[1].clone().sub(A0).multiplyScalar(0.5),
+  V[2].clone().sub(A0).multiplyScalar(0.5),
+  V[3].clone().sub(A0).multiplyScalar(0.5)
+];
+
+const posArr = [];
+[[0,1,2], [0,2,3], [0,3,1], [1,3,2]].forEach(face => {
+  face.forEach(i => posArr.push(local[i].x, local[i].y, local[i].z));
+});
+const geo = new THREE.BufferGeometry();
+geo.setAttribute('position', new THREE.Float32BufferAttribute(posArr, 3));
+geo.computeVertexNormals();
+geo.computeBoundingSphere();
+geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), 5);
+
+// ---- Recursive subdivision ----
+const DEPTH = 5;
+const leaves = [];
+
+function subdivide(verts, depth, seed) {
+  if (depth === 0) {
+    leaves.push({ pos: verts[0], seed });
+    return;
+  }
+  const m = (a, b) => a.clone().add(b).multiplyScalar(0.5);
+  const [A, B, C, D] = verts;
+  subdivide([A, m(A,B), m(A,C), m(A,D)], depth - 1, seed * 4 + 0);
+  subdivide([B, m(B,A), m(B,C), m(B,D)], depth - 1, seed * 4 + 1);
+  subdivide([C, m(C,A), m(C,B), m(C,D)], depth - 1, seed * 4 + 2);
+  subdivide([D, m(D,A), m(D,B), m(D,C)], depth - 1, seed * 4 + 3);
+}
+subdivide(V, DEPTH, 0);
+
+// ---- Render all leaves as one InstancedMesh ----
+const palette = [0xff6b6b, 0xffd93d, 0x4ecdc4, 0x7aa2ff].map(c => new THREE.Color(c));
+const material = new THREE.MeshStandardMaterial({
+  flatShading: true,
+  roughness: 0.55,
+  metalness: 0.1,
+  side: THREE.DoubleSide
+});
+const mesh = new THREE.InstancedMesh(geo, material, leaves.length);
+mesh.frustumCulled = false;
+
+const dummy = new THREE.Object3D();
+const scale = Math.pow(0.5, DEPTH);
+
+leaves.forEach((leaf, i) => {
+  dummy.position.copy(leaf.pos);
+  dummy.scale.setScalar(scale);
+  dummy.rotation.set(0, 0, 0);
+  dummy.updateMatrix();
+  mesh.setMatrixAt(i, dummy.matrix);
+  const color = palette[leaf.seed % palette.length].clone();
+  color.offsetHSL(0, 0, ((leaf.seed % 7) - 3) * 0.015);
+  mesh.setColorAt(i, color);
+});
+mesh.instanceMatrix.needsUpdate = true;
+if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+
+const group = new THREE.Group();
+group.add(mesh);
+scene.add(group);
+
+// ---- Initial render to ensure WebGL draw calls are issued ----
+renderer.render(scene, camera);
+
+// ---- Slow rotation + resize + render loop ----
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+const clock = new THREE.Clock();
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+  group.rotation.y = t * 0.25;
+  group.rotation.x = t * 0.11;
+  renderer.render(scene, camera);
+}
+animate();
+</script>
+</body>
+</html>

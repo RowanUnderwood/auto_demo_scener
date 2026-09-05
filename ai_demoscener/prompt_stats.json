@@ -3,7 +3,7 @@
     "crashes": 0,
     "blanks": 0,
     "total": 0,
-    "runs": 2,
+    "runs": 7,
     "deletions": 0,
     "last_fail": null,
     "by_model": {
@@ -11,7 +11,7 @@
         "crashes": 0,
         "blanks": 0,
         "total": 0,
-        "runs": 2
+        "runs": 7
       }
     }
   },
@@ -67,6 +67,22 @@
     "crashes": 0,
     "blanks": 0,
     "total": 0,
+    "runs": 5,
+    "deletions": 0,
+    "last_fail": null,
+    "by_model": {
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 5
+      }
+    }
+  },
+  "Auto-Solving Rubik's Cube": {
+    "crashes": 0,
+    "blanks": 0,
+    "total": 0,
     "runs": 1,
     "deletions": 0,
     "last_fail": null,
@@ -79,7 +95,103 @@
       }
     }
   },
-  "Auto-Solving Rubik's Cube": {
+  "Sine-Wave News Crawl": {
+    "crashes": 0,
+    "blanks": 1,
+    "total": 1,
+    "runs": 1,
+    "deletions": 0,
+    "last_fail": "2026-09-05T11:33:18.611444",
+    "by_model": {
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
+        "runs": 1
+      }
+    }
+  },
+  "Auto-Play Snake": {
+    "crashes": 0,
+    "blanks": 0,
+    "total": 0,
+    "runs": 1,
+    "deletions": 0,
+    "last_fail": null,
+    "by_model": {
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      }
+    }
+  },
+  "Demo-Mode Asteroids": {
+    "crashes": 0,
+    "blanks": 1,
+    "total": 1,
+    "runs": 1,
+    "deletions": 0,
+    "last_fail": "2026-09-05T11:40:33.939343",
+    "by_model": {
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
+        "runs": 1
+      }
+    }
+  },
+  "Tesseract Projection": {
+    "crashes": 0,
+    "blanks": 0,
+    "total": 0,
+    "runs": 1,
+    "deletions": 0,
+    "last_fail": null,
+    "by_model": {
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      }
+    }
+  },
+  "Lens Flare": {
+    "crashes": 0,
+    "blanks": 0,
+    "total": 0,
+    "runs": 1,
+    "deletions": 0,
+    "last_fail": null,
+    "by_model": {
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      }
+    }
+  },
+  "Raymarched Scene": {
+    "crashes": 0,
+    "blanks": 0,
+    "total": 0,
+    "runs": 1,
+    "deletions": 0,
+    "last_fail": null,
+    "by_model": {
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      }
+    }
+  },
+  "Lorenz Attractor": {
     "crashes": 0,
     "blanks": 0,
     "total": 0,

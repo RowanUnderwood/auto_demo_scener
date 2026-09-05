@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prismatic Lattice</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #0a0610; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+    </style>
+</head>
+<body>
+<script type="module">
+    import * as THREE from 'https://cdn.skypack.dev/three@0.150.0';
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    document.body.appendChild(renderer.domElement);
+
+    const geometry = new THREE.PlaneGeometry(2, 2);
+    const uniforms = {
+        u_time: { value: 0 },
+        u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+    };
+
+    const material = new THREE.ShaderMaterial({
+        uniforms,
+        vertexShader: `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = vec4(position, 1.0);
+            }
+        `,
+        fragmentShader: `
+            uniform float u_time;
+            uniform vec2 u_resolution;
+            varying vec2 vUv;
+
+            mat2 rot(float a){ float c=cos(a),s=sin(a); return mat2(c,-s,s,c); }
+
+            float smin(float a, float b, float k){
+                float h = clamp(0.5 + 0.5*(b-a)/k, 0.0, 1.0);
+                return mix(b, a, h) - k*h*(1.0-h);
+            }
+
+            float sdSphere(vec3 p, float r){ return length(p)-r; }
+            float sdTorus(vec3 p, vec2 t){
+                vec2 q = vec2(length(p.xz)-t.x, p.y);
+                return length(q)-t.y;
+            }
+            float sdCapsule(vec3 p, vec3 a, vec3 b, float r){
+                vec3 pa = p-a, ba = b-a;
+                float h = clamp(dot(pa,ba)/dot(ba,ba), 0.0, 1.0);
+                return length(pa - ba*h) - r;
+            }
+
+            vec3 rotY(vec3 p, float a){ p.xz = rot(a)*p.xz; return p; }
+
+            float map(vec3 p){
+                // gentle global spin
+                p = rotY(p, u_time*0.08);
+
+                // infinite lattice
+                vec3 q = mod(p, 5.0) - 2.5;
+
+                // breathing pulse
+                float pulse = sin(u_time*0.7 + dot(p.xz, vec2(0.5,0.7)))*0.35;
+
+                float torus = sdTorus(q, vec2(1.0, 0.22 + pulse*0.15));
+                float core  = sdSphere(q, 0.55 + pulse*0.25);
+
+                // slow orbiting capsule
+                float ang = u_time*0.6 + p.y*0.3;
+                vec3 ca = vec3(cos(ang), 0.0, sin(ang))*0.9;
+                vec3 cb = vec3(-cos(ang), 0.0, -sin(ang))*0.9;
+                float cap = sdCapsule(q, ca, cb, 0.16);
+
+                return smin(smin(torus, core, 0.35), cap, 0.25);
+            }
+
+            vec3 getNormal(vec3 p){
+                const float h = 0.0015;
+                const vec2 k = vec2(1,-1);
+                return normalize(
+                    k.xyy*map(p+k.xyy*h) + k.yyx*map(p+k.yyx*h) +
+                    k.yxy*map(p+k.yxy*h) + k.xxx*map(p+k.xxx*h));
+            }
+
+            // iridescent palette
+            vec3 iridescent(float t, vec3 base){
+                return base + 0.55*vec3(
+                    sin(6.2831*(t + 0.0)),
+                    sin(6.2831*(t + 0.33)),
+                    sin(6.2831*(t + 0.66)));
+            }
+
+            void main(){
+                vec2 uv = (gl_FragCoord.xy - 0.5*u_resolution.xy)/min(u_resolution.y, u_resolution.x);
+
+                vec3 ro = vec3(0.0, 1.5, -7.0);
+                vec3 rd = normalize(vec3(uv, 1.3));
+
+                float t = 0.0;
+                bool hit = false;
+                for(int i=0;i<96;i++){
+                    vec3 p = ro + rd*t;
+                    float d = map(p);
+                    if(d < 0.0008){ hit = true; break; }
+                    t += d*0.9;
+                    if(t > 24.0) break;
+                }
+
+                // deep plum gradient sky
+                float grad = clamp(uv.y*0.5 + 0.5, 0.0, 1.0);
+                vec3 bg = mix(vec3(0.04,0.02,0.08), vec3(0.16,0.05,0.20), grad);
+                // soft horizon glow
+                bg += vec3(0.30,0.10,0.35) * pow(1.0-abs(uv.y), 6.0) * 0.4;
+                vec3 color = bg;
+
+                if(hit){
+                    vec3 p = ro + rd*t;
+                    vec3 n = getNormal(p);
+                    vec3 v = -rd;
+
+                    vec3 l1 = normalize(vec3(0.6, 0.9, -0.5));
+                    vec3 l2 = normalize(vec3(-0.7, 0.3, 0.4));
+                    float diff = max(dot(n,l1),0.0)*0.9 + max(dot(n,l2),0.0)*0.35;
+
+                    float fres = pow(1.0 - max(dot(n,v),0.0), 3.0);
+                    float spec = pow(max(dot(reflect(l1,n), v),0.0), 40.0);
+
+                    float band = 0.5 + 0.5*sin(p.x*0.7 + p.y*1.3 - u_time*0.5);
+                    vec3 base = mix(vec3(0.35,0.10,0.45), vec3(0.95,0.55,0.20), band);
+
+                    vec3 col = base * (diff + 0.12);
+                    col += iridescent(fres + band*0.4, vec3(0.0)) * fres * 1.1;
+                    col += vec3(1.0,0.85,0.6) * spec * 0.8;
+                    col += base * fres * 0.5;
+
+                    // distance fog into the sky
+                    float fog = exp(-t*0.11);
+                    color = mix(bg, col, fog);
+                }
+
+                // subtle vignette
+                float vig = smoothstep(1.4, 0.4, length(uv));
+                color *= vig*0.35 + 0.75;
+
+                // gentle tone + grain
+                color = color/(1.0+color*0.25);
+                float g = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898,78.233)))*43758.5453);
+                color += (g-0.5)*0.015;
+
+                gl_FragColor = vec4(color, 1.0);
+            }
+        `
+    });
+
+    scene.add(new THREE.Mesh(geometry, material));
+
+    function animate(time){
+        uniforms.u_time.value = time * 0.001;
+        renderer.render(scene, camera);
+        requestAnimationFrame(animate);
+    }
+
+    window.addEventListener('resize', () => {
+        const w = window.innerWidth, h = window.innerHeight;
+        renderer.setSize(w, h);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        uniforms.u_resolution.value.set(w, h);
+    });
+
+    requestAnimationFrame(animate);
+</script>
+</body>
+</html>

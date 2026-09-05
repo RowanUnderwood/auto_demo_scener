@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Snake BFS</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#111;}
+  canvas{display:block;}
+  #hud{position:fixed;top:8px;left:10px;color:#8fd;font:14px monospace;}
+</style>
+</head>
+<body>
+<div id="hud"></div>
+<script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
+<script>
+(function(){
+  const N = 30;
+
+  // ---- Scene ----
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0d0f1a);
+
+  const half = 16;
+  const aspect = window.innerWidth / window.innerHeight;
+  const camera = new THREE.OrthographicCamera(-half*aspect, half*aspect, half, -half, -1000, 1000);
+  camera.position.set(0, 0, 100);
+  camera.lookAt(0, 0, 0);
+
+  const renderer = new THREE.WebGLRenderer({antialias:true});
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  document.body.appendChild(renderer.domElement);
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+  const dir = new THREE.DirectionalLight(0xffffff, 0.9);
+  dir.position.set(1, 2, 3);
+  scene.add(dir);
+
+  // background grid
+  (function(){
+    const geo = new THREE.PlaneGeometry(N, N);
+    const mat = new THREE.MeshBasicMaterial({color:0x161a2b});
+    const plane = new THREE.Mesh(geo, mat);
+    plane.position.set(0,0,-1);
+    scene.add(plane);
+    const g = new THREE.GridHelper(N, N, 0x2a3050, 0x22283f);
+    g.position.set(0,0,-0.5);
+    scene.add(g);
+  })();
+
+  const cellToWorld = (x, y) => new THREE.Vector3(x - N/2 + 0.5, y - N/2 + 0.5, 0);
+
+  // ---- Game state: plain 2D array ----
+  // 0 empty, 1 snake, 2 food
+  let grid = [];
+  let snake = [];   // head first
+  let food = {x:0,y:0};
+  let alive = true;
+
+  const hud = document.getElementById('hud');
+
+  function rebuildGrid(){
+    grid = Array.from({length:N}, () => new Array(N).fill(0));
+    for (let i=0;i<snake.length;i++) grid[snake[i].y][snake[i].x] = 1;
+    grid[food.y][food.x] = 2;
+  }
+
+  function randomEmptyCell(){
+    const empties = [];
+    for (let y=0;y<N;y++) for (let x=0;x<N;x++)
+      if (grid[y][x] === 0) empties.push({x,y});
+    if (empties.length === 0) return null;
+    return empties[(Math.random()*empties.length)|0];
+  }
+
+  function init(){
+    const cy = N>>1, cx = N>>1;
+    snake = [{x:cx-1,y:cy},{x:cx-2,y:cy},{x:cx-3,y:cy}];
+    rebuildGrid();
+    food = randomEmptyCell();
+    rebuildGrid();
+    alive = true;
+    buildFoodMesh();
+    updateHUD();
+  }
+
+  // ---- BFS next direction ----
+  const DIRS = [{x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1}];
+  function bfsNextDir(head, foodCell){
+    const key = (x,y)=> y*N + x;
+    const start = key(head.x, head.y);
+    const foodK = key(foodCell.x, foodCell.y);
+    const prev = new Map();
+    const visited = new Set([start]);
+    const q = [start];
+    while (q.length){
+      const cur = q.shift();
+      if (cur === foodK){
+        let c = cur;
+        while (prev.get(c) !== start) c = prev.get(c);
+        const p = prev.get(c);
+        const px = p % N, py = (p / N)|0;
+        return {x: px - head.x, y: py - head.y};
+      }
+      const cx = cur % N, cy = (cur / N)|0;
+      for (const d of DIRS){
+        const nx = cx + d.x, ny = cy + d.y;
+        if (nx<0||ny<0||nx>=N||ny>=N) continue;
+        const k = key(nx,ny);
+        if (visited.has(k)) continue;
+        if (grid[ny][nx] === 1) continue;
+        visited.add(k);
+        prev.set(k, cur);
+        q.push(k);
+      }
+    }
+    return null;
+  }
+
+  // ---- Meshes ----
+  const segGeo = new THREE.BoxGeometry(0.92, 0.92, 0.4);
+  const headMat = new THREE.MeshLambertMaterial({color:0x38e07b});
+  const bodyMat = new THREE.MeshLambertMaterial({color:0x27a05a});
+  const segMeshes = [];
+
+  function makeSeg(head){
+    const m = new THREE.Mesh(segGeo, head ? headMat : bodyMat);
+    scene.add(m);
+    return m;
+  }
+
+  function reconcileSegments(){
+    const need = snake.length;
+    while (segMeshes.length < need) segMeshes.push(makeSeg(segMeshes.length === 0));
+    while (segMeshes.length > need){
+      const m = segMeshes.pop();
+      scene.remove(m);
+    }
+    // rebuild positions from array
+    for (let i=0;i<need;i++){
+      const p = cellToWorld(snake[i].x, snake[i].y);
+      segMeshes[i].position.copy(p);
+      segMeshes[i].material = (i===0) ? headMat : bodyMat;
+    }
+  }
+
+  let foodMesh = null;
+  function buildFoodMesh(){
+    if (foodMesh){ scene.remove(foodMesh); foodMesh.geometry.dispose(); foodMesh.material.dispose(); }
+    const g = new THREE.SphereGeometry(0.4, 16, 16);
+    const m = new THREE.MeshLambertMaterial({color:0xff2b2b, emissive:0x550000});
+    foodMesh = new THREE.Mesh(g, m);
+    const p = cellToWorld(food.x, food.y);
+    foodMesh.position.copy(p);
+    scene.add(foodMesh);
+  }
+
+  function updateHUD(){
+    hud.textContent = 'length ' + snake.length + (alive ? '' : '  ·  game over');
+  }
+
+  // ---- Step ----
+  function step(){
+    if (!alive) return;
+    const head = snake[0];
+    let d = bfsNextDir(head, food);
+    let grow = false;
+
+    if (d){
+      grow = (head.x + d.x === food.x && head.y + d.y === food.y);
+    } else {
+      // fallback: any safe move
+      d = null;
+      for (const cand of DIRS){
+        const nx = head.x + cand.x, ny = head.y + cand.y;
+        if (nx<0||ny<0||nx>=N||ny>=N) continue;
+        if (grid[ny][nx] === 1) continue;
+        d = cand; break;
+      }
+      if (!d){ alive = false; updateHUD(); return; }
+    }
+
+    const nx = head.x + d.x, ny = head.y + d.y;
+
+    // wall / self collision safety (re-check)
+    if (nx<0||ny<0||nx>=N||ny>=N || grid[ny][nx] === 1){
+      alive = false; updateHUD(); return;
+    }
+
+    snake.unshift({x:nx, y:ny});
+    if (nx === food.x && ny === food.y){
+      // grow: keep tail, new food
+      const nf = randomEmptyCell();
+      if (nf){ food = nf; }
+      else { alive = false; }
+    } else {
+      snake.pop();
+    }
+
+    rebuildGrid();
+    reconcileSegments();
+    buildFoodMesh();
+    updateHUD();
+  }
+
+  init();
+  setInterval(step, 100);
+
+  function render(){
+    renderer.render(scene, camera);
+    requestAnimationFrame(render);
+  }
+  render();
+
+  window.addEventListener('resize', ()=>{
+    const a = window.innerWidth / window.innerHeight;
+    camera.left = -half*a; camera.right = half*a;
+    camera.top = half; camera.bottom = -half;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+})();
+</script>
+</body>
+</html>

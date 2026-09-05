@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Rubik's Cube Scramble &amp; Solve</title>
+<style>
+  html,body{margin:0;height:100%;background:#15151f;overflow:hidden}
+  #info{position:fixed;top:12px;left:12px;color:#cfd3ff;font:13px/1.5 monospace;
+    background:rgba(0,0,0,.35);padding:8px 12px;border-radius:8px;user-select:none}
+</style>
+</head>
+<body>
+<div id="info">scramble → solve · one turn / sec</div>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script>
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.1, 100);
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(devicePixelRatio);
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+const dl = new THREE.DirectionalLight(0xffffff, 0.9);
+dl.position.set(5,10,7);
+scene.add(dl);
+
+// --- Build 27 cubies with per-face colors ---
+const COLORS = {
+  px:0xb71234, nx:0xff5800, py:0xffffff, ny:0xffd500, pz:0x009e60, nz:0x0046ad, in:0x141414
+};
+const SIZE = 0.98;
+const geo = new THREE.BoxGeometry(SIZE, SIZE, SIZE);
+const cubies = [];
+for (let x=-1;x<=1;x++)
+for (let y=-1;y<=1;y++)
+for (let z=-1;z<=1;z++){
+  const mat = (c)=>new THREE.MeshStandardMaterial({color:c, roughness:0.35, metalness:0.0});
+  const m = new THREE.Mesh(geo, [
+    mat(x===1?COLORS.px:COLORS.in),
+    mat(x===-1?COLORS.nx:COLORS.in),
+    mat(y===1?COLORS.py:COLORS.in),
+    mat(y===-1?COLORS.ny:COLORS.in),
+    mat(z===1?COLORS.pz:COLORS.in),
+    mat(z===-1?COLORS.nz:COLORS.in)
+  ]);
+  m.position.set(x, y, z);
+  scene.add(m);
+  cubies.push(m);
+}
+
+// --- Precompute a scramble, then its reverse ---
+const axes = ['x','y','z'];
+const ri = n=>Math.floor(Math.random()*n);
+const SCRAMBLE_LEN = 10;
+const scramble = [];
+for (let i=0;i<SCRAMBLE_LEN;i++){
+  scramble.push({
+    axis: axes[ri(3)],
+    layer: [-1,0,1][ri(3)],
+    angle: (ri(2)?1:-1) * Math.PI/2
+  });
+}
+const sequence = scramble.concat(scramble.slice().reverse());
+let idx = 0;
+
+// --- Turn animation state ---
+let active = null;      // {group, involved, startQ, endQ, t}
+let lastTurn = performance.now()/1000;
+const TURN_DUR = 0.4;
+
+function startTurn(){
+  const move = sequence[idx];
+  const group = new THREE.Group();
+  group.position.set(0,0,0);
+  scene.add(group);
+
+  const involved = [];
+  for (const c of cubies){
+    if (Math.round(c.position[move.axis]) === move.layer){
+      group.attach(c);        // reparent, world transform preserved
+      involved.push(c);
+    }
+  }
+  const ax = new THREE.Vector3();
+  ax[move.axis] = 1;
+  const endQ = new THREE.Quaternion().setFromAxisAngle(ax, move.angle);
+  active = {group, involved, startQ:new THREE.Quaternion(), endQ, t:0};
+}
+
+function finishTurn(){
+  active.group.quaternion.copy(active.endQ);
+  for (const c of active.involved) scene.attach(c); // reparent back, clean for next turn
+  for (const c of active.involved){
+    c.position.set(Math.round(c.position.x), Math.round(c.position.y), Math.round(c.position.z));
+  }
+  scene.remove(active.group);
+  active = null;
+  idx++;
+  if (idx >= sequence.length) idx = 0; // loop
+}
+
+const clock = new THREE.Clock();
+let camAngle = 0;
+const info = document.getElementById('info');
+
+function animate(){
+  requestAnimationFrame(animate);
+  const dt = clock.getDelta();
+  const now = performance.now()/1000;
+
+  if (!active && now - lastTurn >= 1.0){
+    startTurn();
+    lastTurn = now;
+  }
+  if (active){
+    active.t += dt/TURN_DUR;
+    if (active.t >= 1){
+      active.t = 1;
+      finishTurn();
+    } else {
+      active.group.quaternion.copy(active.startQ).slerp(active.endQ, active.t);
+    }
+  }
+
+  const phase = idx < sequence.length/2 ? 'scrambling' : 'solving';
+  info.textContent = `${phase} · ${Math.min(idx+1, sequence.length)}/${sequence.length}`;
+
+  camAngle += dt*0.2;
+  const r = 8;
+  camera.position.set(Math.cos(camAngle)*r, 2.5, Math.sin(camAngle)*r);
+  camera.lookAt(0,0,0);
+
+  renderer.render(scene, camera);
+}
+animate();
+
+addEventListener('resize', ()=>{
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

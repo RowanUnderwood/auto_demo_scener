@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Torus Knot + Additive Sprites</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 100);
+  camera.position.set(0, 0, 8);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  document.body.appendChild(renderer.domElement);
+
+  // Central torus knot — MeshNormalMaterial needs no lights
+  const knot = new THREE.Mesh(
+    new THREE.TorusKnotGeometry(1.4, 0.4, 200, 32),
+    new THREE.MeshNormalMaterial()
+  );
+  scene.add(knot);
+
+  // Soft circular radial gradient texture (white center -> transparent)
+  function makeGlowTexture() {
+    const c = document.createElement('canvas');
+    c.width = c.height = 128;
+    const ctx = c.getContext('2d');
+    const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+    g.addColorStop(0.0, 'rgba(255,255,255,1)');
+    g.addColorStop(0.25, 'rgba(255,255,255,0.6)');
+    g.addColorStop(0.6, 'rgba(255,255,255,0.15)');
+    g.addColorStop(1.0, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 128, 128);
+    const tex = new THREE.CanvasTexture(c);
+    return tex;
+  }
+  const glowTex = makeGlowTexture();
+
+  function makeSprite(scale, color) {
+    const mat = new THREE.SpriteMaterial({
+      map: glowTex,
+      color: color,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      transparent: true
+    });
+    const s = new THREE.Sprite(mat);
+    s.scale.set(scale, scale, 1);
+    return s;
+  }
+
+  // Main bright sprite
+  const mainSprite = makeSprite(3.0, 0xffffff);
+  scene.add(mainSprite);
+
+  // 6 smaller sprites of varying size/tint
+  const satellites = [];
+  for (let i = 0; i < 6; i++) {
+    const t = i / 5;
+    const size = 0.5 + 0.9 * (1 - t);
+    const color = new THREE.Color().setHSL(0.6 - 0.4 * t, 1.0, 0.6);
+    const s = makeSprite(size, color);
+    scene.add(s);
+    satellites.push(s);
+  }
+
+  const tmpVec = new THREE.Vector3();
+  const hotspot = new THREE.Vector3();
+  const centerPoint = new THREE.Vector3();
+  const camDir = new THREE.Vector3();
+
+  function animate() {
+    requestAnimationFrame(animate);
+
+    // Rotate the knot
+    knot.rotation.x += 0.006;
+    knot.rotation.y += 0.01;
+    knot.rotation.z += 0.003;
+
+    // A point orbiting around the knot, moving as it rotates
+    const a = knot.rotation.y * 1.5 + knot.rotation.x;
+    hotspot.set(
+      Math.cos(a) * 2.2,
+      Math.sin(a * 0.7) * 1.6,
+      Math.sin(a) * 2.2
+    );
+
+    // Screen center (NDC 0,0) expressed in world space at the hotspot's depth
+    camDir.set(0, 0, -1).unproject(camera).sub(camera.position).normalize();
+    const depth = hotspot.clone().sub(camera.position).dot(camDir);
+    centerPoint.copy(camera.position).addScaledVector(camDir, depth);
+
+    // Main sprite sits at the hotspot (projected toward screen space)
+    mainSprite.position.copy(hotspot);
+
+    // Space 6 sprites evenly from hotspot toward screen center
+    for (let i = 0; i < 6; i++) {
+      const f = (i + 1) / 7;
+      satellites[i].position.lerpVectors(hotspot, centerPoint, f);
+    }
+
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  addEventListener('resize', () => {
+    camera.aspect = innerWidth / innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+  });
+</script>
+</body>
+</html>

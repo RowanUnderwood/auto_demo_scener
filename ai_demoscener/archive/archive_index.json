@@ -2800,5 +2800,194 @@
     "model": "qwen3.8-27b",
     "title": "Ember Motes Drifting Through Solar Furnace",
     "description": "Motes of dying light spiral through the furnace of a forgotten sun."
+  },
+  "2026-09-05_apollonian_gasket_6b34_v2.html": {
+    "created": "2026-09-05T11:19:40.274563",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Bioluminal Descartes Circle Lattice",
+    "description": "Mutually tangent circles pulse like deep-sea organisms breathing in violet dark."
+  },
+  "2026-05-17_creative_c6f4_v2.html": {
+    "created": "2026-09-05T11:20:44.206529",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Abyssal Filaments of Living Light",
+    "description": "Bioluminescent filaments breathe, pulse, and dissolve into the crushing dark."
+  },
+  "2026-09-05_wireframe_icosahedron_e24b.html": {
+    "created": "2026-09-05T11:21:56.703623",
+    "mode": "stock",
+    "effect": "Wireframe Icosahedron",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Breathing Icosa Nebula",
+    "description": "Five shells breathe between icosahedron and sphere, scattering cold blue light."
+  },
+  "2026-09-05_sierpinski_tetrahedron_a6b8.html": {
+    "created": "2026-09-05T11:25:29.307754",
+    "mode": "stock",
+    "effect": "Sierpinski Tetrahedron",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Fractal Tetrahedron Crystalline Descent",
+    "description": "Infinite recursion fractures light into a slow-turning crystalline dream."
+  },
+  "2026-09-05_particle_system_f0ac.html": {
+    "created": "2026-09-05T11:26:18.168590",
+    "mode": "stock",
+    "effect": "Particle System",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Fountain Of Dying Starlight",
+    "description": "Five thousand embers arc and fade into the indigo silence."
+  },
+  "2026-09-05_creative_a8b8.html": {
+    "created": "2026-09-05T11:27:17.494594",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Quantum Bloom In Neon",
+    "description": "A crystalline heart exhales neon petals into an infinite lattice of light."
+  },
+  "2026-09-05_auto_solving_rubik_s_cube_9e1d.html": {
+    "created": "2026-09-05T11:28:17.493694",
+    "mode": "stock",
+    "effect": "Auto-Solving Rubik's Cube",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Chromatic Chaos Remembering Its Order",
+    "description": "A prism forgets its pattern, then slowly whispers itself back into order."
+  },
+  "2026-09-05_dragon_curve_c44f_v2.html": {
+    "created": "2026-09-05T11:29:33.048349",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Violet Dragon Embers",
+    "description": "An embered fractal serpent breathes violet ash into the void."
+  },
+  "2026-09-05_creative_dc35.html": {
+    "created": "2026-09-05T11:30:43.092300",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Topologic Drift Through Dimensional Veils",
+    "description": "Six thousand whispers fold through impossible geometries, dissolving into luminous silence."
+  },
+  "2026-05-10_raymarched_scene_46ea_v2.html": {
+    "created": "2026-09-05T11:34:12.394394",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Infinite Breathing Prism Lattice",
+    "description": "Plum skies cradle iridescent tori that breathe and orbit in endless rhythm."
+  },
+  "2026-05-10_creative_f0d4_v2.html": {
+    "created": "2026-09-05T11:35:20.537659",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Molten Heart In Indigo Drift",
+    "description": "Twenty-two thousand amber embers orbit a breathing core of molten fire."
+  },
+  "2026-09-05_creative_1b5b.html": {
+    "created": "2026-09-05T11:36:41.660075",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Iridescent Membrane Folds Under Rhythmic Light",
+    "description": "A prismatic membrane breathes, folding light into four iridescent tides."
+  },
+  "2026-09-05_auto_play_snake_53dd.html": {
+    "created": "2026-09-05T11:37:38.838466",
+    "mode": "stock",
+    "effect": "Auto-Play Snake",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Emerald Serpent Charts The Midnight Lattice",
+    "description": "A luminous serpent threads the obsidian grid, seeking crimson light."
+  },
+  "2026-09-05_creative_ff6b.html": {
+    "created": "2026-09-05T11:42:30.592317",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Bloom of the Fourth Axis",
+    "description": "Embers fold through the fourth axis, breathing starlight into the endless void."
+  },
+  "2026-09-05_tesseract_projection_f1c6.html": {
+    "created": "2026-09-05T11:43:15.275165",
+    "mode": "stock",
+    "effect": "Tesseract Projection",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Prismatic Tesseract Drift",
+    "description": "Rainbow edges trace the impossible geometry of a spinning fourth dimension."
+  },
+  "2026-05-17_aquarium_screensaver_d781_v2.html": {
+    "created": "2026-09-05T11:44:33.944049",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Bioluminescent Abyss Breathing Slowly",
+    "description": "Phosphorescent tendrils sway where sunlight has never dared to reach."
+  },
+  "2026-05-17_creative_a3b3_v2.html": {
+    "created": "2026-09-05T11:45:41.887254",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Quantum Ember Crystal Lattice",
+    "description": "Warm light breathes through fractured geometry, pulsing like a dying star."
+  },
+  "2026-09-05_lens_flare_160f.html": {
+    "created": "2026-09-05T11:46:32.353945",
+    "mode": "stock",
+    "effect": "Lens Flare",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Iridescent Knot With Luminous Orbit",
+    "description": "Iridescent geometry turns slowly as spectral embers drift toward the void."
+  },
+  "2026-09-05_creative_8a3f.html": {
+    "created": "2026-09-05T11:47:35.148973",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Phosphorescent Neural Canopy",
+    "description": "Neural roots pulse with cold emerald light beneath the void."
+  },
+  "2026-09-05_raymarched_scene_15f4.html": {
+    "created": "2026-09-05T11:48:28.472218",
+    "mode": "stock",
+    "effect": "Raymarched Scene",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Tiled Spheres Drowning In Navy Haze",
+    "description": "Endless magenta spheres dissolve into the breathless navy abyss."
+  },
+  "2026-09-05_lorenz_attractor_03d7.html": {
+    "created": "2026-09-05T11:49:18.461609",
+    "mode": "stock",
+    "effect": "Lorenz Attractor",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Chromatic Chaos Butterfly Wings",
+    "description": "A spectral filament traces eternal chaos through the velvet void."
   }
 }

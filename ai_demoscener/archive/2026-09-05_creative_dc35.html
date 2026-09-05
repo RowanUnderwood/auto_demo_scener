@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TOPOLOGIC DRIFT</title>
+<style>
+*{margin:0;padding:0;overflow:hidden}
+body{background:#000}
+canvas{display:block}
+#hud{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,.5);font:11px monospace;letter-spacing:4px;text-transform:uppercase;pointer-events:none;white-space:nowrap}
+</style>
+</head>
+<body>
+<div id="hud">topologic drift</div>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.163.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.163.0/examples/jsm/"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+const W = innerWidth, H = innerHeight;
+const renderer = new THREE.WebGLRenderer({ antialias: false });
+renderer.setSize(W, H);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const cam = new THREE.PerspectiveCamera(60, W / H, .1, 100);
+cam.position.set(0, 0, 5.5);
+
+// ── post ──
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, cam));
+const bloom = new UnrealBloomPass(new THREE.Vector2(W, H), 1.4, .6, .15);
+composer.addPass(bloom);
+
+// ── particle count ──
+const N = 6000;
+const pos = new Float32Array(N * 3);
+const col = new Float32Array(N * 3);
+const size = new Float32Array(N);
+const vel = new Float32Array(N); // velocity magnitude for color
+
+// ── target shapes ──
+function torusKnot(i, n, t) {
+  const p = 2, q = 5, u = (i / n) * Math.PI * 2 + t * .3;
+  const r = 2 + Math.cos(q * u) * .8;
+  return [r * Math.cos(p * u), r * Math.sin(p * u), Math.sin(q * u) * 1.2];
+}
+function lissajous3D(i, n, t) {
+  const u = (i / n) * Math.PI * 2 + t * .2;
+  const a = 3, b = 4, c = 5;
+  return [
+    2.5 * Math.sin(a * u + t * .15),
+    2.5 * Math.sin(b * u + t * .1),
+    2.5 * Math.sin(c * u + t * .2)
+  ];
+}
+function tesseract(i, n, t) {
+  // 4D hypercube surface points projected to 3D
+  const idx = i % 32;
+  const ox = (idx & 1) ? 1 : -1;
+  const oy = (idx & 2) ? 1 : -1;
+  const oz = (idx & 4) ? 1 : -1;
+  const ow = (idx & 8) ? 1 : -1;
+  const j = Math.floor(i / 32);
+  const su = j / Math.floor(n / 32);
+  // interpolate along edges
+  const e = su * 2 - 1;
+  const x = ox + e * 0.5 * (oy - ox);
+  const y = oy + e * 0.3 * (oz - oy);
+  const z = oz + e * 0.4 * (ow - oz);
+  const w = ow + e * 0.2 * (ox - ow);
+  // rotate in 4D
+  const a = t * .25, b2 = t * .18;
+  const x1 = x * Math.cos(a) - w * Math.sin(a);
+  const w1 = x * Math.sin(a) + w * Math.cos(a);
+  const y1 = y * Math.cos(b2) - w1 * Math.sin(b2);
+  const w2 = y * Math.sin(b2) + w1 * Math.cos(b2);
+  const d = 1 / (3.5 - w2);
+  const s = 2.8 * d;
+  return [x1 * s, y1 * s, z * s];
+}
+function superformula3D(i, n, t) {
+  const u = (i / n) * Math.PI * 2 + t * .12;
+  const v = ((i * 7919) % n) / n * Math.PI * 2 + t * .08;
+  const m1 = 6, n1 = 1, n2 = 5, n3 = 3;
+  const m2 = 8, n4 = 1, n5 = 7, n6 = 4;
+  const r1 = Math.pow(Math.pow(Math.abs(Math.cos(m1 * u / 4)), n1) + Math.pow(Math.abs(Math.sin(m1 * u / 4)), n2), -1 / n3);
+  const r2 = Math.pow(Math.pow(Math.abs(Math.cos(m2 * v / 4)), n4) + Math.pow(Math.abs(Math.sin(m2 * v / 4)), n5), -1 / n6);
+  const rr = 2 * Math.min(r1, 1.5) * Math.abs(r2);
+  return [rr * Math.cos(u) * Math.sin(v), rr * Math.sin(u) * Math.sin(v), rr * Math.cos(v) * .7];
+}
+
+const shapes = [torusKnot, lissajous3D, tesseract, superformula3D];
+const shapeNames = ['torus knot', 'lissajous', 'tesseract', 'superformula'];
+let shapeIdx = 0;
+let shapeTimer = 0;
+const SHAPE_DUR = 7;
+const TRANS_DUR = 2.5;
+
+// initial positions
+for (let i = 0; i < N; i++) {
+  const [x, y, z] = torusKnot(i, N, 0);
+  pos[i * 3] = x; pos[i * 3 + 1] = y; pos[i * 3 + 2] = z;
+  size[i] = .02 + Math.random() * .04;
+  vel[i] = 0;
+}
+
+// ── particle geometry ──
+const pGeo = new THREE.BufferGeometry();
+pGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+pGeo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+pGeo.setAttribute('aSize', new THREE.BufferAttribute(size, 1));
+
+const pMat = new THREE.ShaderMaterial({
+  uniforms: { uTime: { value: 0 } },
+  vertexShader: `
+    attribute float aSize;
+    varying vec3 vColor;
+    void main(){
+      vColor = color;
+      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      gl_PointSize = aSize * (280.0 / -mv.z);
+      gl_Position = projectionMatrix * mv;
+    }`,
+  fragmentShader: `
+    varying vec3 vColor;
+    void main(){
+      float d = length(gl_PointCoord - .5);
+      if(d > .5) discard;
+      float a = 1.0 - smoothstep(0.0, 0.5, d);
+      a = a * a;
+      gl_FragColor = vec4(vColor, a);
+    }`,
+  vertexColors: true,
+  transparent: true,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false
+});
+const points = new THREE.Points(pGeo, pMat);
+scene.add(points);
+
+// ── line connections ──
+const MAX_LINES = 8000;
+const lPos = new Float32Array(MAX_LINES * 6);
+const lCol = new Float32Array(MAX_LINES * 6);
+const lGeo = new THREE.BufferGeometry();
+lGeo.setAttribute('position', new THREE.BufferAttribute(lPos, 3));
+lGeo.setAttribute('color', new THREE.BufferAttribute(lCol, 3));
+const lMat = new THREE.LineBasicMaterial({
+  vertexColors: true,
+  transparent: true,
+  opacity: .35,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false
+});
+const lines = new THREE.LineSegments(lGeo, lMat);
+scene.add(lines);
+
+// ── background stars ──
+const starN = 2000;
+const sPos = new Float32Array(starN * 3);
+const sCol = new Float32Array(starN * 3);
+const sSize = new Float32Array(starN);
+for (let i = 0; i < starN; i++) {
+  const r = 30 + Math.random() * 60;
+  const th = Math.random() * Math.PI * 2;
+  const ph = Math.acos(2 * Math.random() - 1);
+  sPos[i * 3] = r * Math.sin(ph) * Math.cos(th);
+  sPos[i * 3 + 1] = r * Math.sin(ph) * Math.sin(th);
+  sPos[i * 3 + 2] = r * Math.cos(ph);
+  const c = .3 + Math.random() * .4;
+  sCol[i * 3] = c * .7; sCol[i * 3 + 1] = c * .8; sCol[i * 3 + 2] = c;
+  sSize[i] = .01 + Math.random() * .03;
+}
+const sGeo = new THREE.BufferGeometry();
+sGeo.setAttribute('position', new THREE.BufferAttribute(sPos, 3));
+sGeo.setAttribute('color', new THREE.BufferAttribute(sCol, 3));
+sGeo.setAttribute('aSize', new THREE.BufferAttribute(sSize, 1));
+const stars = new THREE.Points(sGeo, pMat);
+scene.add(stars);
+
+// ── color helpers ──
+function hsl2rgb(h, s, l) {
+  h = ((h % 1) + 1) % 1;
+  const f = (n) => {
+    const k = (n + h * 12) % 12;
+    const a = s * Math.min(l, 1 - l);
+    return l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+  };
+  return [f(0), f(8), f(4)];
+}
+
+// ── animation ──
+const clock = new THREE.Clock();
+let frame = 0;
+
+// precompute stagger delays
+const stagger = new Float32Array(N);
+for (let i = 0; i < N; i++) stagger[i] = Math.random();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), .05);
+  const t = clock.elapsedTime;
+  frame++;
+  pMat.uniforms.uTime.value = t;
+
+  shapeTimer += dt;
+  if (shapeTimer >= SHAPE_DUR) {
+    shapeTimer = 0;
+    shapeIdx = (shapeIdx + 1) % shapes.length;
+  }
+
+  const curShape = shapes[shapeIdx];
+  const isTransitioning = shapeTimer < TRANS_DUR;
+  const transProgress = isTransitioning ? shapeTimer / TRANS_DUR : 1;
+
+  // compute targets & update positions
+  const prevShape = shapes[(shapeIdx + shapes.length - 1) % shapes.length];
+  for (let i = 0; i < N; i++) {
+    const tx = curShape(i, N, t)[0], ty = curShape(i, N, t)[1], tz = curShape(i, N, t)[2];
+
+    if (isTransitioning) {
+      const s = stagger[i];
+      const localT = Math.max(0, Math.min(1, (transProgress - s * .3) / .7));
+      const e = localT < .5 ? 2 * localT * localT : -1 + (4 - 2 * localT) * localT;
+      const px = prevShape(i, N, t - TRANS_DUR)[0];
+      const py = prevShape(i, N, t - TRANS_DUR)[1];
+      const pz = prevShape(i, N, t - TRANS_DUR)[2];
+      // arc offset
+      const mx = (px + tx) / 2 + (ty - py) * .4;
+      const my = (py + ty) / 2 + (tx - px) * .4;
+      const mz = (pz + tz) / 2 + .5 * Math.sin(s * Math.PI * 2);
+      const one = 1 - e;
+      const ax = one * one * px + 2 * one * e * mx + e * e * tx;
+      const ay = one * one * py + 2 * one * e * my + e * e * ty;
+      const az = one * one * pz + 2 * one * e * mz + e * e * tz;
+      pos[i * 3] = ax; pos[i * 3 + 1] = ay; pos[i * 3 + 2] = az;
+      vel[i] = e * (1 - e) * 4;
+    } else {
+      pos[i * 3] = tx; pos[i * 3 + 1] = ty; pos[i * 3 + 2] = tz;
+      vel[i] *= .95;
+    }
+
+    // color based on position + time
+    const hue = (pos[i * 3 + 2] * .12 + t * .04 + vel[i] * .8 + shapeIdx * .25) % 1;
+    const sat = .85 + vel[i] * .3;
+    const lit = .45 + vel[i] * .5 + Math.sin(t * 2 + i * .01) * .08;
+    const [r, g, b] = hsl2rgb(hue, Math.min(sat, 1), Math.min(lit, 1));
+    col[i * 3] = r; col[i * 3 + 1] = g; col[i * 3 + 2] = b;
+  }
+  pGeo.attributes.position.needsUpdate = true;
+  pGeo.attributes.color.needsUpdate = true;
+
+  // rebuild lines every 3rd frame
+  if (frame % 3 === 0) {
+    let lc = 0;
+    const threshold = .35;
+    const threshold2 = threshold * threshold;
+    // spatial hash for neighbor lookup
+    const cellSize = .5;
+    const grid = new Map();
+    for (let i = 0; i < N; i++) {
+      const cx = Math.floor(pos[i * 3] / cellSize);
+      const cy = Math.floor(pos[i * 3 + 1] / cellSize);
+      const cz = Math.floor(pos[i * 3 + 2] / cellSize);
+      const key = cx * 73856093 ^ cy * 19349663 ^ cz * 83492791;
+      if (!grid.has(key)) grid.set(key, []);
+      grid.get(key).push(i);
+    }
+    for (let i = 0; i < N && lc < MAX_LINES; i++) {
+      const cx = Math.floor(pos[i * 3] / cellSize);
+      const cy = Math.floor(pos[i * 3 + 1] / cellSize);
+      const cz = Math.floor(pos[i * 3 + 2] / cellSize);
+      for (let dx = -1; dx <= 1; dx++)
+      for (let dy = -1; dy <= 1; dy++)
+      for (let dz = -1; dz <= 1; dz++) {
+        const key = (cx + dx) * 73856093 ^ (cy + dy) * 19349663 ^ (cz + dz) * 83492791;
+        const cell = grid.get(key);
+        if (!cell) continue;
+        for (const j of cell) {
+          if (j <= i) continue;
+          const ddx = pos[i * 3] - pos[j * 3];
+          const ddy = pos[i * 3 + 1] - pos[j * 3 + 1];
+          const ddz = pos[i * 3 + 2] - pos[j * 3 + 2];
+          const d2 = ddx * ddx + ddy * ddy + ddz * ddz;
+          if (d2 < threshold2) {
+            const fade = 1 - Math.sqrt(d2) / threshold;
+            const li = lc * 6;
+            lPos[li] = pos[i * 3]; lPos[li + 1] = pos[i * 3 + 1]; lPos[li + 2] = pos[i * 3 + 2];
+            lPos[li + 3] = pos[j * 3]; lPos[li + 4] = pos[j * 3 + 1]; lPos[li + 5] = pos[j * 3 + 2];
+            const alpha = fade * .5;
+            lCol[li] = col[i * 3] * alpha; lCol[li + 1] = col[i * 3 + 1] * alpha; lCol[li + 2] = col[i * 3 + 2] * alpha;
+            lCol[li + 3] = col[j * 3] * alpha; lCol[li + 4] = col[j * 3 + 1] * alpha; lCol[li + 5] = col[j * 3 + 2] * alpha;
+            lc++;
+            if (lc >= MAX_LINES) break;
+          }
+          if (lc >= MAX_LINES) break;
+        }
+        if (lc >= MAX_LINES) break;
+      }
+      if (lc >= MAX_LINES) break;
+    }
+    lGeo.setDrawRange(0, lc * 2);
+    lGeo.attributes.position.needsUpdate = true;
+    lGeo.attributes.color.needsUpdate = true;
+  }
+
+  // camera orbit
+  const orbitR = 5.5 + Math.sin(t * .15) * 1;
+  const orbitA = t * .12;
+  const orbitY = Math.sin(t * .08) * 1.5;
+  cam.position.set(
+    Math.cos(orbitA) * orbitR,
+    orbitY,
+    Math.sin(orbitA) * orbitR
+  );
+  cam.lookAt(0, 0, 0);
+
+  // subtle bloom pulse
+  bloom.strength = 1.2 + Math.sin(t * .8) * .3;
+
+  composer.render();
+}
+animate();
+
+addEventListener('resize', () => {
+  const w = innerWidth, h = innerHeight;
+  cam.aspect = w / h;
+  cam.updateProjectionMatrix();
+  renderer.setSize(w, h);
+  composer.setSize(w, h);
+});
+</script>
+</body>
+</html>

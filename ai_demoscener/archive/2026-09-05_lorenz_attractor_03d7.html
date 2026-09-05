@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lorenz Attractor</title>
+<style>
+  html, body { margin: 0; padding: 0; overflow: hidden; background: #000; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script>
+(function () {
+  // --- Lorenz parameters ---
+  var sigma = 10, rho = 28, beta = 8 / 3;
+  var dt = 0.005;
+  var stepsPerFrame = 100;
+
+  // --- Renderer / Scene ---
+  var renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setClearColor(0x000000, 1);
+  document.body.appendChild(renderer.domElement);
+
+  var scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x000000);
+
+  // --- Camera ---
+  var lookAt = new THREE.Vector3(0, 0, 25);
+  var camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
+  var orbitRadius = 90;
+  var orbitAngle = 0;
+  function setCamera() {
+    camera.position.set(
+      orbitRadius * Math.cos(orbitAngle),
+      60 + 20 * Math.sin(orbitAngle * 0.5),
+      orbitRadius * Math.sin(orbitAngle)
+    );
+    camera.lookAt(lookAt);
+  }
+  setCamera();
+
+  // --- Rolling trail buffer ---
+  var MAX = 8000;
+  var posArr = new Float32Array(MAX * 3);
+  var colArr = new Float32Array(MAX * 3);
+
+  var geometry = new THREE.BufferGeometry();
+  var posAttr = new THREE.BufferAttribute(posArr, 3).setUsage(THREE.DynamicDrawUsage);
+  var colAttr = new THREE.BufferAttribute(colArr, 3).setUsage(THREE.DynamicDrawUsage);
+  geometry.setAttribute('position', posAttr);
+  geometry.setAttribute('color', colAttr);
+
+  var material = new THREE.LineBasicMaterial({
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.9
+  });
+  var line = new THREE.Line(geometry, material);
+  line.frustumCulled = false;
+  scene.add(line);
+
+  // --- State ---
+  var x = 0.1, y = 0.1, z = 0.1;
+  var head = 0;        // next write index
+  var filled = 0;      // number of points written so far (<= MAX)
+  var colorIndex = 0;  // for HSL progression
+
+  // RK4 step
+  function deriv(px, py, pz, out) {
+    out[0] = sigma * (py - px);
+    out[1] = px * (rho - pz) - py;
+    out[2] = px * py - beta * pz;
+  }
+
+  var k1 = [0,0,0], k2 = [0,0,0], k3 = [0,0,0], k4 = [0,0,0];
+  function rk4Step() {
+    deriv(x, y, z, k1);
+    deriv(x + 0.5*dt*k1[0], y + 0.5*dt*k1[1], z + 0.5*dt*k1[2], k2);
+    deriv(x + 0.5*dt*k2[0], y + 0.5*dt*k2[1], z + 0.5*dt*k2[2], k3);
+    deriv(x + dt*k3[0], y + dt*k3[1], z + dt*k3[2], k4);
+    x += (dt/6) * (k1[0] + 2*k2[0] + 2*k3[0] + k4[0]);
+    y += (dt/6) * (k1[1] + 2*k2[1] + 2*k3[1] + k4[1]);
+    z += (dt/6) * (k1[2] + 2*k2[2] + 2*k3[2] + k4[2]);
+  }
+
+  var c = new THREE.Color();
+  function addPoint(px, py, pz) {
+    // z in [0,50]; map to y-up nicely (keep z as vertical)
+    posArr[head*3]   = px;
+    posArr[head*3+1] = pz;   // use z as vertical
+    posArr[head*3+2] = py;
+
+    // HSL palette over t
+    var t = (colorIndex / (MAX * 8)) % 1.0;
+    c.setHSL(t, 0.75, 0.55);
+    colArr[head*3]   = c.r;
+    colArr[head*3+1] = c.g;
+    colArr[head*3+2] = c.b;
+
+    head = (head + 1) % MAX;
+    if (filled < MAX) filled++;
+    colorIndex++;
+  }
+
+  function updateDrawRange() {
+    geometry.clearGroups();
+    if (filled < MAX) {
+      geometry.addGroup(0, filled);
+    } else {
+      // two segments: [head, MAX-head] then [0, head]
+      geometry.addGroup(head, MAX - head);
+      geometry.addGroup(0, head);
+    }
+    geometry.setDrawRange(0, filled);
+  }
+
+  function animate() {
+    requestAnimationFrame(animate);
+
+    for (var i = 0; i < stepsPerFrame; i++) {
+      rk4Step();
+      addPoint(x, y, z);
+    }
+
+    posAttr.needsUpdate = true;
+    colAttr.needsUpdate = true;
+    updateDrawRange();
+
+    orbitAngle += 0.0015;
+    setCamera();
+
+    renderer.render(scene, camera);
+  }
+
+  // seed initial points
+  for (var s = 0; s < stepsPerFrame; s++) {
+    rk4Step();
+    addPoint(x, y, z);
+  }
+  posAttr.needsUpdate = true;
+  colAttr.needsUpdate = true;
+  updateDrawRange();
+
+  window.addEventListener('resize', function () {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  animate();
+})();
+</script>
+</body>
+</html>
