@@ -10,6 +10,11 @@ if ! command -v python3 &>/dev/null; then
     exit 1
 fi
 
+if [ -d "$VENV" ] && ! "$VENV/bin/python3" -m pip --version &>/dev/null; then
+    echo "Existing virtual environment is broken (likely a system Python upgrade); recreating..."
+    rm -rf "$VENV"
+fi
+
 if [ ! -d "$VENV" ]; then
     echo "Creating virtual environment..."
     python3 -m venv "$VENV"
@@ -18,7 +23,7 @@ fi
 source "$VENV/bin/activate"
 
 echo "Installing/updating dependencies..."
-pip install --quiet -r requirements.txt
+python -m pip install --quiet -r requirements.txt
 
 if [ ! -f "static/three/three.module.js" ]; then
     echo "Downloading three.js vendor files..."
