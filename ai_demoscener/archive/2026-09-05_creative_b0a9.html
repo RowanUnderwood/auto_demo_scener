@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body { margin: 0; overflow: hidden; background: #000; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 200);
+camera.position.set(0, 0, 4.5);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setClearColor(0x000108);
+document.body.appendChild(renderer.domElement);
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloomPass = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 1.2, 0.7, 0.08);
+composer.addPass(bloomPass);
+
+// Resonant sphere with spherical-harmonic-style standing waves
+const sphereGeo = new THREE.SphereGeometry(1, 192, 192);
+const sphereMat = new THREE.ShaderMaterial({
+  uniforms: {
+    uTime: { value: 0 },
+    uW: { value: new THREE.Vector3(1.0, 0.0, 0.0) }
+  },
+  vertexShader: `
+    uniform float uTime;
+    uniform vec3 uW;
+    varying float vDisp;
+    varying vec3 vNorm;
+    varying vec3 vViewPos;
+    varying float vTheta;
+    varying float vPhi;
+
+    void main() {
+      vec3 n = normalize(position);
+      float theta = acos(n.y);
+      float phi = atan(n.z, n.x);
+      vTheta = theta;
+      vPhi = phi;
+
+      float t = uTime;
+      float m1 = sin(4.0*theta + t*0.9) * cos(3.0*phi - t*0.6) + 0.5*sin(7.0*phi + t*0.4);
+      float m2 = sin(6.0*phi - t*0.7) * cos(5.0*theta + t*0.5) + 0.4*sin(3.0*theta - t*0.8);
+      float m3 = cos(2.0*theta + 4.0*phi + t*0.6) * sin(5.0*phi - t*0.3) + 0.3*cos(8.0*theta + t*0.5);
+
+      float disp = uW.x * m1 + uW.y * m2 + uW.z * m3;
+      float amp = 0.2 + 0.05 * sin(t * 0.3);
+      vec3 pos = position + n * disp * amp;
+
+      vDisp = disp;
+      vNorm = normalMatrix * n;
+      vViewPos = (modelViewMatrix * vec4(pos, 1.0)).xyz;
+      gl_Position = projectionMatrix * vec4(vViewPos, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform float uTime;
+    varying float vDisp;
+    varying vec3 vNorm;
+    varying vec3 vViewPos;
+    varying float vTheta;
+    varying float vPhi;
+
+    void main() {
+      vec3 vDir = normalize(-vViewPos);
+      vec3 nrm = normalize(vNorm);
+      float fresnel = pow(1.0 - abs(dot(vDir, nrm)), 2.5);
+
+      vec3 deepVoid = vec3(0.005, 0.01, 0.04);
+      vec3 electricBlue = vec3(0.0, 0.35, 1.0);
+      vec3 cyan = vec3(0.0, 0.9, 1.0);
+      vec3 hotCore = vec3(1.0, 0.98, 0.9);
+      vec3 magenta = vec3(0.9, 0.0, 0.7);
+      vec3 violet = vec3(0.3, 0.0, 0.7);
+
+      float d = vDisp;
+      vec3 col;
+      if (d > 0.0) {
+        col = mix(deepVoid, electricBlue, smoothstep(0.0, 0.5, d));
+        col = mix(col, cyan, smoothstep(0.4, 0.9, d));
+        col = mix(col, hotCore, smoothstep(0.8, 1.3, d));
+      } else {
+        float mag = smoothstep(0.0, 0.5, -d);
+        float deep = smoothstep(0.4, 1.0, -d);
+        col = mix(deepVoid, magenta, mag);
+        col = mix(col, violet, deep * 0.6);
+      }
+
+      col += fresnel * vec3(0.15, 0.5, 1.0) * 0.9;
+      col += fresnel * fresnel * vec3(0.3, 0.7, 1.0) * 0.6;
+
+      // Subtle iridescent shimmer
+      float shimmer = sin(vTheta * 25.0 + vPhi * 18.0 + uTime * 2.5) * 0.025;
+      col += shimmer * vec3(0.4, 0.2, 0.8);
+
+      // Subtle energy veins
+      float vein = pow(abs(sin(vTheta * 8.0 + uTime * 0.5) * sin(vPhi * 6.0 - uTime * 0.3)), 4.0);
+      col += vein * vec3(0.1, 0.4, 0.8) * 0.15;
+
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `
+});
+const sphere = new THREE.Mesh(sphereGeo, sphereMat);
+scene.add(sphere);
+
+// Wireframe overlay
+const wireMat = new THREE.ShaderMaterial({
+  uniforms: {
+    uTime: { value: 0 },
+    uW: { value: new THREE.Vector3(1.0, 0.0, 0.0) }
+  },
+  vertexShader: sphereMat.vertexShader,
+  fragmentShader: `
+    varying float vDisp;
+    varying vec3 vNorm;
+    varying vec3 vViewPos;
+    void main() {
+      vec3 vDir = normalize(-vViewPos);
+      float fresnel = pow(1.0 - abs(dot(vDir, normalize(vNorm))), 2.0);
+      vec3 col = vec3(0.2, 0.6, 1.0) * fresnel * 0.3;
+      gl_FragColor = vec4(col, fresnel * 0.25);
+    }
+  `,
+  wireframe: true,
+  transparent: true,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false
+});
+const wire = new THREE.Mesh(sphereGeo, wireMat);
+wire.scale.setScalar(1.003);
+scene.add(wire);
+
+// Inner glow core
+const coreGeo = new THREE.SphereGeometry(0.55, 64, 64);
+const coreMat = new THREE.ShaderMaterial({
+  uniforms: { uTime: { value: 0 } },
+  vertexShader: `
+    varying vec3 vNorm;
+    varying vec3 vViewPos;
+    void main() {
+      vNorm = normalMatrix * normalize(position);
+      vViewPos = (modelViewMatrix * vec4(position, 1.0)).xyz;
+      gl_Position = projectionMatrix * vec4(vViewPos, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform float uTime;
+    varying vec3 vNorm;
+    varying vec3 vViewPos;
+    void main() {
+      vec3 vDir = normalize(-vViewPos);
+      float fresnel = pow(1.0 - abs(dot(vDir, normalize(vNorm))), 2.0);
+      float pulse = 0.6 + 0.4 * sin(uTime * 1.5);
+      vec3 col = vec3(0.1, 0.25, 0.8) * pulse * (0.4 + fresnel * 0.6);
+      col += vec3(0.3, 0.0, 0.5) * pulse * 0.2;
+      gl_FragColor = vec4(col, 0.35 + fresnel * 0.45);
+    }
+  `,
+  transparent: true,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false
+});
+const core = new THREE.Mesh(coreGeo, coreMat);
+scene.add(core);
+
+// Bioluminescent particles with orbital motion
+const P_COUNT = 5000;
+const pPos = new Float32Array(P_COUNT * 3);
+const pVel = new Float32Array(P_COUNT * 3);
+const pLife = new Float32Array(P_COUNT);
+const pMaxLife = new Float32Array(P_COUNT);
+const pCol = new Float32Array(P_COUNT * 3);
+const pBaseCol = new Float32Array(P_COUNT * 3);
+const pSize = new Float32Array(P_COUNT);
+const pOrbit = new Float32Array(P_COUNT * 2); // orbit speed, orbit radius
+
+function initParticle(i) {
+  const theta = Math.random() * Math.PI * 2;
+  const phi = Math.acos(2 * Math.random() - 1);
+  const r = 1.05 + Math.random() * 0.15;
+  pPos[i*3] = r * Math.sin(phi) * Math.cos(theta);
+  pPos[i*3+1] = r * Math.cos(phi);
+  pPos[i*3+2] = r * Math.sin(phi) * Math.sin(theta);
+
+  // Orbital velocity (tangential)
+  const orbitSpeed = 0.2 + Math.random() * 0.5;
+  const driftSpeed = 0.05 + Math.random() * 0.15;
+  const up = new THREE.Vector3(0, 1, 0);
+  const pos = new THREE.Vector3(pPos[i*3], pPos[i*3+1], pPos[i*3+2]);
+  const tangent = new THREE.Vector3().crossVectors(up, pos).normalize();
+  const radial = pos.clone().normalize();
+
+  pVel[i*3] = tangent.x * orbitSpeed + radial.x * driftSpeed;
+  pVel[i*3+1] = tangent.y * orbitSpeed + radial.y * driftSpeed;
+  pVel[i*3+2] = tangent.z * orbitSpeed + radial.z * driftSpeed;
+
+  pMaxLife[i] = 3.0 + Math.random() * 5.0;
+  pLife[i] = pMaxLife[i] * Math.random();
+  pSize[i] = 0.015 + Math.random() * 0.035;
+
+  const t = Math.random();
+  if (t < 0.4) {
+    pBaseCol[i*3] = 0.0; pBaseCol[i*3+1] = 0.7 + Math.random()*0.3; pBaseCol[i*3+2] = 1.0;
+  } else if (t < 0.7) {
+    pBaseCol[i*3] = 0.5 + Math.random()*0.4; pBaseCol[i*3+1] = 0.0; pBaseCol[i*3+2] = 0.8 + Math.random()*0.2;
+  } else if (t < 0.9) {
+    pBaseCol[i*3] = 0.2; pBaseCol[i*3+1] = 0.9; pBaseCol[i*3+2] = 0.9;
+  } else {
+    pBaseCol[i*3] = 0.9; pBaseCol[i*3+1] = 0.8; pBaseCol[i*3+2] = 0.3;
+  }
+  pCol[i*3] = pBaseCol[i*3];
+  pCol[i*3+1] = pBaseCol[i*3+1];
+  pCol[i*3+2] = pBaseCol[i*3+2];
+}
+
+for (let i = 0; i < P_COUNT; i++) initParticle(i);
+
+const pGeo = new THREE.BufferGeometry();
+pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+pGeo.setAttribute('color', new THREE.BufferAttribute(pCol, 3));
+
+const pCanvas = document.createElement('canvas');
+pCanvas.width = 64; pCanvas.height = 64;
+const pCtx = pCanvas.getContext('2d');
+const pGrad = pCtx.createRadialGradient(32, 32, 0, 32, 32, 32);
+pGrad.addColorStop(0, 'rgba(255,255,255,1)');
+pGrad.addColorStop(0.15, 'rgba(255,255,255,0.8)');
+pGrad.addColorStop(0.4, 'rgba(255,255,255,0.2)');
+pGrad.addColorStop(1, 'rgba(255,255,255,0)');
+pCtx.fillStyle = pGrad;
+pCtx.fillRect(0, 0, 64, 64);
+const pTex = new THREE.CanvasTexture(pCanvas);
+
+const pMat = new THREE.PointsMaterial({
+  size: 0.045,
+  map: pTex,
+  transparent: true,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  vertexColors: true,
+  sizeAttenuation: true
+});
+const particles = new THREE.Points(pGeo, pMat);
+scene.add(particles);
+
+// Background starfield with twinkle
+const sCount = 4000;
+const sPos = new Float32Array(sCount * 3);
+const sCol = new Float32Array(sCount * 3);
+const sPhase = new Float32Array(sCount);
+for (let i = 0; i < sCount; i++) {
+  const r = 25 + Math.random() * 75;
+  const th = Math.random() * Math.PI * 2;
+  const ph = Math.acos(2 * Math.random() - 1);
+  sPos[i*3] = r * Math.sin(ph) * Math.cos(th);
+  sPos[i*3+1] = r * Math.cos(ph);
+  sPos[i*3+2] = r * Math.sin(ph) * Math.sin(th);
+  const brightness = 0.15 + Math.random() * 0.5;
+  const warm = Math.random();
+  sCol[i*3] = brightness * (0.6 + warm * 0.4);
+  sCol[i*3+1] = brightness * (0.7 + warm * 0.2);
+  sCol[i*3+2] = brightness * (0.9 - warm * 0.1);
+  sPhase[i] = Math.random() * Math.PI * 2;
+}
+const sGeo = new THREE.BufferGeometry();
+sGeo.setAttribute('position', new THREE.BufferAttribute(sPos, 3));
+sGeo.setAttribute('color', new THREE.BufferAttribute(sCol, 3));
+const sMat = new THREE.PointsMaterial({ size: 0.06, vertexColors: true, sizeAttenuation: true, transparent: true, opacity: 0.9 });
+const stars = new THREE.Points(sGeo, sMat);
+scene.add(stars);
+
+// Orbital rings (decorative, animated)
+const rings = [];
+for (let ring = 0; ring < 3; ring++) {
+  const ringGeo = new THREE.TorusGeometry(1.5 + ring * 0.55, 0.004, 8, 128);
+  const ringMat = new THREE.MeshBasicMaterial({
+    color: new THREE.Color().setHSL(0.55 + ring * 0.08, 0.9, 0.45),
+    transparent: true,
+    opacity: 0.12 + ring * 0.04,
+    blending: THREE.AdditiveBlending
+  });
+  const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+  ringMesh.rotation.x = Math.PI * 0.35 * (ring + 1);
+  ringMesh.rotation.y = ring * 0.8;
+  rings.push({ mesh: ringMesh, speed: 0.1 + ring * 0.05, axis: ring % 2 === 0 ? 'x' : 'z' });
+  scene.add(ringMesh);
+}
+
+// Animation
+const clock = new THREE.Clock();
+let lastTime = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+  const dt = Math.min(t - lastTime, 0.05);
+  lastTime = t;
+
+  // Mode weights: slow cross-fade cycle
+  const cycle = t * 0.08;
+  const wx = 0.5 + 0.5 * Math.cos(cycle * 2.094);
+  const wy = 0.5 + 0.5 * Math.cos(cycle * 2.094 - 2.094);
+  const wz = 0.5 + 0.5 * Math.cos(cycle * 2.094 - 4.188);
+  const wSum = wx + wy + wz + 0.001;
+
+  sphereMat.uniforms.uTime.value = t;
+  sphereMat.uniforms.uW.value.set(wx / wSum, wy / wSum, wz / wSum);
+  wireMat.uniforms.uTime.value = t;
+  wireMat.uniforms.uW.value.copy(sphereMat.uniforms.uW.value);
+  coreMat.uniforms.uTime.value = t;
+
+  // Slow rotation
+  sphere.rotation.y = t * 0.08;
+  wire.rotation.y = t * 0.08;
+
+  // Subtle breathing scale
+  const breathe = 1.0 + 0.015 * Math.sin(t * 0.4);
+  sphere.scale.setScalar(breathe);
+  wire.scale.setScalar(1.003 * breathe);
+  core.scale.setScalar(0.95 + 0.05 * Math.sin(t * 1.5));
+
+  // Update particles with fade
+  for (let i = 0; i < P_COUNT; i++) {
+    pLife[i] -= dt;
+    if (pLife[i] <= 0) {
+      initParticle(i);
+    }
+    const lifeFrac = pLife[i] / pMaxLife[i];
+    const fade = lifeFrac < 0.3 ? lifeFrac / 0.3 : (lifeFrac > 0.85 ? (1.0 - lifeFrac) / 0.15 : 1.0);
+    const brightness = fade * fade;
+
+    pPos[i*3] += pVel[i*3] * dt;
+    pPos[i*3+1] += pVel[i*3+1] * dt;
+    pPos[i*3+2] += pVel[i*3+2] * dt;
+
+    pCol[i*3] = pBaseCol[i*3] * brightness;
+    pCol[i*3+1] = pBaseCol[i*3+1] * brightness;
+    pCol[i*3+2] = pBaseCol[i*3+2] * brightness;
+  }
+  pGeo.attributes.position.needsUpdate = true;
+  pGeo.attributes.color.needsUpdate = true;
+
+  // Star twinkle
+  const sColors = sGeo.attributes.color.array;
+  for (let i = 0; i < sCount; i++) {
+    const twinkle = 0.7 + 0.3 * Math.sin(t * 1.5 + sPhase[i]);
+    const base = 0.15 + 0.5 * (i % 100) / 100;
+    sColors[i*3] = base * twinkle * (0.6 + (i % 7) * 0.07);
+    sColors[i*3+1] = base * twinkle * (0.7 + (i % 5) * 0.05);
+    sColors[i*3+2] = base * twinkle * (0.9 - (i % 3) * 0.1);
+  }
+  sGeo.attributes.color.needsUpdate = true;
+
+  // Animate orbital rings
+  for (const r of rings) {
+    r.mesh.rotation[r.axis] += r.speed * dt;
+    r.mesh.rotation.y += r.speed * 0.3 * dt;
+  }
+
+  // Gentle camera orbit with breathing
+  const camAngle = t * 0.05;
+  const camBreath = Math.sin(t * 0.15) * 0.15;
+  camera.position.x = Math.sin(camAngle) * (0.8 + camBreath);
+  camera.position.y = Math.sin(t * 0.07) * 0.4;
+  camera.position.z = 4.2 + Math.sin(t * 0.04) * 0.3 + camBreath * 0.5;
+  camera.lookAt(0, 0, 0);
+
+  composer.render();
+}
+
+animate();
+
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

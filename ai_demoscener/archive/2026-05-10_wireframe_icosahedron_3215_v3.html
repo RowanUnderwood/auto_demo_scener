@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Star Lattice</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #0a0510; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x0a0510, 0.04);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(0, 0, 7);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setClearColor(0x0a0510);
+        document.body.appendChild(renderer.domElement);
+
+        // Main lattice - icosahedron wireframe with breathing
+        const mainGeo = new THREE.IcosahedronGeometry(2.2, 1);
+        const mainPositions = mainGeo.attributes.position;
+        const mainOriginal = new Float32Array(mainPositions.array);
+
+        const wireMat = new THREE.LineBasicMaterial({
+            color: 0xd946ef,
+            transparent: true,
+            opacity: 0.35
+        });
+        const wireframe = new THREE.LineSegments(new THREE.WireframeGeometry(mainGeo), wireMat);
+        scene.add(wireframe);
+
+        // Vertex stars - glowing points at vertices
+        const starGeo = new THREE.BufferGeometry();
+        const starPositions = new Float32Array(mainOriginal.length);
+        starGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+
+        const starMat = new THREE.PointsMaterial({
+            color: 0xffd700,
+            size: 0.08,
+            transparent: true,
+            opacity: 0.9,
+            sizeAttenuation: true,
+            blending: THREE.AdditiveBlending
+        });
+        const stars = new THREE.Points(starGeo, starMat);
+        scene.add(stars);
+
+        // Inner shell
+        const innerGeo = new THREE.IcosahedronGeometry(1.4, 0);
+        const innerWire = new THREE.LineSegments(
+            new THREE.WireframeGeometry(innerGeo),
+            new THREE.LineBasicMaterial({ color: 0x8b5cf6, transparent: true, opacity: 0.25 })
+        );
+        scene.add(innerWire);
+
+        // Outer shell
+        const outerGeo = new THREE.IcosahedronGeometry(3.0, 0);
+        const outerWire = new THREE.LineSegments(
+            new THREE.WireframeGeometry(outerGeo),
+            new THREE.LineBasicMaterial({ color: 0x4c1d95, transparent: true, opacity: 0.15 })
+        );
+        scene.add(outerWire);
+
+        // Orbital particles
+        const particleCount = 300;
+        const particleGeo = new THREE.BufferGeometry();
+        const pPositions = new Float32Array(particleCount * 3);
+        const pVelocities = [];
+
+        for (let i = 0; i < particleCount; i++) {
+            const radius = 3.5 + Math.random() * 2.5;
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos(2 * Math.random() - 1);
+            pPositions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
+            pPositions[i * 3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
+            pPositions[i * 3 + 2] = radius * Math.cos(phi);
+            pVelocities.push({
+                speed: 0.001 + Math.random() * 0.003,
+                offset: Math.random() * Math.PI * 2,
+                radius: radius,
+                inclination: (Math.random() - 0.5) * 0.6
+            });
+        }
+        particleGeo.setAttribute('position', new THREE.BufferAttribute(pPositions, 3));
+
+        const particleMat = new THREE.PointsMaterial({
+            color: 0xf0abfc,
+            size: 0.04,
+            transparent: true,
+            opacity: 0.6,
+            blending: THREE.AdditiveBlending,
+            sizeAttenuation: true
+        });
+        const particles = new THREE.Points(particleGeo, particleMat);
+        scene.add(particles);
+
+        // Ring of particles (flat orbit)
+        const ringCount = 150;
+        const ringGeo = new THREE.BufferGeometry();
+        const ringPositions = new Float32Array(ringCount * 3);
+        ringGeo.setAttribute('position', new THREE.BufferAttribute(ringPositions, 3));
+
+        const ringMat = new THREE.PointsMaterial({
+            color: 0xfbbf24,
+            size: 0.05,
+            transparent: true,
+            opacity: 0.7,
+            blending: THREE.AdditiveBlending,
+            sizeAttenuation: true
+        });
+        const ring = new THREE.Points(ringGeo, ringMat);
+        ring.rotation.x = Math.PI * 0.35;
+        ring.rotation.z = Math.PI * 0.1;
+        scene.add(ring);
+
+        // Glow sprite at center
+        const glowCanvas = document.createElement('canvas');
+        glowCanvas.width = 128;
+        glowCanvas.height = 128;
+        const gCtx = glowCanvas.getContext('2d');
+        const gradient = gCtx.createRadialGradient(64, 64, 0, 64, 64, 64);
+        gradient.addColorStop(0, 'rgba(217, 70, 239, 0.4)');
+        gradient.addColorStop(0.3, 'rgba(139, 92, 246, 0.15)');
+        gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        gCtx.fillStyle = gradient;
+        gCtx.fillRect(0, 0, 128, 128);
+        const glowTexture = new THREE.CanvasTexture(glowCanvas);
+        const glowSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+            map: glowTexture,
+            blending: THREE.AdditiveBlending,
+            transparent: true
+        }));
+        glowSprite.scale.set(4, 4, 1);
+        scene.add(glowSprite);
+
+        // Animation
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const t = clock.getElapsedTime();
+
+            // Breathing displacement for main wireframe
+            const pos = wireframe.geometry.attributes.position;
+            for (let i = 0; i < pos.count; i++) {
+                const ox = mainOriginal[i * 3];
+                const oy = mainOriginal[i * 3 + 1];
+                const oz = mainOriginal[i * 3 + 2];
+                const len = Math.sqrt(ox * ox + oy * oy + oz * oz);
+                const breathe = 1.0 + 0.08 * Math.sin(t * 1.2 + len * 2.0) + 0.03 * Math.sin(t * 2.5 + ox * 3.0);
+                pos.array[i * 3] = ox * breathe;
+                pos.array[i * 3 + 1] = oy * breathe;
+                pos.array[i * 3 + 2] = oz * breathe;
+            }
+            pos.needsUpdate = true;
+
+            // Stars follow same breathing
+            const sPos = stars.geometry.attributes.position;
+            for (let i = 0; i < sPos.count; i++) {
+                const ox = mainOriginal[i * 3];
+                const oy = mainOriginal[i * 3 + 1];
+                const oz = mainOriginal[i * 3 + 2];
+                const len = Math.sqrt(ox * ox + oy * oy + oz * oz);
+                const breathe = 1.0 + 0.08 * Math.sin(t * 1.2 + len * 2.0) + 0.03 * Math.sin(t * 2.5 + ox * 3.0);
+                sPos.array[i * 3] = ox * breathe;
+                sPos.array[i * 3 + 1] = oy * breathe;
+                sPos.array[i * 3 + 2] = oz * breathe;
+            }
+            sPos.needsUpdate = true;
+
+            // Pulsing star size
+            starMat.size = 0.06 + 0.03 * Math.sin(t * 2.0);
+            starMat.opacity = 0.7 + 0.3 * Math.sin(t * 1.5);
+
+            // Rotations
+            wireframe.rotation.y = t * 0.15;
+            wireframe.rotation.x = Math.sin(t * 0.3) * 0.2;
+            stars.rotation.copy(wireframe.rotation);
+
+            innerWire.rotation.y = -t * 0.25;
+            innerWire.rotation.x = t * 0.1;
+            innerWire.rotation.z = Math.sin(t * 0.4) * 0.3;
+
+            outerWire.rotation.y = t * 0.08;
+            outerWire.rotation.z = -t * 0.05;
+            outerWire.rotation.x = Math.cos(t * 0.2) * 0.15;
+
+            // Particles
+            const pPos = particles.geometry.attributes.position;
+            for (let i = 0; i < particleCount; i++) {
+                const v = pVelocities[i];
+                const angle = t * v.speed * 100 + v.offset;
+                const r = v.radius + 0.3 * Math.sin(t * 0.5 + v.offset);
+                pPos.array[i * 3] = r * Math.cos(angle) * Math.cos(v.inclination);
+                pPos.array[i * 3 + 1] = r * Math.sin(angle) * Math.sin(v.inclination) + 0.5 * Math.sin(t + v.offset);
+                pPos.array[i * 3 + 2] = r * Math.sin(angle) * Math.cos(v.inclination);
+            }
+            pPos.needsUpdate = true;
+
+            // Ring particles
+            const rPos = ring.geometry.attributes.position;
+            for (let i = 0; i < ringCount; i++) {
+                const angle = (i / ringCount) * Math.PI * 2 + t * 0.4;
+                const r = 3.8 + 0.2 * Math.sin(t * 2 + i * 0.1);
+                rPos.array[i * 3] = Math.cos(angle) * r;
+                rPos.array[i * 3 + 1] = 0;
+                rPos.array[i * 3 + 2] = Math.sin(angle) * r;
+            }
+            rPos.needsUpdate = true;
+
+            // Glow pulse
+            const glowScale = 3.5 + 0.8 * Math.sin(t * 0.8);
+            glowSprite.scale.set(glowScale, glowScale, 1);
+
+            // Camera drift
+            camera.position.x = Math.sin(t * 0.1) * 0.5;
+            camera.position.y = Math.cos(t * 0.13) * 0.3;
+            camera.lookAt(0, 0, 0);
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

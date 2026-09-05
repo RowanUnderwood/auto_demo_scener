@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Resonant Crystal Lattice</title>
+<style>
+  body { margin: 0; overflow: hidden; background: #000; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 200);
+camera.position.set(14, 11, 14);
+camera.lookAt(0, 0, 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setClearColor(0x000008);
+document.body.appendChild(renderer.domElement);
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.2, 0.5, 0.1);
+composer.addPass(bloom);
+
+// Lattice
+const N = 9;
+const SPACING = 1.0;
+const totalNodes = N * N * N;
+
+const basePos = new Float32Array(totalNodes * 3);
+const nodes = [];
+let idx = 0;
+for (let x = 0; x < N; x++)
+  for (let y = 0; y < N; y++)
+    for (let z = 0; z < N; z++) {
+      basePos[idx*3]   = (x - (N-1)/2) * SPACING;
+      basePos[idx*3+1] = (y - (N-1)/2) * SPACING;
+      basePos[idx*3+2] = (z - (N-1)/2) * SPACING;
+      nodes.push({ x, y, z, flat: idx });
+      idx++;
+    }
+
+const group = new THREE.Group();
+scene.add(group);
+
+// Nodes
+const nodeGeo = new THREE.IcosahedronGeometry(0.1, 1);
+const nodeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+const nodesMesh = new THREE.InstancedMesh(nodeGeo, nodeMat, totalNodes);
+nodesMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+group.add(nodesMesh);
+
+// Edges
+const edgePairs = [];
+for (let i = 0; i < totalNodes; i++) {
+  const a = nodes[i];
+  if (a.x < N-1) edgePairs.push([i, (a.x+1)*N*N + a.y*N + a.z]);
+  if (a.y < N-1) edgePairs.push([i, a.x*N*N + (a.y+1)*N + a.z]);
+  if (a.z < N-1) edgePairs.push([i, a.x*N*N + a.y*N + (a.z+1)]);
+}
+const EC = edgePairs.length;
+const ePos = new Float32Array(EC * 6);
+const eCol = new Float32Array(EC * 6);
+const edgeGeo = new THREE.BufferGeometry();
+edgeGeo.setAttribute('position', new THREE.BufferAttribute(ePos, 3).setUsage(THREE.DynamicDrawUsage));
+edgeGeo.setAttribute('color', new THREE.BufferAttribute(eCol, 3).setUsage(THREE.DynamicDrawUsage));
+const edgeMat = new THREE.LineBasicMaterial({ vertexColors: true, blending: THREE.AdditiveBlending, transparent: true, opacity: 0.9 });
+group.add(new THREE.LineSegments(edgeGeo, edgeMat));
+
+// Background particles
+const bgCount = 800;
+const bgPos = new Float32Array(bgCount * 3);
+for (let i = 0; i < bgCount; i++) {
+  bgPos[i*3]   = (Math.random()-0.5) * 60;
+  bgPos[i*3+1] = (Math.random()-0.5) * 60;
+  bgPos[i*3+2] = (Math.random()-0.5) * 60;
+}
+const bgGeo = new THREE.BufferGeometry();
+bgGeo.setAttribute('position', new THREE.BufferAttribute(bgPos, 3));
+const bgMat = new THREE.PointsMaterial({ color: 0x2233aa, size: 0.08, sizeAttenuation: true, blending: THREE.AdditiveBlending, transparent: true, opacity: 0.6 });
+scene.add(new THREE.Points(bgGeo, bgMat));
+
+// Pulse particles (energy sweep)
+const pulseCount = 300;
+const pulsePos = new Float32Array(pulseCount * 3);
+const pulseGeo = new THREE.BufferGeometry();
+pulseGeo.setAttribute('position', new THREE.BufferAttribute(pulsePos, 3).setUsage(THREE.DynamicDrawUsage));
+const pulseMat = new THREE.PointsMaterial({ color: 0x88ffff, size: 0.15, sizeAttenuation: true, blending: THREE.AdditiveBlending, transparent: true, opacity: 0.9 });
+group.add(new THREE.Points(pulseGeo, pulseMat));
+
+const dummy = new THREE.Object3D();
+const tmpC = new THREE.Color();
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+
+  // Multi-mode standing wave
+  const m1x = 1.3 + 0.5*Math.sin(t*0.11);
+  const m1y = 1.1 + 0.4*Math.sin(t*0.13+2.0);
+  const m1z = 1.4 + 0.3*Math.sin(t*0.17+4.0);
+  const m2x = 0.7 + 0.6*Math.sin(t*0.19+1.0);
+  const m2y = 1.5 + 0.4*Math.sin(t*0.09+3.0);
+  const m2z = 0.8 + 0.5*Math.sin(t*0.21+5.0);
+  const p1 = t * 2.0;
+  const p2 = t * 1.4 + 1.0;
+
+  const breathe = 1.0 + 0.06 * Math.sin(t * 0.5);
+
+  // Displacement field
+  const disp = new Float32Array(totalNodes);
+  for (let i = 0; i < totalNodes; i++) {
+    const px = basePos[i*3], py = basePos[i*3+1], pz = basePos[i*3+2];
+    const w1 = Math.sin(m1x*px + p1) * Math.sin(m1y*py + p1*0.7) * Math.sin(m1z*pz + p1*1.3);
+    const w2 = Math.sin(m2x*py + p2) * Math.sin(m2y*pz + p2*0.8) * Math.sin(m2z*px + p2*1.1);
+    disp[i] = w1 * 0.7 + w2 * 0.5;
+  }
+
+  // Sweep pulse: a plane moving through the lattice
+  const sweepPos = Math.sin(t * 0.8) * (N/2) * SPACING;
+
+  for (let i = 0; i < totalNodes; i++) {
+    const px = basePos[i*3], py = basePos[i*3+1], pz = basePos[i*3+2];
+    const d = disp[i];
+    const len = Math.sqrt(px*px + py*py + pz*pz) + 0.001;
+    const amp = 0.35;
+
+    const dx = (px/len) * d * amp;
+    const dy = (py/len) * d * amp;
+    const dz = (pz/len) * d * amp;
+
+    dummy.position.set((px+dx)*breathe, (py+dy)*breathe, (pz+dz)*breathe);
+
+    // Pulse proximity boost
+    const pulseDist = Math.abs((px+dx) - sweepPos);
+    const pulseBoost = Math.exp(-pulseDist*pulseDist * 0.8);
+
+    const mag = Math.abs(d) + pulseBoost * 1.5;
+    const scale = (0.5 + mag * 1.0) * (1.0 + pulseBoost * 0.5);
+    dummy.scale.setScalar(scale);
+    dummy.updateMatrix();
+    nodesMesh.setMatrixAt(i, dummy.matrix);
+
+    // Color: deep indigo -> electric blue -> cyan -> white
+    const c = Math.min(mag, 1.5) / 1.5;
+    const hue = 0.72 - c * 0.28;
+    const sat = 1.0 - c * 0.6;
+    const lum = 0.25 + c * 0.75;
+    tmpC.setHSL(hue, sat, lum);
+    nodesMesh.setColorAt(i, tmpC);
+  }
+  nodesMesh.instanceMatrix.needsUpdate = true;
+  nodesMesh.instanceColor.needsUpdate = true;
+
+  // Edges
+  for (let e = 0; e < EC; e++) {
+    const [a, b] = edgePairs[e];
+    const pa = a*3, pb = b*3;
+    const ax = basePos[pa], ay = basePos[pa+1], az = basePos[pa+2];
+    const al = Math.sqrt(ax*ax+ay*ay+az*az)+0.001;
+    const ad = disp[a];
+    const adx = (ax/al)*ad*0.35, ady = (ay/al)*ad*0.35, adz = (az/al)*ad*0.35;
+
+    const bx = basePos[pb], by = basePos[pb+1], bz = basePos[pb+2];
+    const bl = Math.sqrt(bx*bx+by*by+bz*bz)+0.001;
+    const bd = disp[b];
+    const bdx = (bx/bl)*bd*0.35, bdy = (by/bl)*bd*0.35, bdz = (bz/bl)*bd*0.35;
+
+    ePos[e*6]   = (ax+adx)*breathe;
+    ePos[e*6+1] = (ay+ady)*breathe;
+    ePos[e*6+2] = (az+adz)*breathe;
+    ePos[e*6+3] = (bx+bdx)*breathe;
+    ePos[e*6+4] = (by+bdy)*breathe;
+    ePos[e*6+5] = (bz+bdz)*breathe;
+
+    const avgD = (Math.abs(ad)+Math.abs(bd))*0.5;
+    const pA = Math.exp(-Math.pow((ax+adx)-sweepPos, 2)*0.8);
+    const pB = Math.exp(-Math.pow((bx+bdx)-sweepPos, 2)*0.8);
+    const boost = (pA+pB)*0.5;
+    const eMag = Math.min(avgD + boost*1.2, 1.5)/1.5;
+    const eh = 0.68 - eMag*0.25;
+    const es = 1.0 - eMag*0.5;
+    const el = 0.08 + eMag*0.55;
+    tmpC.setHSL(eh, es, el);
+    eCol[e*6]=tmpC.r; eCol[e*6+1]=tmpC.g; eCol[e*6+2]=tmpC.b;
+    eCol[e*6+3]=tmpC.r; eCol[e*6+4]=tmpC.g; eCol[e*6+5]=tmpC.b;
+  }
+  edgeGeo.attributes.position.needsUpdate = true;
+  edgeGeo.attributes.color.needsUpdate = true;
+
+  // Pulse particles: distribute along the sweep plane
+  for (let i = 0; i < pulseCount; i++) {
+    const frac = i / pulseCount;
+    const ring = Math.floor(frac * Math.sqrt(totalNodes));
+    const nodeIdx = Math.min(ring, totalNodes-1);
+    const px = basePos[nodeIdx*3]+(Math.sin(t*3+i*0.7)*0.3);
+    const py = basePos[nodeIdx*3+1]+(Math.cos(t*2.5+i*1.1)*0.3);
+    const pz = basePos[nodeIdx*3+2]+(Math.sin(t*2+i*0.5)*0.3);
+    const d = Math.abs(px - sweepPos);
+    const vis = Math.exp(-d*d*0.5);
+    pulsePos[i*3]   = px * breathe;
+    pulsePos[i*3+1] = py * breathe;
+    pulsePos[i*3+2] = pz * breathe;
+  }
+  pulseGeo.attributes.position.needsUpdate = true;
+  pulseMat.opacity = 0.3 + 0.7 * Math.abs(Math.sin(t * 0.8));
+
+  // Rotate
+  group.rotation.y = t * 0.12;
+  group.rotation.x = Math.sin(t * 0.07) * 0.25;
+
+  composer.render();
+}
+
+animate();
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>

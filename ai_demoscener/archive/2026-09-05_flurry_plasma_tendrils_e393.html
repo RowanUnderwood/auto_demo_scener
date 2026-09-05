@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+body { margin: 0; overflow: hidden; background: #000; }
+canvas { display: block; }
+</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const renderer = new THREE.WebGLRenderer({ antialias: false });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x000000);
+renderer.autoClear = false;
+document.body.appendChild(renderer.domElement);
+renderer.clear();
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 200);
+camera.position.set(0, 0, 12);
+camera.lookAt(0, 0, 0);
+
+// Fade quad
+const fadeScene = new THREE.Scene();
+const fadeCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const fadeMat = new THREE.MeshBasicMaterial({
+    color: 0x000000,
+    transparent: true,
+    opacity: 0.06,
+    depthWrite: false,
+    depthTest: false
+});
+fadeScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), fadeMat));
+
+// Soft circular sprite texture
+function makeSprite() {
+    const c = document.createElement('canvas');
+    c.width = 64; c.height = 64;
+    const ctx = c.getContext('2d');
+    const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    g.addColorStop(0, 'rgba(255,255,255,1)');
+    g.addColorStop(0.2, 'rgba(255,255,255,0.9)');
+    g.addColorStop(0.5, 'rgba(255,255,255,0.3)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 64, 64);
+    return new THREE.CanvasTexture(c);
+}
+
+// Particle pool
+const MAX = 6000;
+const positions = new Float32Array(MAX * 3);
+const colors = new Float32Array(MAX * 3);
+const pAlive = new Uint8Array(MAX);
+const pAge = new Float32Array(MAX);
+const pMaxAge = new Float32Array(MAX);
+const pVx = new Float32Array(MAX);
+const pVy = new Float32Array(MAX);
+const pVz = new Float32Array(MAX);
+const pR = new Float32Array(MAX);
+const pG = new Float32Array(MAX);
+const pB = new Float32Array(MAX);
+let nextIdx = 0;
+
+const geo = new THREE.BufferGeometry();
+geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+const pMat = new THREE.PointsMaterial({
+    size: 0.18,
+    map: makeSprite(),
+    vertexColors: true,
+    blending: THREE.AdditiveBlending,
+    transparent: true,
+    depthWrite: false,
+    sizeAttenuation: true
+});
+const points = new THREE.Points(geo, pMat);
+scene.add(points);
+
+// Emitters
+const emitterColors = [
+    new THREE.Color(0x00ffff),
+    new THREE.Color(0xff00ff),
+    new THREE.Color(0xffd700),
+    new THREE.Color(0x00ff00),
+    new THREE.Color(0xffffff)
+];
+
+const emitters = [];
+for (let i = 0; i < 5; i++) {
+    emitters.push({
+        radius: 2.0 + i * 0.6,
+        speed: 0.4 + i * 0.15,
+        phase: (i / 5) * Math.PI * 2,
+        tiltX: 0.3 + i * 0.25,
+        tiltZ: 0.2 + i * 0.35,
+        acc: 0
+    });
+}
+
+const SPAWN_RATE = 50;
+const FREQ = 1.2;
+
+function emitterPos(em, t, out) {
+    const a = em.phase + t * em.speed;
+    const x = Math.cos(a) * em.radius;
+    const y = Math.sin(a * 1.3 + em.tiltX) * em.radius * 0.6;
+    const z = Math.sin(a) * em.radius;
+    // Apply tilt rotation
+    const cx = Math.cos(em.tiltZ), sx = Math.sin(em.tiltZ);
+    const cy = Math.cos(em.tiltX), sy = Math.sin(em.tiltX);
+    out.x = cx * x - sx * z;
+    out.z = sx * x + cx * z;
+    out.y = cy * y - sy * out.z;
+    out.z = sy * y + cy * out.z;
+}
+
+const tmpPos = new THREE.Vector3();
+
+function spawn(px, py, pz, r, g, b) {
+    const i = nextIdx;
+    nextIdx = (nextIdx + 1) % MAX;
+    pAlive[i] = 1;
+    pAge[i] = 0;
+    pMaxAge[i] = 4 + Math.random() * 5;
+    pVx[i] = (Math.random() - 0.5) * 0.8;
+    pVy[i] = (Math.random() - 0.5) * 0.8;
+    pVz[i] = (Math.random() - 0.5) * 0.8;
+    pR[i] = r; pG[i] = g; pB[i] = b;
+    positions[i * 3] = px + (Math.random() - 0.5) * 0.15;
+    positions[i * 3 + 1] = py + (Math.random() - 0.5) * 0.15;
+    positions[i * 3 + 2] = pz + (Math.random() - 0.5) * 0.15;
+    colors[i * 3] = r;
+    colors[i * 3 + 1] = g;
+    colors[i * 3 + 2] = b;
+}
+
+let lastTime = performance.now() * 0.001;
+
+function animate() {
+    requestAnimationFrame(animate);
+    const now = performance.now() * 0.001;
+    const dt = Math.min(now - lastTime, 0.05);
+    lastTime = now;
+
+    // Spawn
+    for (let e = 0; e < 5; e++) {
+        const em = emitters[e];
+        em.acc += SPAWN_RATE * dt;
+        while (em.acc >= 1) {
+            em.acc -= 1;
+            emitterPos(em, now, tmpPos);
+            spawn(tmpPos.x, tmpPos.y, tmpPos.z, emitterColors[e].r, emitterColors[e].g, emitterColors[e].b);
+        }
+    }
+
+    // Update
+    const t = now;
+    for (let i = 0; i < MAX; i++) {
+        if (!pAlive[i]) {
+            colors[i * 3] = 0;
+            colors[i * 3 + 1] = 0;
+            colors[i * 3 + 2] = 0;
+            continue;
+        }
+        pAge[i] += dt;
+        if (pAge[i] >= pMaxAge[i]) {
+            pAlive[i] = 0;
+            colors[i * 3] = 0;
+            colors[i * 3 + 1] = 0;
+            colors[i * 3 + 2] = 0;
+            continue;
+        }
+
+        const x = positions[i * 3];
+        const y = positions[i * 3 + 1];
+        const z = positions[i * 3 + 2];
+
+        const cvx = Math.sin(y * FREQ + t) - Math.sin(z * FREQ);
+        const cvy = Math.sin(z * FREQ + t) - Math.sin(x * FREQ);
+        const cvz = Math.sin(x * FREQ + t) - Math.sin(y * FREQ);
+
+        const decay = Math.exp(-dt * 0.8);
+        pVx[i] = pVx[i] * decay + cvx * (1 - decay) * 2.5;
+        pVy[i] = pVy[i] * decay + cvy * (1 - decay) * 2.5;
+        pVz[i] = pVz[i] * decay + cvz * (1 - decay) * 2.5;
+
+        positions[i * 3] += pVx[i] * dt;
+        positions[i * 3 + 1] += pVy[i] * dt;
+        positions[i * 3 + 2] += pVz[i] * dt;
+
+        const life = 1 - pAge[i] / pMaxAge[i];
+        const fade = life * life;
+        colors[i * 3] = pR[i] * fade;
+        colors[i * 3 + 1] = pG[i] * fade;
+        colors[i * 3 + 2] = pB[i] * fade;
+    }
+
+    geo.attributes.position.needsUpdate = true;
+    geo.attributes.color.needsUpdate = true;
+
+    renderer.clearDepth();
+    renderer.render(fadeScene, fadeCamera);
+    renderer.render(scene, camera);
+}
+
+animate();
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>

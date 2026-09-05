@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Drift</title>
+<style>
+* { margin: 0; padding: 0; overflow: hidden; }
+html, body { width: 100%; height: 100%; }
+body {
+  background:
+    radial-gradient(120% 90% at 50% 40%, #0a1024 0%, #060912 45%, #03040a 100%);
+}
+canvas { display: block; }
+</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+let W = window.innerWidth;
+let H = window.innerHeight;
+const NUM_POINTS = 72;
+const NUM_TRAILS = 64;
+const BLOB_RADIUS = Math.min(W, H) * 0.16;
+
+const scene = new THREE.Scene();
+const camera = new THREE.OrthographicCamera(W / 2, -W / 2, H / 2, -H / 2, 1, 1000);
+camera.position.z = 10;
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setSize(W, H);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setClearColor(0x000000, 0);
+document.body.appendChild(renderer.domElement);
+
+class Drift {
+  constructor(ox, oy, speed, radius, hueBase, wander) {
+    this.x = ox;
+    this.y = oy;
+    const a = Math.random() * Math.PI * 2;
+    this.vx = Math.cos(a) * speed;
+    this.vy = Math.sin(a) * speed;
+    this.speed = speed;
+    this.radius = radius;
+    this.hueBase = hueBase;
+    this.phase = Math.random() * Math.PI * 2;
+    this.wander = wander;
+    this.trails = [];
+  }
+
+  update(t) {
+    // gentle organic steering so paths curve instead of straight-bouncing
+    const a = this.wander * Math.sin(t * 0.6 + this.phase);
+    const cos = Math.cos(a), sin = Math.sin(a);
+    const nvx = this.vx * cos - this.vy * sin;
+    const nvy = this.vx * sin + this.vy * cos;
+    this.vx = nvx; this.vy = nvy;
+
+    this.x += this.vx;
+    this.y += this.vy;
+
+    const margin = this.radius * 1.25;
+    const hw = W / 2 - margin;
+    const hh = H / 2 - margin;
+    if (this.x < -hw) { this.x = -hw; this.vx = Math.abs(this.vx); }
+    if (this.x >  hw) { this.x =  hw; this.vx = -Math.abs(this.vx); }
+    if (this.y < -hh) { this.y = -hh; this.vy = Math.abs(this.vy); }
+    if (this.y >  hh) { this.y =  hh; this.vy = -Math.abs(this.vy); }
+
+    const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+    const angle = Math.atan2(this.vy, this.vx);
+    const points = new Float32Array(NUM_POINTS * 2);
+
+    for (let i = 0; i < NUM_POINTS; i++) {
+      const theta = (i / NUM_POINTS) * Math.PI * 2;
+
+      let r = this.radius * (1 + 0.14 * Math.sin(t * 1.8 + this.phase + theta * 0.5));
+      r += speed * Math.cos(theta - angle) * 4.5;
+      r += 11 * Math.sin(theta * 3 + t * 1.2 + this.phase);
+      r += 6 * Math.sin(theta * 5 - t * 0.7 + this.phase * 0.5);
+      r += 3 * Math.sin(theta * 7 + t * 2.1);
+
+      points[i * 2] = this.x + Math.cos(theta) * r;
+      points[i * 2 + 1] = this.y + Math.sin(theta) * r;
+    }
+
+    this.trails.unshift(points);
+    if (this.trails.length > NUM_TRAILS) this.trails.length = NUM_TRAILS;
+  }
+
+  render(t, group) {
+    for (let i = 0; i < this.trails.length; i++) {
+      const age = i / NUM_TRAILS;
+      const opacity = Math.pow(1 - age, 1.4) * 0.85;
+      if (opacity < 0.012) continue;
+
+      const hue = (this.hueBase + age * 200 + t * 12) % 360;
+      const sat = 0.92 - age * 0.28;
+      const lit = 0.5 + (1 - age) * 0.22;
+
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(this.trails[i].slice(0, NUM_POINTS * 2), 2));
+      geo.setIndex(Array.from({ length: NUM_POINTS }, (_, j) => (j + 1) % NUM_POINTS));
+
+      const mat = new THREE.LineBasicMaterial({
+        color: new THREE.Color().setHSL(hue / 360, sat, lit),
+        blending: THREE.AdditiveBlending,
+        transparent: true,
+        opacity: opacity
+      });
+
+      group.add(new THREE.Line(geo, mat));
+    }
+  }
+}
+
+const drifts = [
+  new Drift(-W * 0.18,  H * 0.10, 2.6, BLOB_RADIUS,        185, 0.0016),
+  new Drift( W * 0.20, -H * 0.12, 2.0, BLOB_RADIUS * 0.7,  310, 0.0020),
+  new Drift( W * 0.05,  H * 0.18, 3.1, BLOB_RADIUS * 0.45,  30,  0.0026)
+];
+
+const groups = drifts.map(() => {
+  const g = new THREE.Group();
+  scene.add(g);
+  return g;
+});
+
+let time = 0;
+let lastTime = performance.now();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const now = performance.now();
+  const dt = Math.min((now - lastTime) / 1000, 0.05);
+  lastTime = now;
+  time += dt;
+
+  drifts.forEach((d, i) => {
+    d.update(time);
+    groups[i].children.forEach(c => {
+      c.geometry.dispose();
+      c.material.dispose();
+    });
+    groups[i].clear();
+    d.render(time, groups[i]);
+  });
+
+  renderer.render(scene, camera);
+}
+
+animate();
+
+window.addEventListener('resize', () => {
+  W = window.innerWidth;
+  H = window.innerHeight;
+  renderer.setSize(W, H);
+  camera.left = -W / 2;
+  camera.right = W / 2;
+  camera.top = H / 2;
+  camera.bottom = -H / 2;
+  camera.updateProjectionMatrix();
+});
+</script>
+</body>
+</html>

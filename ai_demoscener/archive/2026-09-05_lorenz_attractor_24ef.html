@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lorenz Attractor</title>
+<style>
+  * { margin: 0; padding: 0; }
+  html, body { overflow: hidden; background: #000; }
+  body {
+    background: radial-gradient(ellipse at 50% 45%, #0a0a14 0%, #000000 70%);
+  }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function () {
+  const SIGMA = 10, RHO = 28, BETA = 8 / 3;
+  const DT = 0.005;
+  const STEPS = 100;
+  const MAX = 9000;
+
+  let state = [0.1, 0.0, 25.0];
+  let colorTime = 0;
+
+  function f(s) {
+    return [
+      SIGMA * (s[1] - s[0]),
+      s[0] * (RHO - s[2]) - s[1],
+      s[0] * s[1] - BETA * s[2]
+    ];
+  }
+
+  function rk4(s, dt) {
+    const k1 = f(s);
+    const k2 = f([s[0] + 0.5 * dt * k1[0], s[1] + 0.5 * dt * k1[1], s[2] + 0.5 * dt * k1[2]]);
+    const k3 = f([s[0] + 0.5 * dt * k2[0], s[1] + 0.5 * dt * k2[1], s[2] + 0.5 * dt * k2[2]]);
+    const k4 = f([s[0] + dt * k3[0], s[1] + dt * k3[1], s[2] + dt * k3[2]]);
+    return [
+      s[0] + (dt / 6) * (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0]),
+      s[1] + (dt / 6) * (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1]),
+      s[2] + (dt / 6) * (k1[2] + 2 * k2[2] + 2 * k3[2] + k4[2])
+    ];
+  }
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x000000);
+
+  const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 1000);
+  const center = new THREE.Vector3(0, 0, 25);
+  const camRadius = 78;
+  const camHeight = 44;
+  let camAngle = 0;
+
+  camera.position.set(camRadius, camHeight, 0);
+  camera.lookAt(center);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setClearColor(0x000000, 1);
+  document.body.appendChild(renderer.domElement);
+
+  const positions = new Float32Array(MAX * 3);
+  const colors = new Float32Array(MAX * 3);
+  let count = 0;
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  geometry.setDrawRange(0, 0);
+
+  const material = new THREE.LineBasicMaterial({
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.7,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  });
+  const line = new THREE.Line(geometry, material);
+  scene.add(line);
+
+  const tmpColor = new THREE.Color();
+
+  function pushPoint(x, y, z, t, speed) {
+    if (count + 1 > MAX) {
+      const shift = count + 1 - MAX;
+      positions.copyWithin(0, shift * 3);
+      colors.copyWithin(0, shift * 3);
+      count = MAX - 1;
+    }
+    const i = count * 3;
+    positions[i] = x;
+    positions[i + 1] = z;
+    positions[i + 2] = -y;
+
+    // Cohesive cool->warm palette that drifts slowly, brightened by local speed.
+    const speedNorm = Math.min(1, speed / 90);
+    const phase = t * 0.0018;
+    const hue = 0.55 + 0.45 * (0.5 + 0.5 * Math.sin(phase));   // cyan -> blue -> magenta -> red
+    const sat = 0.85;
+    const light = 0.28 + 0.5 * speedNorm + 0.04 * Math.sin(t * 0.04);
+    tmpColor.setHSL(hue % 1.0, sat, Math.min(0.85, light));
+    colors[i] = tmpColor.r;
+    colors[i + 1] = tmpColor.g;
+    colors[i + 2] = tmpColor.b;
+
+    count++;
+  }
+
+  // Warm-up so the orbit is on the attractor before display.
+  for (let i = 0; i < 400; i++) {
+    state = rk4(state, DT);
+  }
+  state = [0.1, 0.0, 25.0];
+  for (let i = 0; i < 100; i++) {
+    state = rk4(state, DT);
+  }
+  {
+    const v = f(state);
+    pushPoint(state[0], state[1], state[2], 0, Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]));
+  }
+
+  function animate() {
+    requestAnimationFrame(animate);
+
+    for (let i = 0; i < STEPS; i++) {
+      state = rk4(state, DT);
+      colorTime += 1;
+      const v = f(state);
+      const speed = Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+      pushPoint(state[0], state[1], state[2], colorTime, speed);
+    }
+
+    geometry.attributes.position.needsUpdate = true;
+    geometry.attributes.color.needsUpdate = true;
+    geometry.setDrawRange(0, count);
+
+    // Smooth orbit around the vertical axis, kept centered on the attractor.
+    camAngle += 0.0016;
+    const bob = 4 * Math.sin(camAngle * 0.5);
+    camera.position.x = center.x + camRadius * Math.sin(camAngle);
+    camera.position.y = camHeight + bob;
+    camera.position.z = center.z + camRadius * Math.cos(camAngle);
+    camera.lookAt(center);
+
+    renderer.render(scene, camera);
+  }
+
+  window.addEventListener('resize', () => {
+    camera.aspect = innerWidth / innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+  });
+
+  animate();
+})();
+</script>
+</body>
+</html>

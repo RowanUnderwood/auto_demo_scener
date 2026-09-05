@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Neural Synapse</title>
+    <style>
+        html, body { margin: 0; overflow: hidden; height: 100%; }
+        body {
+            background: radial-gradient(ellipse at 50% 45%, #140a1e 0%, #0a0614 45%, #04030a 100%);
+        }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+    <script>
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x07040f, 0.012);
+
+        const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 200);
+        camera.position.set(0, 4, 50);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setClearColor(0x000000, 0);
+        document.body.appendChild(renderer.domElement);
+
+        const layers = [6, 14, 22, 22, 14, 6];
+        const layerSpacing = 7;
+        const nodes = [];
+        const connections = [];
+        const pulses = [];
+
+        const networkGroup = new THREE.Group();
+        scene.add(networkGroup);
+
+        // Glow texture (shared)
+        const glowCanvas = document.createElement('canvas');
+        glowCanvas.width = 128; glowCanvas.height = 128;
+        const gctx = glowCanvas.getContext('2d');
+        const grad = gctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+        grad.addColorStop(0, 'rgba(255,200,120,0.9)');
+        grad.addColorStop(0.25, 'rgba(255,140,40,0.45)');
+        grad.addColorStop(0.6, 'rgba(255,90,20,0.12)');
+        grad.addColorStop(1, 'rgba(255,60,0,0)');
+        gctx.fillStyle = grad;
+        gctx.fillRect(0, 0, 128, 128);
+        const glowTexture = new THREE.CanvasTexture(glowCanvas);
+
+        // Nodes
+        layers.forEach((count, li) => {
+            const x = (li - (layers.length - 1) / 2) * layerSpacing;
+            for (let i = 0; i < count; i++) {
+                const spread = count * 1.4;
+                const y = (i - (count - 1) / 2) * (spread / count);
+                const z = (Math.random() - 0.5) * 3;
+                const size = 0.28 + Math.random() * 0.28;
+
+                const geo = new THREE.IcosahedronGeometry(size, 1);
+                const mat = new THREE.MeshPhongMaterial({
+                    color: 0x2a1205,
+                    emissive: 0xff5500,
+                    emissiveIntensity: 0.6,
+                    shininess: 80
+                });
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.position.set(x, y, z);
+
+                // hot white core
+                const coreGeo = new THREE.IcosahedronGeometry(size * 0.55, 1);
+                const coreMat = new THREE.MeshBasicMaterial({
+                    color: 0xffe6b0,
+                    transparent: true,
+                    opacity: 0.85,
+                    blending: THREE.AdditiveBlending
+                });
+                const core = new THREE.Mesh(coreGeo, coreMat);
+                mesh.add(core);
+
+                // glow sprite
+                const spriteMat = new THREE.SpriteMaterial({
+                    map: glowTexture,
+                    transparent: true,
+                    blending: THREE.AdditiveBlending,
+                    opacity: 0.5,
+                    depthWrite: false
+                });
+                const sprite = new THREE.Sprite(spriteMat);
+                sprite.scale.setScalar(3.4 + Math.random() * 2.2);
+                mesh.add(sprite);
+
+                mesh.userData = {
+                    baseY: y,
+                    baseZ: z,
+                    layer: li,
+                    phase: Math.random() * Math.PI * 2,
+                    speed: 0.2 + Math.random() * 0.4,
+                    amp: 0.3 + Math.random() * 0.4,
+                    core: core,
+                    sprite: sprite
+                };
+                networkGroup.add(mesh);
+                nodes.push(mesh);
+            }
+        });
+
+        // Connections (curved, 3-point)
+        const connMat = new THREE.LineBasicMaterial({
+            color: 0xff8844,
+            transparent: true,
+            opacity: 0.4,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        });
+
+        let nodeOffset = 0;
+        for (let l = 0; l < layers.length - 1; l++) {
+            const startIdx = nodeOffset;
+            const endIdx = nodeOffset + layers[l];
+            const nextStart = endIdx;
+            const nextEnd = endIdx + layers[l + 1];
+            nodeOffset += layers[l];
+
+            for (let i = startIdx; i < endIdx; i++) {
+                const nodeA = nodes[i];
+                const connectTo = 2 + Math.floor(Math.random() * 2);
+                const candidates = [];
+                for (let j = nextStart; j < nextEnd; j++) candidates.push(j);
+                candidates.sort(() => Math.random() - 0.5);
+
+                for (let c = 0; c < Math.min(connectTo, candidates.length); c++) {
+                    const nodeB = nodes[candidates[c]];
+                    const mid = new THREE.Vector3(
+                        (nodeA.position.x + nodeB.position.x) / 2,
+                        (nodeA.position.y + nodeB.position.y) / 2 + (Math.random() - 0.5) * 2,
+                        (nodeA.position.z + nodeB.position.z) / 2 + (Math.random() - 0.5) * 4
+                    );
+
+                    const pts = [nodeA.position.clone(), mid, nodeB.position.clone()];
+                    const geo = new THREE.BufferGeometry().setFromPoints(pts);
+                    const line = new THREE.Line(geo, connMat.clone());
+                    const baseOpacity = 0.25 + Math.random() * 0.3;
+                    line.material.opacity = baseOpacity;
+                    networkGroup.add(line);
+                    connections.push({
+                        line, start: nodeA, end: nodeB,
+                        midOffset: new THREE.Vector3(
+                            (Math.random() - 0.5) * 2,
+                            (Math.random() - 0.5) * 2,
+                            (Math.random() - 0.5) * 4
+                        ),
+                        baseOpacity,
+                        phase: Math.random() * Math.PI * 2
+                    });
+                }
+            }
+        }
+
+        // Pulses
+        const pulseGeo = new THREE.SphereGeometry(0.22, 8, 8);
+        for (let i = 0; i < 56; i++) {
+            const mat = new THREE.MeshBasicMaterial({
+                color: 0xffdd88,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false
+            });
+            const mesh = new THREE.Mesh(pulseGeo, mat);
+            const pSpriteMat = new THREE.SpriteMaterial({
+                map: glowTexture,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                opacity: 0.8,
+                depthWrite: false
+            });
+            const pSprite = new THREE.Sprite(pSpriteMat);
+            pSprite.scale.setScalar(2.2);
+            mesh.add(pSprite);
+            const conn = connections[Math.floor(Math.random() * connections.length)];
+            mesh.userData = { conn, t: Math.random(), speed: 0.008 + Math.random() * 0.014, sprite: pSprite };
+            scene.add(mesh);
+            pulses.push(mesh);
+        }
+
+        // Central anchor glow
+        const centerGlowMat = new THREE.SpriteMaterial({
+            map: glowTexture,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            opacity: 0.25,
+            depthWrite: false
+        });
+        const centerGlow = new THREE.Sprite(centerGlowMat);
+        centerGlow.scale.setScalar(40);
+        scene.add(centerGlow);
+
+        // Background particles
+        const pCount = 1600;
+        const pGeo = new THREE.BufferGeometry();
+        const pPos = new Float32Array(pCount * 3);
+        for (let i = 0; i < pCount * 3; i += 3) {
+            pPos[i] = (Math.random() - 0.5) * 120;
+            pPos[i + 1] = (Math.random() - 0.5) * 120;
+            pPos[i + 2] = (Math.random() - 0.5) * 120;
+        }
+        pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+        const pMat = new THREE.PointsMaterial({
+            color: 0x8855ff,
+            size: 0.18,
+            transparent: true,
+            opacity: 0.55,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        });
+        const particleSystem = new THREE.Points(pGeo, pMat);
+        scene.add(particleSystem);
+
+        // Lights
+        scene.add(new THREE.AmbientLight(0x2a1535, 1.4));
+        const keyLight = new THREE.PointLight(0xff8833, 2.4, 90);
+        keyLight.position.set(20, 12, 25);
+        scene.add(keyLight);
+        const rimLight = new THREE.PointLight(0x7744ff, 1.4, 70);
+        rimLight.position.set(-20, -8, 15);
+        scene.add(rimLight);
+        const centerLight = new THREE.PointLight(0xff5522, 0.8, 50);
+        centerLight.position.set(0, 0, 0);
+        scene.add(centerLight);
+
+        // Animation
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const t = clock.getElapsedTime();
+
+            // Node wobble & pulse + traveling wave
+            nodes.forEach(node => {
+                const ud = node.userData;
+                const wobble = Math.sin(t * ud.speed + ud.phase) * ud.amp;
+                node.position.y = ud.baseY + wobble;
+                node.position.z = ud.baseZ + Math.cos(t * ud.speed * 0.6 + ud.phase * 1.3) * ud.amp * 0.4;
+
+                const localPulse = 0.5 + 0.5 * Math.sin(t * 1.8 + ud.phase);
+                const wave = 0.5 + 0.5 * Math.sin(t * 1.4 - ud.layer * 0.9);
+                const pulse = 0.35 + 0.45 * localPulse + 0.5 * wave * wave;
+                node.material.emissiveIntensity = pulse;
+                const s = 1 + 0.1 * Math.sin(t * 1.2 + ud.phase) + 0.12 * wave;
+                node.scale.setScalar(s);
+                ud.core.material.opacity = 0.5 + 0.5 * pulse;
+                ud.sprite.material.opacity = 0.25 + 0.45 * pulse;
+                ud.sprite.scale.setScalar(3.4 + 2.2 * pulse + 1.5 * wave);
+            });
+
+            // Update connection lines + shimmer
+            connections.forEach(conn => {
+                const pos = conn.line.geometry.attributes.position.array;
+                const a = conn.start.position;
+                const b = conn.end.position;
+                const mo = conn.midOffset;
+                pos[0] = a.x; pos[1] = a.y; pos[2] = a.z;
+                pos[3] = (a.x + b.x) / 2 + mo.x;
+                pos[4] = (a.y + b.y) / 2 + mo.y;
+                pos[5] = (a.z + b.z) / 2 + mo.z;
+                pos[6] = b.x; pos[7] = b.y; pos[8] = b.z;
+                conn.line.geometry.attributes.position.needsUpdate = true;
+                conn.line.material.opacity = conn.baseOpacity + 0.12 * Math.sin(t * 2 + conn.phase);
+            });
+
+            // Animate pulses
+            pulses.forEach(p => {
+                const ud = p.userData;
+                ud.t += ud.speed;
+                if (ud.t > 1) {
+                    ud.t = 0;
+                    ud.conn = connections[Math.floor(Math.random() * connections.length)];
+                    ud.speed = 0.008 + Math.random() * 0.014;
+                }
+                const a = ud.conn.start.position;
+                const b = ud.conn.end.position;
+                const mo = ud.conn.midOffset;
+                const midX = (a.x + b.x) / 2 + mo.x;
+                const midY = (a.y + b.y) / 2 + mo.y;
+                const midZ = (a.z + b.z) / 2 + mo.z;
+                const tt = ud.t;
+                const oneMinusT = 1 - tt;
+                p.position.x = oneMinusT * oneMinusT * a.x + 2 * oneMinusT * tt * midX + tt * tt * b.x;
+                p.position.y = oneMinusT * oneMinusT * a.y + 2 * oneMinusT * tt * midY + tt * tt * b.y;
+                p.position.z = oneMinusT * oneMinusT * a.z + 2 * oneMinusT * tt * midZ + tt * tt * b.z;
+
+                const fade = Math.sin(tt * Math.PI);
+                p.material.opacity = fade;
+                p.scale.setScalar(0.4 + fade * 0.7);
+                ud.sprite.material.opacity = fade * 0.9;
+                ud.sprite.scale.setScalar(1.5 + fade * 2.5);
+            });
+
+            // Group rotation (slow constant + wobble)
+            networkGroup.rotation.y = t * 0.05 + Math.sin(t * 0.08) * 0.2;
+            networkGroup.rotation.x = Math.sin(t * 0.04) * 0.08;
+
+            // Camera
+            camera.position.x = Math.sin(t * 0.06) * 6;
+            camera.position.y = 4 + Math.sin(t * 0.04) * 3;
+            camera.position.z = 50 - Math.sin(t * 0.025) * 8;
+            camera.lookAt(0, 0, 0);
+
+            // Particles
+            particleSystem.rotation.y = t * 0.02;
+            particleSystem.rotation.x = Math.sin(t * 0.01) * 0.1;
+
+            // Center glow breathing
+            centerGlow.material.opacity = 0.18 + 0.1 * Math.sin(t * 0.5);
+            centerGlow.scale.setScalar(38 + 6 * Math.sin(t * 0.5));
+
+            // Lights
+            keyLight.position.x = 20 * Math.sin(t * 0.2);
+            keyLight.position.y = 12 + 5 * Math.sin(t * 0.15);
+            rimLight.position.x = -20 * Math.cos(t * 0.15);
+            centerLight.intensity = 0.5 + 0.4 * Math.sin(t * 0.5);
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>8-Fold Mirror Symmetry</title>
+<style>
+  body { margin: 0; overflow: hidden; background: #000; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const N = 8;
+
+const vertexShader = `
+  void main() {
+    gl_Position = vec4(position, 1.0);
+  }
+`;
+
+const fragmentShader = `
+  precision highp float;
+  uniform float uTime;
+  uniform vec2 uResolution;
+
+  #define PI 3.14159265359
+  #define N 8.0
+
+  void main() {
+    vec2 uv = gl_FragCoord.xy / uResolution;
+    vec2 p = uv * 2.0 - 1.0;
+
+    // Convert to polar
+    float r = length(p);
+    float a = atan(p.y, p.x);
+
+    // Fold angle into wedge
+    a = abs(mod(a, 2.0 * PI / N) - PI / N);
+
+    // Rebuild p in folded space
+    p = r * vec2(cos(a), sin(a));
+
+    // Colorful procedural pattern
+    vec3 col = vec3(0.0);
+    col.r += 0.5 + 0.5 * sin(p.x * 4.0 + uTime * 0.8 + sin(p.y * 3.0 + uTime * 0.5));
+    col.g += 0.5 + 0.5 * sin(p.y * 5.0 + uTime * 0.6 + sin(p.x * 2.0 + uTime * 0.7));
+    col.b += 0.5 + 0.5 * sin((p.x + p.y) * 3.0 + uTime * 1.1 + sin(p.x * p.y * 2.0 + uTime * 0.4));
+
+    // Additional layers
+    col += 0.3 * vec3(
+      sin(p.x * 7.0 - uTime * 1.3),
+      sin(p.y * 6.0 + uTime * 0.9),
+      sin((p.x - p.y) * 5.0 + uTime * 0.7)
+    );
+
+    // Radial fade
+    float fade = 1.0 - smoothstep(0.0, 0.8, r);
+    col *= fade;
+
+    // Gamma
+    col = pow(col, vec3(0.85));
+
+    gl_FragColor = vec4(col, 1.0);
+  }
+`;
+
+const renderer = new THREE.WebGLRenderer({ antialias: false });
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+const geometry = new THREE.BufferGeometry();
+geometry.setAttribute('position', new THREE.Float32BufferAttribute([
+  -1, -1, 0,
+   1, -1, 0,
+  -1,  1, 0,
+   1,  1, 0
+], 3));
+geometry.setIndex([0, 1, 2, 2, 1, 3]);
+
+const material = new THREE.ShaderMaterial({
+  vertexShader,
+  fragmentShader,
+  uniforms: {
+    uTime: { value: 0 },
+    uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+  }
+});
+
+const mesh = new THREE.Mesh(geometry, material);
+const scene = new THREE.Scene();
+scene.add(mesh);
+
+function animate() {
+  requestAnimationFrame(animate);
+  material.uniforms.uTime.value = performance.now() * 0.001;
+  renderer.render(scene, camera);
+}
+
+window.addEventListener('resize', () => {
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  material.uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+});
+
+animate();
+</script>
+</body>
+</html>

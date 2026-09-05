@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { margin: 0; overflow: hidden; background: #000; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const COUNT = 1800;
+const BOUND = 15;
+const DT = 0.016;
+const SPEED_THRESHOLD = 0.05;
+const SLOW_FRAME_LIMIT = 60;
+const TRAIL_OPACITY = 0.065;
+
+const renderer = new THREE.WebGLRenderer({ antialias: false });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.autoClear = false;
+renderer.setClearColor(0x000000, 1);
+document.body.appendChild(renderer.domElement);
+
+// Main scene with orthographic camera
+const scene = new THREE.Scene();
+const aspect = window.innerWidth / window.innerHeight;
+const halfH = BOUND;
+const halfW = BOUND * aspect;
+const camera = new THREE.OrthographicCamera(-halfW, halfW, halfH, -halfH, 0.1, 100);
+camera.position.z = 10;
+camera.lookAt(0, 0, 0);
+
+// Trail overlay scene (fullscreen quad)
+const trailScene = new THREE.Scene();
+const trailCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const trailQuad = new THREE.Mesh(
+  new THREE.PlaneGeometry(2, 2),
+  new THREE.MeshBasicMaterial({
+    color: 0x000000,
+    transparent: true,
+    opacity: TRAIL_OPACITY,
+    depthTest: false,
+    depthWrite: false
+  })
+);
+trailScene.add(trailQuad);
+
+// Point data
+const positions = new Float32Array(COUNT * 3);
+const colors = new Float32Array(COUNT * 3);
+const slowFrames = new Uint16Array(COUNT);
+
+function seedPoint(i) {
+  positions[i * 3]     = (Math.random() - 0.5) * 2 * BOUND;
+  positions[i * 3 + 1] = (Math.random() - 0.5) * 2 * BOUND;
+  positions[i * 3 + 2] = 0;
+  slowFrames[i] = 0;
+  colors[i * 3]     = 0.0;
+  colors[i * 3 + 1] = 0.0;
+  colors[i * 3 + 2] = 0.0;
+}
+
+for (let i = 0; i < COUNT; i++) seedPoint(i);
+
+const geometry = new THREE.BufferGeometry();
+geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+const pointsMat = new THREE.PointsMaterial({
+  size: 2.0,
+  sizeAttenuation: false,
+  vertexColors: true,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false
+});
+const points = new THREE.Points(geometry, pointsMat);
+scene.add(points);
+
+// 2D analytic vector field (curl-like, multi-scale)
+function evalField(x, y, t) {
+  const fx =
+      Math.sin(y) +
+      Math.cos(x * 0.5 + t) +
+      0.4 * Math.sin(x * 0.3 - y * 0.3 + t * 0.5);
+  const fy =
+      Math.sin(x) -
+      Math.cos(y * 0.5 + t) +
+      0.4 * Math.cos(x * 0.3 + y * 0.3 - t * 0.5);
+  return [fx, fy];
+}
+
+function hsl2rgb(h, s, l, out) {
+  h = ((h % 1) + 1) % 1;
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  const hue2rgb = (tt) => {
+    if (tt < 0) tt += 1;
+    if (tt > 1) tt -= 1;
+    if (tt < 1 / 6) return p + (q - p) * 6 * tt;
+    if (tt < 1 / 2) return q;
+    if (tt < 2 / 3) return p + (q - p) * (2 / 3 - tt) * 6;
+    return p;
+  };
+  out[0] = hue2rgb(h + 1 / 3);
+  out[1] = hue2rgb(h);
+  out[2] = hue2rgb(h - 1 / 3);
+}
+
+const tmpRGB = [0, 0, 0];
+
+let time = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+  time += DT;
+
+  // Clear depth buffer, render fade quad
+  renderer.clearDepth();
+  renderer.render(trailScene, trailCam);
+
+  // Slow global hue drift so the palette breathes over time
+  const hueDrift = 0.06 * Math.sin(time * 0.25);
+
+  // Advect all points
+  for (let i = 0; i < COUNT; i++) {
+    const ix = i * 3;
+    const x = positions[ix];
+    const y = positions[ix + 1];
+
+    const [fx, fy] = evalField(x, y, time);
+
+    positions[ix]     = x + fx * DT;
+    positions[ix + 1] = y + fy * DT;
+
+    const speed = Math.sqrt(fx * fx + fy * fy);
+
+    if (speed < SPEED_THRESHOLD) {
+      slowFrames[i]++;
+    } else {
+      slowFrames[i] = 0;
+    }
+
+    const nx = positions[ix];
+    const ny = positions[ix + 1];
+
+    if (slowFrames[i] > SLOW_FRAME_LIMIT ||
+        nx < -BOUND || nx > BOUND ||
+        ny < -BOUND || ny > BOUND) {
+      seedPoint(i);
+      continue;
+    }
+
+    // Color: speed -> cyan (slow) -> violet/magenta (fast), with time drift
+    const s = Math.min(speed / 2.8, 1.0);
+    const s2 = s * s;
+    const hue = 0.52 + 0.34 * s + hueDrift;
+    const sat = 0.55 + 0.45 * s;
+    const lig = 0.30 + 0.60 * s2;
+    hsl2rgb(hue, sat, lig, tmpRGB);
+    colors[ix]     = tmpRGB[0];
+    colors[ix + 1] = tmpRGB[1];
+    colors[ix + 2] = tmpRGB[2];
+  }
+
+  geometry.attributes.position.needsUpdate = true;
+  geometry.attributes.color.needsUpdate = true;
+
+  renderer.render(scene, camera);
+}
+
+// Initial black clear
+renderer.clear();
+animate();
+
+window.addEventListener('resize', () => {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  renderer.setSize(w, h);
+  renderer.setPixelRatio(window.devicePixelRatio);
+  const a = w / h;
+  camera.left = -BOUND * a;
+  camera.right = BOUND * a;
+  camera.top = BOUND;
+  camera.bottom = -BOUND;
+  camera.updateProjectionMatrix();
+});
+</script>
+</body>
+</html>

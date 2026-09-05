@@ -2989,5 +2989,194 @@
     "model": "qwen3.8-27b",
     "title": "Chromatic Chaos Butterfly Wings",
     "description": "A spectral filament traces eternal chaos through the velvet void."
+  },
+  "2026-09-05_barnsley_fern_0cb4.html": {
+    "created": "2026-09-05T12:57:32.741222",
+    "mode": "stock",
+    "effect": "Barnsley Fern",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Barnsley Fern Slow Drift",
+    "description": "Fractal leaves breathe in the dark as coefficients slowly mutate."
+  },
+  "2026-09-05_audio_reactive_bars_7568.html": {
+    "created": "2026-09-05T13:01:30.999124",
+    "mode": "stock",
+    "effect": "Audio-Reactive Bars",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Spectral Pulse Harmonics",
+    "description": "Neon bars dance to the rhythm of invisible sound waves."
+  },
+  "2026-09-05_fire_97ce.html": {
+    "created": "2026-09-05T13:03:03.882018",
+    "mode": "stock",
+    "effect": "Fire",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Violet Plasma Ember",
+    "description": "Electric blue wisps dance through the void, igniting the dark with spectral fire."
+  },
+  "2026-09-05_iridescent_oil_slick_3993.html": {
+    "created": "2026-09-05T13:04:41.084965",
+    "mode": "stock",
+    "effect": "Iridescent Oil Slick",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Iridescent Noise Drift",
+    "description": "Fractal waves shimmer with spectral light across the void."
+  },
+  "2026-09-05_creative_f8d9.html": {
+    "created": "2026-09-05T13:08:38.342258",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Resonant Crystal Lattice",
+    "description": "Electric waves ripple through a breathing lattice of light."
+  },
+  "2026-09-05_creative_3842.html": {
+    "created": "2026-09-05T13:11:06.010598",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Breathing Metallic Tori",
+    "description": "Three molten rings pulse with rhythmic waves under shifting colored lights."
+  },
+  "2026-05-15_creative_6830_v2.html": {
+    "created": "2026-09-05T13:12:36.138404",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Abyssal Bloom Deep Sea",
+    "description": "Bioluminescent tendrils pulse gently within the crushing silence of the midnight zone."
+  },
+  "2026-09-05_creative_6a74.html": {
+    "created": "2026-09-05T13:18:04.049818",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Pulsing Hyperspace Organism",
+    "description": "Bioluminescent membranes breathe around a fractal heart suspended in the void."
+  },
+  "2026-05-10_wireframe_icosahedron_3215_v3.html": {
+    "created": "2026-09-05T13:27:03.434565",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Breathing Star Lattice",
+    "description": "Gilded vertices pulse within a violet cage of breathing geometry."
+  },
+  "2026-09-05_raymarched_scene_a2d5.html": {
+    "created": "2026-09-05T13:28:21.499598",
+    "mode": "stock",
+    "effect": "Raymarched Scene",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Molten Geometry Infinite",
+    "description": "Infinite spheres and cubes melt into a seamless, glowing lattice."
+  },
+  "2026-09-05_flurry_plasma_tendrils_e393.html": {
+    "created": "2026-09-05T13:33:52.660538",
+    "mode": "stock",
+    "effect": "Flurry Plasma Tendrils",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Neon Vortex Particle Streams",
+    "description": "Iridescent particles swirl through luminous, additive trails of fading light."
+  },
+  "2026-09-05_creative_584a_v2.html": {
+    "created": "2026-09-05T13:35:39.576801",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Bioluminescent Abyssal Drift",
+    "description": "Translucent bells pulse softly while drifting through the glowing deep."
+  },
+  "2026-09-05_kaleidoscope_314b.html": {
+    "created": "2026-09-05T13:37:06.211440",
+    "mode": "stock",
+    "effect": "Kaleidoscope",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Octagonal Prismatic Shimmer",
+    "description": "Eight mirrored waves ripple through a kaleidoscopic void of shifting light."
+  },
+  "2026-09-05_boot_post_parade_5ec5.html": {
+    "created": "2026-09-05T13:40:52.671749",
+    "mode": "stock",
+    "effect": "Boot-POST Parade",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Nostalgia Daemon Boot Sequence",
+    "description": "Green phosphor ghosts awaken ancient silicon to mount the dream buffer."
+  },
+  "2026-05-14_mystify_bezier_lines_2883_v2.html": {
+    "created": "2026-09-05T13:43:24.264866",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Chromatic Drift Trails",
+    "description": "Luminous organic forms wander the void, leaving fading ribbons of shifting color."
+  },
+  "2026-09-05_lorenz_attractor_24ef.html": {
+    "created": "2026-09-05T13:45:50.268794",
+    "mode": "stock",
+    "effect": "Lorenz Attractor",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Chaotic Butterfly Wings",
+    "description": "Cyan threads weave through the void, tracing the breath of infinite chaos."
+  },
+  "2026-09-05_creative_b0a9.html": {
+    "created": "2026-09-05T13:48:47.911942",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Resonant Void Harmonics",
+    "description": "Electric waves ripple through a pulsing sphere of bioluminescent light."
+  },
+  "2026-05-17_creative_4d9e_v2.html": {
+    "created": "2026-09-05T13:52:35.893474",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Neural Synapse Pulse",
+    "description": "Electric thoughts ripple through a dark, breathing web of fire."
+  },
+  "2026-09-05_vector_field_streamlines_4404.html": {
+    "created": "2026-09-05T13:54:58.360788",
+    "mode": "stock",
+    "effect": "Vector Field Streamlines",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Cyan Vortex Breathing",
+    "description": "Particles drift through a shifting vector field, leaving luminous trails."
+  },
+  "2026-05-10_procedural_terrain_flythrough_59f6_v4.html": {
+    "created": "2026-09-05T14:09:28.096866",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Bioluminescent Abyss",
+    "description": "Neon currents pulse beneath the crushing weight of an endless midnight ocean."
+  },
+  "2026-09-05_creative_0d02.html": {
+    "created": "2026-09-05T14:11:43.872535",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Resonant Chamber Standing Waves",
+    "description": "Indigo voids breathe with golden pressure as nodal surfaces shimmer in slow orbit."
   }
 }

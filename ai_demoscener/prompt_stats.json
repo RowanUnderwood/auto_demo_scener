@@ -3,7 +3,7 @@
     "crashes": 0,
     "blanks": 0,
     "total": 0,
-    "runs": 7,
+    "runs": 13,
     "deletions": 0,
     "last_fail": null,
     "by_model": {
@@ -11,7 +11,7 @@
         "crashes": 0,
         "blanks": 0,
         "total": 0,
-        "runs": 7
+        "runs": 13
       }
     }
   },
@@ -65,17 +65,17 @@
   },
   "creative": {
     "crashes": 0,
-    "blanks": 0,
-    "total": 0,
-    "runs": 5,
+    "blanks": 1,
+    "total": 1,
+    "runs": 11,
     "deletions": 0,
-    "last_fail": null,
+    "last_fail": "2026-09-05T12:59:18.844510",
     "by_model": {
       "qwen3.8-27b": {
         "crashes": 0,
-        "blanks": 0,
-        "total": 0,
-        "runs": 5
+        "blanks": 1,
+        "total": 1,
+        "runs": 11
       }
     }
   },
@@ -179,6 +179,54 @@
     "crashes": 0,
     "blanks": 0,
     "total": 0,
+    "runs": 2,
+    "deletions": 0,
+    "last_fail": null,
+    "by_model": {
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 2
+      }
+    }
+  },
+  "Lorenz Attractor": {
+    "crashes": 0,
+    "blanks": 0,
+    "total": 0,
+    "runs": 2,
+    "deletions": 0,
+    "last_fail": null,
+    "by_model": {
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 2
+      }
+    }
+  },
+  "Cube Twister": {
+    "crashes": 0,
+    "blanks": 1,
+    "total": 1,
+    "runs": 1,
+    "deletions": 0,
+    "last_fail": "2026-09-05T12:55:46.811193",
+    "by_model": {
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
+        "runs": 1
+      }
+    }
+  },
+  "Barnsley Fern": {
+    "crashes": 0,
+    "blanks": 0,
+    "total": 0,
     "runs": 1,
     "deletions": 0,
     "last_fail": null,
@@ -191,7 +239,103 @@
       }
     }
   },
-  "Lorenz Attractor": {
+  "Audio-Reactive Bars": {
+    "crashes": 0,
+    "blanks": 0,
+    "total": 0,
+    "runs": 1,
+    "deletions": 0,
+    "last_fail": null,
+    "by_model": {
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      }
+    }
+  },
+  "Fire": {
+    "crashes": 0,
+    "blanks": 0,
+    "total": 0,
+    "runs": 1,
+    "deletions": 0,
+    "last_fail": null,
+    "by_model": {
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      }
+    }
+  },
+  "Iridescent Oil Slick": {
+    "crashes": 0,
+    "blanks": 0,
+    "total": 0,
+    "runs": 1,
+    "deletions": 0,
+    "last_fail": null,
+    "by_model": {
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      }
+    }
+  },
+  "Flurry Plasma Tendrils": {
+    "crashes": 0,
+    "blanks": 0,
+    "total": 0,
+    "runs": 1,
+    "deletions": 0,
+    "last_fail": null,
+    "by_model": {
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      }
+    }
+  },
+  "Kaleidoscope": {
+    "crashes": 0,
+    "blanks": 0,
+    "total": 0,
+    "runs": 1,
+    "deletions": 0,
+    "last_fail": null,
+    "by_model": {
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      }
+    }
+  },
+  "Boot-POST Parade": {
+    "crashes": 0,
+    "blanks": 0,
+    "total": 0,
+    "runs": 1,
+    "deletions": 0,
+    "last_fail": null,
+    "by_model": {
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      }
+    }
+  },
+  "Vector Field Streamlines": {
     "crashes": 0,
     "blanks": 0,
     "total": 0,

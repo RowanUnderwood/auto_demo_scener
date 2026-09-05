@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>BOOT</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #000; overflow: hidden; }
+#gl { position: fixed; top: 0; left: 0; width: 100%; height: 100%; }
+#overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<canvas id="overlay"></canvas>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const lines = [
+`BIOS v4.2.1 (c) 1987-2087 NEXUS SYSTEMS`,
+`CPU: 8086 @ 4.77 MHz ... OK`,
+`FPU: 8087 CO-PROCESSOR ... DETECTED`,
+`MEMORY TEST: 65536 OK`,
+`MEMORY TEST: 65536-131072 OK`,
+`MEMORY TEST: 131072-262144 OK`,
+`INITIALIZING IRQ HANDLERS`,
+`IRQ 0: TIMER ... OK`,
+`IRQ 1: KEYBOARD ... OK`,
+`IRQ 2: DMA CASCADE ... OK`,
+`IRQ 3: COM1 ... OK`,
+`IRQ 4: COM2 ... OK`,
+`IRQ 5: LPT2 ... OK`,
+`IRQ 6: LPT1 ... OK`,
+`IRQ 7: DMA PAGE FLIP ... OK`,
+`DETECTING DISPLAY ADAPTER`,
+`ADAPTER: EGA 640x480 ... OK`,
+`LOADING VIDEO BIOS ... OK`,
+`MOUNTING /dev/reality ... OK`,
+`CALIBRATING DREAM BUFFER`,
+`DREAM BUFFER: 0x7F3A2 ... STABLE`,
+`INJECTING VIBES...`,
+`VIBES: 100% ... NOMINAL`,
+`SPAWNING DAEMON: n0stalgia`,
+`DAEMON n0stalgia: PID 0x2A ... RUNNING`,
+`LOADING MODULE: feelgood.ko`,
+`MODULE feelgood: DEPENDENCIES SATISFIED`,
+`CHECKING FOR PARALLEL UNIVERSES`,
+`PARALLEL UNIVERSES: 0 FOUND ... OK`,
+`MOUNTING /tmp/excuses ... OK`,
+`SYNCHRONIZING CRYSTAL OSCILLATOR`,
+`OSCILLATOR: 14.7456 MHz ... DRIFT 0.003%`,
+`LOADING FONT: COMIC_SANS_1998.FON`,
+`FONT LOADED ... EYEBROWS FURROWED`,
+`DETECTING MOUSE ... NOT FOUND`,
+`DETECTING MOUSE ... STILL NOT FOUND`,
+`DETECTING MOUSE ... ACCEPTING DOUBT`,
+`INITIALIZING SKEPTICISM ENGINE`,
+`SKEPTICISM: CALIBRATED TO 87%`,
+`LOADING MODULE: existential.ko`,
+`MODULE existential: WARNINGS SUPPRESSED`,
+`FLUSHING CACHE OF REGRETS`,
+`CACHE FLUSHED ... 0 BYTES RECOVERED`,
+`FINAL SYSTEM CHECK`,
+`ALL SYSTEMS NOMINAL`,
+`READY.`
+];
+
+// Three.js plasma background
+const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('gl'), antialias: false });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+const scene = new THREE.Scene();
+const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+const plasmaMat = new THREE.ShaderMaterial({
+  uniforms: {
+    uTime: { value: 0 },
+    uRes: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform float uTime;
+    uniform vec2 uRes;
+    varying vec2 vUv;
+
+    float hash(vec2 p) {
+      return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+    }
+
+    void main() {
+      float t = uTime * 0.2;
+      vec2 uv = vUv * 5.0;
+      vec2 aspect = vec2(uRes.x / uRes.y, 1.0);
+      uv *= aspect;
+
+      float v = 0.0;
+      v += sin(uv.x * 0.8 + t);
+      v += sin(uv.y * 0.6 + t * 0.8);
+      v += sin((uv.x + uv.y) * 0.5 + t * 0.6);
+      v += sin(length(uv - vec2(2.5, 1.5)) * 1.2 + t * 0.4);
+      v += sin(uv.x * 0.3 - uv.y * 0.4 + t * 0.7);
+      v *= 0.2;
+
+      // Color palette: deep green to cyan with subtle blue
+      vec3 green = vec3(0.05, 0.35, 0.12);
+      vec3 cyan = vec3(0.02, 0.25, 0.28);
+      vec3 dark = vec3(0.01, 0.04, 0.02);
+
+      float mixFactor = v * 0.5 + 0.5;
+      vec3 col = mix(dark, green, clamp(mixFactor, 0.0, 1.0));
+      col = mix(col, cyan, clamp(v * 0.3 + 0.2, 0.0, 0.5));
+
+      // Add subtle radial glow in center
+      vec2 center = vUv - 0.5;
+      float dist = length(center);
+      float glow = exp(-dist * 3.0) * 0.15;
+      col += vec3(0.02, glow * 0.8, glow * 0.3);
+
+      // Scanlines
+      float scanline = sin(vUv.y * uRes.y * 1.5) * 0.03 + 0.97;
+      col *= scanline;
+
+      // Vignette
+      float vig = 1.0 - dist * 0.8;
+      vig = clamp(vig, 0.0, 1.0);
+      col *= vig * vig;
+
+      // Subtle noise
+      float noise = hash(vUv * uRes + uTime) * 0.015;
+      col += noise;
+
+      // CRT flicker
+      float flicker = 0.98 + 0.02 * sin(uTime * 30.0) * sin(uTime * 17.0);
+      col *= flicker;
+
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `
+});
+
+const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), plasmaMat);
+scene.add(quad);
+
+// 2D canvas overlay
+const overlay = document.getElementById('overlay');
+const octx = overlay.getContext('2d');
+overlay.width = window.innerWidth;
+overlay.height = window.innerHeight;
+
+const fontSize = 15;
+const lineHeight = 22;
+const padX = 24;
+const padY = 24;
+const font = `${fontSize}px "Courier New", monospace`;
+
+let currentLine = 0;
+let currentChar = 0;
+let done = false;
+let blinkOn = true;
+let startTime = 0;
+
+function resize() {
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  plasmaMat.uniforms.uRes.value.set(window.innerWidth, window.innerHeight);
+  overlay.width = window.innerWidth;
+  overlay.height = window.innerHeight;
+  drawFrame();
+}
+
+window.addEventListener('resize', resize);
+
+function drawFrame() {
+  octx.clearRect(0, 0, overlay.width, overlay.height);
+  octx.font = font;
+  octx.textBaseline = 'top';
+
+  // Draw completed lines with glow
+  for (let i = 0; i < currentLine; i++) {
+    // Glow layer
+    octx.shadowColor = 'rgba(50, 255, 100, 0.4)';
+    octx.shadowBlur = 8;
+    octx.fillStyle = 'rgba(50, 255, 100, 0.9)';
+    octx.fillText(lines[i], padX, padY + i * lineHeight);
+    octx.shadowBlur = 0;
+  }
+
+  // Draw current line (partial)
+  if (currentLine < lines.length) {
+    const partial = lines[currentLine].substring(0, currentChar);
+    octx.shadowColor = 'rgba(50, 255, 100, 0.5)';
+    octx.shadowBlur = 10;
+    octx.fillStyle = '#44ff88';
+    octx.fillText(partial, padX, padY + currentLine * lineHeight);
+    octx.shadowBlur = 0;
+
+    // Cursor on current line
+    if (!done) {
+      const cursorX = padX + octx.measureText(partial).width;
+      const cursorY = padY + currentLine * lineHeight;
+      if (blinkOn) {
+        octx.shadowColor = 'rgba(50, 255, 100, 0.8)';
+        octx.shadowBlur = 6;
+        octx.fillStyle = '#66ffaa';
+        octx.fillRect(cursorX + 2, cursorY + 1, fontSize * 0.55, fontSize - 2);
+        octx.shadowBlur = 0;
+      }
+    }
+  }
+
+  // Blinking cursor after done
+  if (done) {
+    const lastLine = lines[lines.length - 1];
+    const cursorX = padX + octx.measureText(lastLine).width + 4;
+    const cursorY = padY + (lines.length - 1) * lineHeight;
+    if (blinkOn) {
+      octx.shadowColor = 'rgba(50, 255, 100, 0.8)';
+      octx.shadowBlur = 8;
+      octx.fillStyle = '#66ffaa';
+      octx.fillRect(cursorX, cursorY + 1, fontSize * 0.55, fontSize - 2);
+      octx.shadowBlur = 0;
+    }
+  }
+}
+
+function typeNext() {
+  if (done) return;
+
+  if (currentChar < lines[currentLine].length) {
+    currentChar++;
+    drawFrame();
+    const speed = 18 + Math.random() * 12;
+    setTimeout(typeNext, speed);
+  } else {
+    currentLine++;
+    currentChar = 0;
+    if (currentLine >= lines.length) {
+      done = true;
+      drawFrame();
+    } else {
+      drawFrame();
+      const linePause = 50 + Math.random() * 80;
+      setTimeout(typeNext, linePause);
+    }
+  }
+}
+
+// Blink loop
+setInterval(() => {
+  blinkOn = !blinkOn;
+  drawFrame();
+}, 500);
+
+// Animation loop for plasma
+const clock = new THREE.Clock();
+function animate() {
+  requestAnimationFrame(animate);
+  plasmaMat.uniforms.uTime.value = clock.getElapsedTime();
+  renderer.render(scene, camera);
+}
+
+animate();
+setTimeout(typeNext, 800);
+</script>
+</body>
+</html>

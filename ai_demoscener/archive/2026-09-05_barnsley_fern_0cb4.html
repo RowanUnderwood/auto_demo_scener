@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Barnsley Fern – Slow Drift</title>
+<style>
+  html, body { margin: 0; overflow: hidden; background: #0a0a0a; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script>
+(function () {
+  const N = 100000;
+  const DRIFT_INTERVAL = 4000; // ms
+
+  // Barnsley fern IFS coefficients (mutable)
+  // Each map: [a, b, c, d, e, f] -> x' = a*x + b*y + e, y' = c*x + d*y + f
+  const maps = [
+    { a: 0.0,  b: 0.0,   c: 0.0,   d: 0.16,  e: 0.0,   f: 0.0,   p: 0.01 },
+    { a: 0.85, b: 0.04,  c: -0.05, d: 0.85,  e: 0.0,   f: 1.6,   p: 0.85 },
+    { a: 0.2,  b: -0.26, c: 0.23,  d: 0.22,  e: 0.0,   f: 1.6,   p: 0.07 },
+    { a: -0.15,b: 0.28,  c: 0.26,  d: 0.24,  e: 0.0,   f: 0.44,  p: 0.07 }
+  ];
+
+  const positions = new Float32Array(N * 3);
+  const colors = new Float32Array(N * 3);
+
+  function generateFern() {
+    let x = 0, y = 0;
+    for (let i = 0; i < N; i++) {
+      const r = Math.random();
+      let m;
+      if (r < 0.01) m = maps[0];
+      else if (r < 0.86) m = maps[1];
+      else if (r < 0.93) m = maps[2];
+      else m = maps[3];
+
+      const nx = m.a * x + m.b * y + m.e;
+      const ny = m.c * x + m.d * y + m.f;
+      x = nx;
+      y = ny;
+
+      const idx = i * 3;
+      positions[idx]     = x;
+      positions[idx + 1] = y;
+      positions[idx + 2] = 0;
+
+      // Slight per-axis color shift: base green with x/y modulation
+      const g = 0.55 + 0.15 * (y / 9.5);
+      const cr = 0.1 + 0.08 * Math.abs(x) / 2.5;
+      const b = 0.05 + 0.05 * (y / 9.5);
+      colors[idx]     = cr;
+      colors[idx + 1] = g;
+      colors[idx + 2] = b;
+    }
+  }
+
+  generateFern();
+
+  // --- Three.js setup ---
+  const scene = new THREE.Scene();
+  const camera = new THREE.OrthographicCamera(-5, 5, 3.2, -3.2, 0.1, 100);
+  camera.position.set(0, 0, 10);
+  camera.lookAt(0, 0, 0);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  document.body.appendChild(renderer.domElement);
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+  const material = new THREE.PointsMaterial({
+    size: 0.025,
+    vertexColors: true,
+    sizeAttenuation: false
+  });
+
+  const points = new THREE.Points(geometry, material);
+  // Center the fern vertically (it spans roughly y: 0 to 9.5)
+  points.position.y = -4.75;
+  scene.add(points);
+
+  // --- Slow drift: nudge one coefficient every DRIFT_INTERVAL ms ---
+  function nudgeCoefficient() {
+    const mapIdx = Math.floor(Math.random() * 4);
+    const keys = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const key = keys[Math.floor(Math.random() * keys.length)];
+    const amount = (Math.random() - 0.5) * 0.06;
+    maps[mapIdx][key] += amount;
+
+    // Clamp coefficients to avoid divergence
+    for (let i = 0; i < 4; i++) {
+      for (const k of keys) {
+        maps[i][k] = Math.max(-1.5, Math.min(1.5, maps[i][k]));
+      }
+    }
+
+    generateFern();
+    geometry.attributes.position.needsUpdate = true;
+    geometry.attributes.color.needsUpdate = true;
+  }
+
+  setInterval(nudgeCoefficient, DRIFT_INTERVAL);
+
+  // --- Continuous slow rotation ---
+  const clock = new THREE.Clock();
+
+  function animate() {
+    requestAnimationFrame(animate);
+    const t = clock.getElapsedTime();
+    points.rotation.z = Math.sin(t * 0.15) * 0.08;
+    points.rotation.y = Math.sin(t * 0.1) * 0.12;
+    renderer.render(scene, camera);
+  }
+
+  animate();
+
+  window.addEventListener('resize', () => {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    const aspect = w / h;
+    camera.left = -5 * aspect;
+    camera.right = 5 * aspect;
+    camera.top = 5;
+    camera.bottom = -5;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w, h);
+  });
+})();
+</script>
+</body>
+</html>

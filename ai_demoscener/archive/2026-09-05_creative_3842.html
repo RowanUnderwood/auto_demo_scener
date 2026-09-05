@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body { margin: 0; overflow: hidden; background: #000; }
+  canvas { display: block; }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+  }
+}
+</script>
+</head>
+<body>
+<script type="module">
+import * as THREE from 'three';
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 300);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setClearColor(0x020210);
+document.body.appendChild(renderer.domElement);
+
+const R = 8, r = 3;
+const NUM_TOR = 24, NUM_POL = 24;
+const SEGS = 160;
+const PPT = 30;
+
+function torusPt(u, v) {
+  return new THREE.Vector3(
+    (R + r * Math.cos(v)) * Math.cos(u),
+    r * Math.sin(v),
+    (R + r * Math.cos(v)) * Math.sin(u)
+  );
+}
+
+function torusNrm(u, v) {
+  return new THREE.Vector3(
+    Math.cos(v) * Math.cos(u),
+    Math.sin(v),
+    Math.cos(v) * Math.sin(u)
+  );
+}
+
+function displace(u, v, time, seed, type) {
+  const breathe = 1.0 + 0.18 * Math.sin(time * 0.4 + seed * 0.3);
+  let d = 0;
+  if (type === 'tor') {
+    d += Math.sin(NUM_POL * u + time * 1.2 + seed) * 0.22;
+  } else {
+    d += Math.sin(NUM_TOR * v + time * 1.2 + seed) * 0.22;
+  }
+  d += Math.sin(u * 2 + v * 3 + time * 0.9 + seed * 0.5) * 0.1;
+  d += Math.sin(v * 5 - u * 2 + time * 1.4 + seed) * 0.08;
+  return d * breathe;
+}
+
+const meshes = [];
+const materials = [];
+
+for (let m = 0; m < 3; m++) {
+  const seed = m * 2.71;
+  const type = m === 0 ? 'tor' : 'pol';
+  const positions = [];
+  const normals = [];
+  const indices = [];
+
+  for (let i = 0; i <= SEGS; i++) {
+    const u = (i / SEGS) * Math.PI * 2;
+    for (let j = 0; j <= PPT; j++) {
+      const v = (j / PPT) * Math.PI * 2;
+      const n = torusNrm(u, v);
+      const d = displace(u, v, 0, seed, type);
+      const p = torusPt(u, v);
+      p.addScaledVector(n, d);
+      positions.push(p.x, p.y, p.z);
+      const nn = torusNrm(u, v);
+      normals.push(nn.x, nn.y, nn.z);
+    }
+  }
+
+  for (let i = 0; i < SEGS; i++) {
+    for (let j = 0; j < PPT; j++) {
+      const a = i * (PPT + 1) + j;
+      const b = (i + 1) * (PPT + 1) + j;
+      const c = (i + 1) * (PPT + 1) + j + 1;
+      const d = i * (PPT + 1) + j + 1;
+      indices.push(a, b, d, b, c, d);
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  geo.setIndex(indices);
+
+  const mat = new THREE.MeshStandardMaterial({
+    color: new THREE.Color().setHSL(0.55 + m * 0.15, 0.7, 0.4),
+    metalness: 0.8,
+    roughness: 0.3,
+    side: THREE.DoubleSide
+  });
+  materials.push(mat);
+
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.userData = { seed, type };
+  scene.add(mesh);
+  meshes.push(mesh);
+}
+
+const ambient = new THREE.AmbientLight(0x222244, 0.5);
+scene.add(ambient);
+
+const light1 = new THREE.PointLight(0xffffff, 1.5, 100);
+light1.position.set(15, 15, 15);
+scene.add(light1);
+
+const light2 = new THREE.PointLight(0x4488ff, 1.0, 100);
+light2.position.set(-10, -10, 10);
+scene.add(light2);
+
+const light3 = new THREE.PointLight(0xff4488, 0.8, 100);
+light3.position.set(0, 15, -10);
+scene.add(light3);
+
+camera.position.set(0, 12, 25);
+camera.lookAt(0, 0, 0);
+
+const clock = new THREE.Clock();
+
+function updateGeometry(mesh, time) {
+  const { seed, type } = mesh.userData;
+  const pos = mesh.geometry.attributes.position;
+  const nrm = mesh.geometry.attributes.normal;
+  const arr = pos.array;
+  const nArr = nrm.array;
+
+  for (let i = 0; i <= SEGS; i++) {
+    const u = (i / SEGS) * Math.PI * 2;
+    for (let j = 0; j <= PPT; j++) {
+      const v = (j / PPT) * Math.PI * 2;
+      const idx = (i * (PPT + 1) + j) * 3;
+      const n = torusNrm(u, v);
+      const d = displace(u, v, time, seed, type);
+      const p = torusPt(u, v);
+      p.addScaledVector(n, d);
+      arr[idx] = p.x;
+      arr[idx + 1] = p.y;
+      arr[idx + 2] = p.z;
+      nArr[idx] = n.x;
+      nArr[idx + 1] = n.y;
+      nArr[idx + 2] = n.z;
+    }
+  }
+  pos.needsUpdate = true;
+  nrm.needsUpdate = true;
+  mesh.geometry.computeVertexNormals();
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+
+  for (let m = 0; m < meshes.length; m++) {
+    updateGeometry(meshes[m], t);
+    meshes[m].rotation.x = t * 0.15 + m * 0.5;
+    meshes[m].rotation.y = t * 0.1 + m * 0.3;
+    meshes[m].position.y = Math.sin(t * 0.3 + m * 2.1) * 1.5;
+  }
+
+  light1.position.x = Math.sin(t * 0.5) * 15;
+  light1.position.z = Math.cos(t * 0.5) * 15;
+  light2.position.x = Math.sin(t * 0.3 + 2) * 12;
+  light2.position.z = Math.cos(t * 0.3 + 2) * 12;
+
+  renderer.render(scene, camera);
+}
+
+animate();
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>
