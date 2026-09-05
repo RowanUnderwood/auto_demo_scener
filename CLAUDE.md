@@ -63,7 +63,7 @@ Orchestrator (daemon thread)
 | `config.py` | `load()` / `save()` with deep-merge defaults; atomic write |
 | `logging_setup.py` | Rotating file handler (5 MB × 5) + stdout |
 | `download_vendor.py` | One-shot script to fetch three.js into `static/three/` |
-| `prompts.csv` | 83 effect specs fed to LLM; columns: `Effect`, `Three.js prompt` |
+| `prompts.csv` | 83 effect specs fed to LLM; columns: `Effect`, `Three.js prompt`. Rewritten 2026-09-05 — see note under "Stats tracking" |
 | `archive/index.html` | Self-contained static archive player (no backend); reads `archive_index.json`; hostable on GitHub Pages |
 
 ### Validation flow (the tricky part)
@@ -134,6 +134,8 @@ In replay mode, `entry_model` from `archive_index.json` is passed directly to `_
 ```
 
 Keys: effect name (stock), `"creative"`, `"update"`. `record_run()` increments `runs`; `record_failure(effect, kind, model="")` increments `crashes` or `blanks` and `total`; `record_deletion(effect, model="")` increments `deletions`. All three update the `by_model` sub-dict.
+
+**2026-09-05 prompts.csv rewrite — benchmark discontinuity.** `prompts.csv` was substantially rewritten to add explicit setup/numerical detail (camera framing, robust smooth-min formulas, ping-pong render-target recipes, perf caps on per-frame loop counts) that weaker local models were getting wrong, while keeping aesthetic choices (palettes, exact shapes/patterns) open-ended. Pre-rewrite `prompt_stats.json` was snapshotted to `prompt_stats_pre_2026-09-05.json` and the live file was reset to `{}`. **Failure-rate numbers from before this date are not comparable to numbers from after it** — the prompt text an effect name refers to changed, so an "effect" in the old snapshot and the same-named effect going forward are different specs with different difficulty.
 
 ### Keyboard shortcuts (display page)
 
