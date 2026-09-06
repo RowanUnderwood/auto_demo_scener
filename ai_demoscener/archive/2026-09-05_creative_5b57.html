@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+body { margin: 0; overflow: hidden; background: #000; }
+canvas { display: block; }
+</style>
+</head>
+<body>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const scene = new THREE.Scene();
+
+const uniforms = {
+  uTime: { value: 0 },
+  uRes: { value: new THREE.Vector2(window.innerWidth * renderer.getPixelRatio(), window.innerHeight * renderer.getPixelRatio()) }
+};
+
+const material = new THREE.ShaderMaterial({
+  uniforms,
+  vertexShader: `
+    void main() {
+      gl_Position = vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    precision highp float;
+    uniform float uTime;
+    uniform vec2 uRes;
+
+    #define MAX_STEPS 96
+    #define MAX_DIST 30.0
+    #define SURF_DIST 0.0015
+
+    float sdSphere(vec3 p, float r) { return length(p) - r; }
+
+    float sdBox(vec3 p, vec3 b) {
+      vec3 q = abs(p) - b;
+      return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
+    }
+
+    float sdTorus(vec3 p, vec2 t) {
+      vec2 q = vec2(length(p.xz) - t.x, p.y);
+      return length(q) - t.y;
+    }
+
+    float sdOctahedron(vec3 p, float s) {
+      p = abs(p);
+      return (p.x + p.y + p.z - s) * 0.57735027;
+    }
+
+    float smin(float a, float b, float k) {
+      float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+      return mix(b, a, h) - k * h * (1.0 - h);
+    }
+
+    mat2 rot2(float a) {
+      float c = cos(a), s = sin(a);
+      return mat2(c, -s, s, c);
+    }
+
+    vec3 twist(vec3 p, float amt, float freq) {
+      float a = p.y * freq;
+      p.xz = rot2(a * amt) * p.xz;
+      return p;
+    }
+
+    float hash31(vec3 p) {
+      p = fract(p * 0.3183099 + vec3(0.1, 0.7, 0.3));
+      p += dot(p, p.yzx + 19.19);
+      return fract((p.x + p.y) * p.z);
+    }
+
+    float noise3(vec3 p) {
+      vec3 i = floor(p);
+      vec3 f = fract(p);
+      f = f * f * (3.0 - 2.0 * f);
+      float n000 = hash31(i);
+      float n100 = hash31(i + vec3(1,0,0));
+      float n010 = hash31(i + vec3(0,1,0));
+      float n110 = hash31(i + vec3(1,1,0));
+      float n001 = hash31(i + vec3(0,0,1));
+      float n101 = hash31(i + vec3(1,0,1));
+      float n011 = hash31(i + vec3(0,1,1));
+      float n111 = hash31(i + vec3(1,1,1));
+      return mix(
+        mix(mix(n000, n100, f.x), mix(n010, n110, f.x), f.y),
+        mix(mix(n001, n101, f.x), mix(n011, n111, f.x), f.y),
+        f.z
+      );
+    }
+
+    float fbm(vec3 p) {
+      float v = 0.0, a = 0.5;
+      for(int i = 0; i < 4; i++) {
+        v += a * noise3(p);
+        p = p * 2.13 + vec3(1.7);
+        a *= 0.5;
+      }
+      return v;
+    }
+
+    float map(vec3 p) {
+      float t = uTime * 0.25;
+
+      p.xz = rot2(t * 0.4 + 0.3 * sin(t * 0.2)) * p.xz;
+      p.xy = rot2(t * 0.25) * p.xy;
+      p.xz = rot2(t * 0.15) * p.xz;
+
+      p = twist(p, 0.4 + 0.25 * sin(t * 0.6), 1.2);
+
+      float melt = smoothstep(-0.5, -1.5, p.y);
+      p.y += melt * 0.4 * fbm(p * 2.0 + vec3(0.0, uTime * 0.3, 0.0));
+
+      float morph = t * 0.4;
+      float phase = mod(morph, 4.0);
+
+      float dIco = sdOctahedron(p, 1.1) + 0.12 * fbm(p * 3.0 + t * 0.5);
+      float dTorus = sdTorus(p, vec2(0.9, 0.35)) + 0.08 * fbm(p * 4.0 + t * 0.4);
+      float dSphere = sdSphere(p, 0.9 + 0.35 * fbm(p * 2.5 + t * 0.6));
+      float dBox = sdBox(p, vec3(0.65)) + 0.18 * fbm(p * 4.5 + t * 0.7);
+
+      float k = 0.8;
+      float d;
+      if(phase < 1.0) {
+        float f = smoothstep(0.0, 1.0, phase);
+        d = smin(dIco, dTorus, k * (0.5 + 0.5 * sin(3.14159 * phase)));
+      } else if(phase < 2.0) {
+        float f = smoothstep(0.0, 1.0, phase - 1.0);
+        d = smin(dTorus, dSphere, k * (0.5 + 0.5 * sin(3.14159 * (phase - 1.0))));
+      } else if(phase < 3.0) {
+        float f = smoothstep(0.0, 1.0, phase - 2.0);
+        d = smin(dSphere, dBox, k * (0.5 + 0.5 * sin(3.14159 * (phase - 2.0))));
+      } else {
+        float f = smoothstep(0.0, 1.0, phase - 3.0);
+        d = smin(dBox, dIco, k * (0.5 + 0.5 * sin(3.14159 * (phase - 3.0))));
+      }
+
+      vec3 sp = p - vec3(1.8 * cos(t * 0.8), 0.5 * sin(t * 1.1), 1.8 * sin(t * 0.8));
+      float dSat = sdSphere(sp, 0.2 + 0.08 * sin(t * 2.0));
+      d = smin(d, dSat, 0.5);
+
+      vec3 sp2 = p - vec3(1.5 * cos(t * 0.6 + 3.0), -0.4 * sin(t * 0.9 + 1.0), 1.5 * sin(t * 0.6 + 3.0));
+      float dSat2 = sdSphere(sp2, 0.15 + 0.06 * sin(t * 1.7 + 2.0));
+      d = smin(d, dSat2, 0.4);
+
+      return d;
+    }
+
+    vec3 calcNormal(vec3 p) {
+      const vec2 e = vec2(1.0, -1.0) * 0.001;
+      return normalize(
+        e.xyy * map(p + e.xyy) +
+        e.yyx * map(p + e.yyx) +
+        e.yxy * map(p + e.yxy) +
+        e.xxx * map(p + e.xxx)
+      );
+    }
+
+    vec3 palette(float t) {
+      return 0.5 + 0.5 * cos(6.28318 * (t + vec3(0.0, 0.33, 0.67)));
+    }
+
+    vec3 palette2(float t) {
+      return 0.5 + 0.5 * cos(6.28318 * (t + vec3(0.5, 0.2, 0.8)));
+    }
+
+    void main() {
+      vec2 uv = (gl_FragCoord.xy - 0.5 * uRes) / uRes.y;
+
+      vec3 ro = vec3(0.0, 0.3, 4.5);
+      vec3 rd = normalize(vec3(uv, -1.4));
+
+      float t = 0.0;
+      float d = 0.0;
+      bool hit = false;
+      for(int i = 0; i < MAX_STEPS; i++) {
+        vec3 p = ro + rd * t;
+        d = map(p);
+        if(d < SURF_DIST || t > MAX_DIST) {
+          if(d < SURF_DIST) hit = true;
+          break;
+        }
+        t += d * 0.75;
+      }
+
+      vec3 col;
+
+      if(hit) {
+        vec3 p = ro + rd * t;
+        vec3 n = calcNormal(p);
+
+        vec3 lightDir1 = normalize(vec3(1.0, 2.0, 0.5));
+        vec3 lightDir2 = normalize(vec3(-1.0, -0.5, 1.0));
+        float diff1 = max(dot(n, lightDir1), 0.0);
+        float diff2 = max(dot(n, lightDir2), 0.0);
+        float spec1 = pow(max(dot(reflect(rd, n), lightDir1), 0.0), 48.0);
+        float spec2 = pow(max(dot(reflect(rd, n), lightDir2), 0.0), 24.0);
+        float rim = pow(1.0 - max(dot(n, -rd), 0.0), 3.0);
+        float fresnel = pow(1.0 - max(dot(n, -rd), 0.0), 5.0);
+
+        float hueBase = 0.55 + 0.15 * sin(p.x * 1.5 + uTime * 0.3) + 0.1 * dot(n, lightDir1);
+        vec3 baseColor = palette(hueBase);
+        vec3 rimColor = palette2(hueBase + 0.3);
+
+        float coreGlow = exp(-length(p) * 1.8) * 0.6;
+        vec3 hotColor = vec3(1.0, 0.6, 0.2);
+
+        float caustic = pow(fbm(p * 5.0 + n * 3.0 + uTime * 0.4), 2.5) * 1.5;
+        vec3 causticColor = vec3(0.3, 0.9, 1.0);
+
+        float flow = sin(p.y * 12.0 + p.x * 8.0 + uTime * 2.0 + fbm(p * 3.0) * 6.0);
+        float flowLine = smoothstep(0.95, 1.0, flow) * 0.4;
+
+        col = baseColor * (0.25 + 0.6 * diff1 + 0.2 * diff2)
+            + vec3(1.0) * spec1 * 0.9
+            + rimColor * spec2 * 0.4
+            + rimColor * rim * 0.5
+            + baseColor * fresnel * 0.7
+            + hotColor * coreGlow
+            + causticColor * caustic * 0.35
+            + vec3(0.5, 1.0, 1.0) * flowLine;
+
+        float ao = 1.0 - 0.5 * smoothstep(0.0, 0.5, map(p + n * 0.1));
+        col *= 0.6 + 0.4 * ao;
+
+      } else {
+        vec3 bgBase = vec3(0.01, 0.005, 0.03);
+
+        vec3 nebP = vec3(uv * 2.0, 0.0);
+        float neb1 = fbm(vec3(nebP.xy * 1.5, uTime * 0.05));
+        float neb2 = fbm(vec3(nebP.xy * 3.0 + 5.0, uTime * 0.03));
+        vec3 nebula = vec3(0.1, 0.02, 0.2) * neb1 * 0.8
+                    + vec3(0.0, 0.08, 0.15) * neb2 * 0.6;
+
+        vec2 starGrid = uv * 40.0;
+        vec2 starId = floor(starGrid);
+        float starHash = hash31(vec3(starId, 7.0));
+        float starBright = pow(starHash, 40.0) * step(0.97, hash31(vec3(starId, 13.0)));
+        vec2 starCenter = (starId + 0.5) / 40.0;
+        float starDist = length(uv - starCenter) * 40.0;
+        float star = starBright * exp(-starDist * starDist * 8.0) * 2.0;
+
+        col = bgBase + nebula + vec3(0.7, 0.8, 1.0) * star;
+      }
+
+      float vig = 1.0 - 0.35 * pow(length(uv * 0.65), 2.0);
+      col *= vig;
+
+      float ca = 0.002 * length(uv);
+      col.r *= 1.0 + ca;
+      col.b *= 1.0 - ca;
+
+      col = col / (1.0 + col * 0.8);
+      col = pow(col, vec3(0.85));
+
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `
+});
+
+const geometry = new THREE.PlaneGeometry(2, 2);
+const mesh = new THREE.Mesh(geometry, material);
+scene.add(mesh);
+
+function animate() {
+  requestAnimationFrame(animate);
+  uniforms.uTime.value = performance.now() * 0.001;
+  renderer.render(scene, camera);
+}
+
+window.addEventListener('resize', () => {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  renderer.setSize(w, h);
+  const pr = renderer.getPixelRatio();
+  uniforms.uRes.value.set(w * pr, h * pr);
+});
+
+animate();
+</script>
+</body>
+</html>

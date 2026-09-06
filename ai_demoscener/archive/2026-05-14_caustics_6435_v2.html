@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Magma Voronoi</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { overflow: hidden; background: #f0e8d8; }
+canvas { display: block; width: 100vw; height: 100vh; }
+</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const scene = new THREE.Scene();
+const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+const vertexShader = `
+varying vec2 v_uv;
+void main() {
+    v_uv = uv;
+    gl_Position = vec4(position, 1.0);
+}`;
+
+const fragmentShader = `
+precision highp float;
+
+uniform float u_time;
+uniform vec2 u_res;
+varying vec2 v_uv;
+
+float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+
+float vnoise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(
+        mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
+        mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x),
+        f.y
+    );
+}
+
+float fbm(vec2 p) {
+    float v = 0.0;
+    float a = 0.5;
+    for (int i = 0; i < 4; i++) {
+        v += a * vnoise(p);
+        p = p * 2.1 + vec2(13.7, 7.3);
+        a *= 0.5;
+    }
+    return v;
+}
+
+struct VoronoiResult {
+    float f1;
+    float f2;
+    vec2 id;
+    vec2 pt;
+};
+
+VoronoiResult voronoi(vec2 p, float seed) {
+    vec2 base = floor(p);
+    vec2 f = fract(p);
+    float f1 = 1.0;
+    float f2 = 1.0;
+    vec2 id;
+    vec2 pt;
+
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+            vec2 g = vec2(float(x), float(y));
+            vec2 cell = base + g;
+            float h = hash(cell + seed);
+            float h2 = hash(cell + seed + 7.31);
+            vec2 cpt = cell + vec2(h, h2);
+            
+            float t = u_time * 0.12;
+            cpt += 0.25 * vec2(
+                sin(cell.y * 2.3 + t + seed * 0.1),
+                cos(cell.x * 1.9 - t * 0.7 + seed * 0.2)
+            );
+            
+            float d = length(cpt - p);
+            if (d < f1) {
+                f2 = f1;
+                f1 = d;
+                id = cell;
+                pt = cpt;
+            } else if (d < f2) {
+                f2 = d;
+            }
+        }
+    }
+    return VoronoiResult(f1, f2, id, pt);
+}
+
+void main() {
+    vec2 uv = v_uv;
+    float aspect = u_res.x / u_res.y;
+    vec2 uvA = vec2(uv.x * aspect, uv.y);
+    
+    // Slow organic drift / camera pan
+    float t = u_time * 0.02;
+    vec2 drift = vec2(
+        sin(t * 0.7) * 0.03 + t * 0.005,
+        cos(t * 0.5) * 0.02 - t * 0.003
+    );
+    
+    // Organic UV distortion via fbm
+    float wt = u_time * 0.06;
+    vec2 warp = vec2(
+        fbm(uvA * 2.0 + wt + vec2(0.0, 13.0)),
+        fbm(uvA * 2.0 - wt * 0.6 + vec2(7.0, 0.0))
+    ) - 0.5;
+    
+    vec2 puv = uvA + warp * 0.12 + drift;
+    
+    // Accumulate heat from 3 layers
+    float heat = 0.0;
+    float crack = 0.0;
+    
+    // Layer 1 — large cells
+    {
+        vec2 p = puv * 3.5;
+        VoronoiResult v = voronoi(p, 0.0);
+        float edge = v.f2 - v.f1;
+        // Heat blob at cell center (high where f1 is small)
+        float blob = 1.0 - smoothstep(0.0, 0.45, v.f1);
+        blob = blob * blob * (3.0 - 2.0 * blob); // smooth
+        heat += blob * 0.55;
+        crack += smoothstep(0.05, 0.0, edge) * 0.5;
+    }
+    
+    // Layer 2 — medium cells
+    {
+        vec2 p = puv * 6.5 + vec2(5.0, 3.0);
+        VoronoiResult v = voronoi(p, 31.7);
+        float edge = v.f2 - v.f1;
+        float blob = 1.0 - smoothstep(0.0, 0.3, v.f1);
+        blob = blob * blob;
+        heat += blob * 0.35;
+        crack += smoothstep(0.04, 0.0, edge) * 0.35;
+    }
+    
+    // Layer 3 — fine cells
+    {
+        vec2 p = puv * 11.0 + vec2(11.0, 7.0);
+        VoronoiResult v = voronoi(p, 77.3);
+        float edge = v.f2 - v.f1;
+        float blob = 1.0 - smoothstep(0.0, 0.18, v.f1);
+        blob = blob * blob;
+        heat += blob * 0.2;
+        crack += smoothstep(0.03, 0.0, edge) * 0.25;
+    }
+    
+    heat = clamp(heat, 0.0, 1.0);
+    crack = clamp(crack, 0.0, 1.0);
+    
+    // Color palette — pale cream to amber to dark brown
+    vec3 cold   = vec3(0.94, 0.90, 0.78);   // pale cream/ivory
+    vec3 warm   = vec3(0.88, 0.72, 0.42);   // golden tan
+    vec3 amber  = vec3(0.82, 0.48, 0.10);   // amber orange
+    vec3 deep   = vec3(0.55, 0.25, 0.04);   // deep amber brown
+    vec3 dark   = vec3(0.30, 0.12, 0.02);   // dark brown center
+    
+    vec3 col = mix(cold, warm, smoothstep(0.0, 0.25, heat));
+    col = mix(col, amber, smoothstep(0.25, 0.5, heat));
+    col = mix(col, deep, smoothstep(0.5, 0.75, heat));
+    col = mix(col, dark, smoothstep(0.75, 1.0, heat));
+    
+    // Crack lines — thin dark brown
+    vec3 crackCol = vec3(0.12, 0.06, 0.02);
+    col = mix(col, crackCol, crack * 0.75);
+    
+    // Subtle warm glow at crack edges
+    float crackGlow = crack * (1.0 - crack) * 3.5;
+    col += vec3(0.5, 0.25, 0.05) * crackGlow * 0.15;
+    
+    // Very subtle pulsing
+    float pulse = 0.97 + 0.03 * sin(u_time * 0.3 + uv.x * 2.0 + uv.y * 1.5);
+    col *= pulse;
+    
+    // Film grain (subtle)
+    float grain = hash(uv * vec2(1920.0, 1080.0) + fract(u_time) * 100.0) - 0.5;
+    col += grain * 0.025;
+    
+    // Warm vignette
+    float vig = 1.0 - 0.45 * length(uv - 0.5);
+    vig = smoothstep(0.0, 1.0, vig);
+    col *= mix(vec3(0.95, 0.92, 0.88), vec3(1.0), vig);
+    col *= vig * 0.3 + 0.7;
+    
+    // Soft tone mapping to keep it in range
+    col = col / (1.0 + col * 0.3);
+    col = pow(col, vec3(0.95));
+    
+    gl_FragColor = vec4(col, 1.0);
+}`;
+
+const uniforms = {
+    u_time: { value: 0.0 },
+    u_res: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+};
+
+const geometry = new THREE.PlaneGeometry(2, 2);
+const material = new THREE.ShaderMaterial({
+    vertexShader,
+    fragmentShader,
+    uniforms
+});
+
+const mesh = new THREE.Mesh(geometry, material);
+scene.add(mesh);
+
+const clock = new THREE.Clock();
+
+function animate() {
+    requestAnimationFrame(animate);
+    uniforms.u_time.value = clock.getElapsedTime();
+    renderer.render(scene, camera);
+}
+
+animate();
+
+window.addEventListener('resize', () => {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    renderer.setSize(w, h);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    uniforms.u_res.value.set(w, h);
+});
+</script>
+</body>
+</html>

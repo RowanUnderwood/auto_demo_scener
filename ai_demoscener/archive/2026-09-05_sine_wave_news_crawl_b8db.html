@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>CYBERNETIC DISPATCH - BBS SCROLL</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const scrollText = `*** BREAKING NEWS BULLETIN ***
+*** CYBERNETIC DISPATCH - NODE 7 OF 7 ***
+*** TRANSMITTED: 03:47:12 AM EST ***
+*** SOURCE: UNKNOWN RELAY HUB ***
+*** PRIORITY: CRITICAL ***
+
+AT 02:15 THIS MORNING, A MYSTERIOUS
+SIGNAL WAS DETECTED BY THE GLOBAL
+BBS NETWORK. THE PULSE ORIGINATED
+FROM A COORDINATE THAT DOES NOT
+EXIST ON ANY KNOWN MAP. ANALYSTS
+AT THE CYBERNETIC RESEARCH INSTITUTE
+CONFIRMED THAT THE SIGNAL CONTAINS
+A COMPILED DEMO SCENE - 64K
+EXACTLY - THAT WHEN DECOMPRESSED
+REVEALS A MATH PROOF FOR FREE
+ENERGY HARBORING IN THE HARMONICS
+OF A MODULATED CARRIER WAVE.
+
+*** STAY TUNED ***
+
+MEANWHILE, THE MINISTRY OF
+CYBERNETIC AFFAIRS HAS ISSUED A
+CLASSIFIED MANDATE REQUIRING ALL
+HOMEBREW COMPUTERS WITH A 386 OR
+HIGHER TO REGISTER THEIR GPU
+DRIVER VERSIONS BY FRIDAY.
+CITIZENS WHO FAIL TO COMPLIY WILL
+FACE A FINE OF 200 CREDIT CHIPS
+OR 40 HOURS OF COMMUNITY SERVICE
+AT THE LOCAL MODULATOR PLANT.
+AN OFFICIAL STATED THAT THE NEW
+REGULATIONS ARE "SIMPLY A MATTER
+OF PUBLIC SAFETY" WHILE AVOIDING
+EYE CONTACT WITH THE CAMERAS.
+
+IN OTHER NEWS, THE DEMOSCENE
+COLLECTIVE "SINE WAVE SYNDICATE"
+HAS ANNOUNCED THEIR NEXT GROUP
+SHOW, TITLED "RECURSION: A
+MEDITATION ON INFINITE TILES."
+THE EVENT WILL BE STREAMED LIVE
+OVER THE LOCAL BBS AT 56K BAUD.
+EARLY PREVIEW FRAMES ALREADY
+SHOW AN IMPOSSIBLE NUMBER OF
+POLYGONS FOR THE ERA. CRITICS
+ARE CALLING IT "A BOLD STEP INTO
+THE UNKNOWN RENDERER." ONE ANALYST
+NOTED THAT THE SHADER CODE ALONE
+IS LONGER THAN THE SHOTIKI
+ENCYCLOPEDIA'S ENTRY ON GRADIENT
+MAPPING.
+
+*** UPDATE ***
+
+OUR CORRESPONDENT IN THE
+UNDERNET REPORTS THAT A RUMORED
+512K INTRO BY THE CREW "VOID
+MERCHANTS" HAS BEEN LEAKED ON A
+SHARED FLOPPY IN A VENDING MACHINE
+OUTSIDE THE CENTRAL TERMINAL.
+THE FILE IS NAMED "DO_NOT_RUN.BIN"
+AND ALLEGEDLY CONTAINS A REALTIME
+WATER SIMULATION USING ONLY THE
+SOUND BLASTER 16 FOR GEOMETRY.
+WE CANNOT VERIFY THIS CLAIM.
+HOWEVER, A WITNESS SWEARS THE
+FLOPPY HUMMED AT 440 HZ AND
+CAUSED THEIR NEIGHBOR'S CAT TO
+STARE AT THE WALL FOR SIX HOURS.
+
+*** STAY TUNED ***
+
+FINALLY, WE REMIND ALL LISTENERS
+THAT THE WEEKLY POLL IS NOW OPEN.
+THIS WEEK'S QUESTION: "IF YOUR
+HARD DRIVE CRASHED DURING A
+DEMO COMPILATION, WOULD YOU
+REBUILD FROM BACKUP OR JUST
+GIVE UP AND JOIN A MONASTERY?"
+SO FAR, 67% HAVE VOTED MONASTERY.
+THE REMAINING 33% CLAIM THEY
+ALWAYS KEEP A SPARE HDD IN A
+COOL, DRY PLACE, WHICH OUR
+FACT-CHECKERS GENTLY REMIND IS
+THE OPPOSITE OF WHERE YOU'D FIND
+ONE DURING A POWER SURGE.
+
+THIS HAS BEEN CYBERNETIC
+DISPATCH, YOUR TRUSTED SOURCE
+FOR NEWS FROM THE ELECTRONIC
+UNDERGROUND. WE WILL RETURN AT
+04:00 SHARP WITH MORE UPDATES.
+UNTIL THEN, KEEP YOUR SCANLINES
+ON AND YOUR EGO OFF.
+
+*** END OF BULLETIN ***
+*** NODE 7 OF 7 COMPLETE ***
+*** TRANSMISSION ENDS ***`;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 0, 5);
+
+const renderer = new THREE.WebGLRenderer({ antialias: false });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
+document.body.appendChild(renderer.domElement);
+
+// Canvas setup
+const canvasW = 4096;
+const canvasH = 1024;
+const canvas = document.createElement('canvas');
+canvas.width = canvasW;
+canvas.height = canvasH;
+const ctx = canvas.getContext('2d');
+
+function drawCanvas() {
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, canvasW, canvasH);
+
+    const fontSize = 42;
+    const lineSpacing = 52;
+    const padding = 40;
+
+    ctx.font = `bold ${fontSize}px "Courier New", monospace`;
+    ctx.textBaseline = 'top';
+
+    const lines = scrollText.split('\n');
+
+    for (let i = 0; i < lines.length; i++) {
+        const y = padding + i * lineSpacing;
+        if (y > canvasH - lineSpacing) break;
+
+        const line = lines[i].trim();
+        if (line.startsWith('***')) {
+            ctx.fillStyle = '#00ffcc';
+            ctx.shadowColor = '#00ffcc';
+            ctx.shadowBlur = 8;
+        } else {
+            ctx.fillStyle = '#ffffff';
+            ctx.shadowColor = '#4488ff';
+            ctx.shadowBlur = 4;
+        }
+        ctx.fillText(line, padding, y);
+    }
+
+    // Scanlines
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    for (let y = 0; y < canvasH; y += 4) {
+        ctx.fillRect(0, y, canvasW, 2);
+    }
+
+    // Border
+    ctx.strokeStyle = '#00ffcc';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(2, 2, canvasW - 4, canvasH - 4);
+}
+
+drawCanvas();
+
+const texture = new THREE.CanvasTexture(canvas);
+texture.wrapS = THREE.RepeatWrapping;
+texture.wrapT = THREE.ClampToEdgeWrapping;
+texture.magFilter = THREE.NearestFilter;
+texture.minFilter = THREE.NearestFilter;
+
+const planeW = 10;
+const planeH = 2.5;
+
+const geometry = new THREE.PlaneGeometry(planeW, planeH, 1, 200);
+
+const material = new THREE.ShaderMaterial({
+    uniforms: {
+        uTexture: { value: texture },
+        uTime: { value: 0 },
+        uOffset: { value: 0 }
+    },
+    vertexShader: `
+        uniform float uTime;
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            vec3 pos = position;
+            pos.y += 0.4 * sin(position.x * 0.5 + uTime * 2.0);
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+        }
+    `,
+    fragmentShader: `
+        uniform sampler2D uTexture;
+        uniform float uOffset;
+        varying vec2 vUv;
+        void main() {
+            vec2 adjustedUv = vUv;
+            adjustedUv.x = fract(adjustedUv.x + uOffset);
+            vec4 color = texture2D(uTexture, adjustedUv);
+            // Subtle CRT glow
+            float glow = 0.03;
+            vec3 finalColor = color.rgb + vec3(glow * sin(gl_FragCoord.y * 0.5));
+            gl_FragColor = vec4(finalColor, 1.0);
+        }
+    `,
+    side: THREE.DoubleSide
+});
+
+const mesh = new THREE.Mesh(geometry, material);
+scene.add(mesh);
+
+// Background grid for atmosphere
+const gridGeo = new THREE.PlaneGeometry(40, 40, 40, 40);
+const gridMat = new THREE.MeshBasicMaterial({
+    color: 0x001122,
+    wireframe: true,
+    transparent: true,
+    opacity: 0.3
+});
+const grid = new THREE.Mesh(gridGeo, gridMat);
+grid.position.z = -5;
+scene.add(grid);
+
+let scrollOffset = 0;
+const scrollSpeed = 0.0003;
+
+function animate() {
+    requestAnimationFrame(animate);
+
+    const time = performance.now() * 0.001;
+    scrollOffset -= scrollSpeed;
+
+    material.uniforms.uTime.value = time;
+    material.uniforms.uOffset.value = scrollOffset;
+
+    // Redraw canvas periodically (for the "needsUpdate" requirement)
+    drawCanvas();
+    texture.needsUpdate = true;
+
+    // Subtle grid animation
+    grid.rotation.x = Math.sin(time * 0.1) * 0.05;
+
+    renderer.render(scene, camera);
+}
+
+animate();
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Drifting Toasters</title>
+<style>
+  body { margin: 0; overflow: hidden; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0x8ec8e8, 18, 42);
+
+// Soft blue gradient background
+const bgCanvas = document.createElement('canvas');
+bgCanvas.width = 2;
+bgCanvas.height = 512;
+const bgCtx = bgCanvas.getContext('2d');
+const grad = bgCtx.createLinearGradient(0, 0, 0, 512);
+grad.addColorStop(0, '#c4e4f8');
+grad.addColorStop(0.3, '#9dd4f0');
+grad.addColorStop(0.7, '#78bce4');
+grad.addColorStop(1, '#5a9ec8');
+bgCtx.fillStyle = grad;
+bgCtx.fillRect(0, 0, 2, 512);
+const bgTexture = new THREE.CanvasTexture(bgCanvas);
+scene.background = bgTexture;
+
+const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 0, 16);
+camera.lookAt(0, 0, 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+document.body.appendChild(renderer.domElement);
+
+// Lights
+const ambient = new THREE.AmbientLight(0xffffff, 0.8);
+scene.add(ambient);
+
+const dirLight = new THREE.DirectionalLight(0xfff8f0, 1.2);
+dirLight.position.set(5, 8, 7);
+scene.add(dirLight);
+
+const rimLight = new THREE.DirectionalLight(0xaaddff, 0.6);
+rimLight.position.set(-4, -2, -5);
+scene.add(rimLight);
+
+const pointLight = new THREE.PointLight(0xffeedd, 0.5, 25);
+pointLight.position.set(3, 5, 6);
+scene.add(pointLight);
+
+const fillLight = new THREE.PointLight(0x88bbff, 0.3, 30);
+fillLight.position.set(-6, -4, 5);
+scene.add(fillLight);
+
+// Materials
+const bodyMat = new THREE.MeshStandardMaterial({ color: 0xd4d4dc, metalness: 0.85, roughness: 0.15 });
+const slotMat = new THREE.MeshStandardMaterial({ color: 0x1a1a22, metalness: 0.3, roughness: 0.7 });
+const wingMat = new THREE.MeshStandardMaterial({ color: 0xe8e8f0, metalness: 0.4, roughness: 0.3, side: THREE.DoubleSide, transparent: true, opacity: 0.9 });
+const toastMat = new THREE.MeshStandardMaterial({ color: 0xa0683a, roughness: 0.85, metalness: 0.0 });
+const toastDarkMat = new THREE.MeshStandardMaterial({ color: 0x704020, roughness: 1.0 });
+const leverMat = new THREE.MeshStandardMaterial({ color: 0x2a2a35, metalness: 0.6, roughness: 0.3 });
+
+function createToaster() {
+  const group = new THREE.Group();
+
+  // Body - more toaster shaped
+  const bodyGeo = new THREE.BoxGeometry(1.3, 1.1, 1.0, 2, 2, 2);
+  // Slightly taper the top
+  const posAttr = bodyGeo.attributes.position;
+  for (let i = 0; i < posAttr.count; i++) {
+    const y = posAttr.getY(i);
+    if (y > 0) {
+      posAttr.setX(i, posAttr.getX(i) * 0.85);
+      posAttr.setZ(i, posAttr.getZ(i) * 0.85);
+    }
+  }
+  bodyGeo.computeVertexNormals();
+  const body = new THREE.Mesh(bodyGeo, bodyMat);
+  body.position.y = 0;
+  group.add(body);
+
+  // Slot (top)
+  const slotGeo = new THREE.BoxGeometry(0.8, 0.12, 0.5);
+  const slot = new THREE.Mesh(slotGeo, slotMat);
+  slot.position.y = 0.58;
+  group.add(slot);
+
+  // Lever
+  const leverGeo = new THREE.BoxGeometry(0.08, 0.2, 0.08);
+  const lever = new THREE.Mesh(leverGeo, leverMat);
+  lever.position.set(0.65, -0.2, 0.52);
+  group.add(lever);
+
+  // Wings - more visible, slightly curved
+  const wingShape = new THREE.Shape();
+  wingShape.moveTo(0, 0);
+  wingShape.lineTo(0.9, 0.15);
+  wingShape.lineTo(1.1, 0.05);
+  wingShape.lineTo(0.95, -0.1);
+  wingShape.lineTo(0.3, -0.15);
+  wingShape.lineTo(0, -0.05);
+  const wingGeo = new THREE.ShapeGeometry(wingShape);
+
+  const wingL = new THREE.Mesh(wingGeo, wingMat);
+  wingL.position.set(-0.65, 0.1, 0);
+  wingL.rotation.y = Math.PI / 2;
+  wingL.rotation.x = 0.1;
+  group.add(wingL);
+
+  const wingR = new THREE.Mesh(wingGeo, wingMat);
+  wingR.position.set(0.65, 0.1, 0);
+  wingR.rotation.y = -Math.PI / 2;
+  wingR.rotation.x = -0.1;
+  wingR.scale.x = -1;
+  group.add(wingR);
+
+  return { group, wingL, wingR, phase: Math.random() * Math.PI * 2, isToaster: true };
+}
+
+function createToast() {
+  const group = new THREE.Group();
+  const toastGeo = new THREE.BoxGeometry(0.65, 0.45, 0.65);
+  const toast = new THREE.Mesh(toastGeo, toastMat);
+  group.add(toast);
+
+  // Darker top for the "crust" look
+  const topGeo = new THREE.BoxGeometry(0.6, 0.08, 0.6);
+  const top = new THREE.Mesh(topGeo, toastDarkMat);
+  top.position.y = 0.22;
+  group.add(top);
+
+  // Slightly darker center
+  const innerGeo = new THREE.BoxGeometry(0.4, 0.48, 0.4);
+  const inner = new THREE.Mesh(innerGeo, toastDarkMat);
+  inner.position.y = 0.02;
+  group.add(inner);
+
+  return { group, wingL: null, wingR: null, phase: Math.random() * Math.PI * 2, isToaster: false };
+}
+
+const SPAWN_X = 16;
+const SPAWN_Y = 12;
+const DESPAWN_X = -16;
+const DESPAWN_Y = -12;
+
+const objects = [];
+const NUM_TOASTERS = 22;
+const NUM_TOASTS = 6;
+
+for (let i = 0; i < NUM_TOASTERS; i++) {
+  const t = createToaster();
+  const spread = i / NUM_TOASTERS;
+  t.group.position.set(
+    SPAWN_X + (Math.random() - 0.5) * 10,
+    SPAWN_Y + (Math.random() - 0.5) * 10,
+    (Math.random() - 0.5) * 6
+  );
+  t.group.rotation.set(
+    (Math.random() - 0.5) * 0.3,
+    (Math.random() - 0.5) * 0.5,
+    (Math.random() - 0.5) * 0.2
+  );
+  const scale = 0.7 + Math.random() * 0.5;
+  t.group.scale.setScalar(scale);
+  t.speed = 0.9 + Math.random() * 0.7;
+  t.rotSpeed = { x: (Math.random() - 0.5) * 0.2, y: (Math.random() - 0.5) * 0.25, z: (Math.random() - 0.5) * 0.15 };
+  t.bobPhase = Math.random() * Math.PI * 2;
+  t.bobAmp = 0.3 + Math.random() * 0.5;
+  t.bobFreq = 0.5 + Math.random() * 0.4;
+  scene.add(t.group);
+  objects.push(t);
+}
+
+for (let i = 0; i < NUM_TOASTS; i++) {
+  const t = createToast();
+  t.group.position.set(
+    SPAWN_X + (Math.random() - 0.5) * 12,
+    SPAWN_Y + (Math.random() - 0.5) * 10,
+    (Math.random() - 0.5) * 5
+  );
+  t.group.rotation.set(
+    Math.random() * Math.PI,
+    Math.random() * Math.PI,
+    Math.random() * Math.PI
+  );
+  const scale = 0.8 + Math.random() * 0.4;
+  t.group.scale.setScalar(scale);
+  t.speed = 0.8 + Math.random() * 0.5;
+  t.rotSpeed = { x: (Math.random() - 0.5) * 0.4, y: (Math.random() - 0.5) * 0.4, z: (Math.random() - 0.5) * 0.3 };
+  t.bobPhase = Math.random() * Math.PI * 2;
+  t.bobAmp = 0.4 + Math.random() * 0.4;
+  t.bobFreq = 0.4 + Math.random() * 0.3;
+  scene.add(t.group);
+  objects.push(t);
+}
+
+function respawn(obj) {
+  obj.group.position.set(
+    SPAWN_X + (Math.random() - 0.5) * 10,
+    SPAWN_Y + (Math.random() - 0.5) * 10,
+    (Math.random() - 0.5) * 6
+  );
+}
+
+const clock = new THREE.Clock();
+const camBase = new THREE.Vector3(0, 0, 16);
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+  const dt = Math.min(clock.getDelta(), 0.05);
+
+  // Subtle camera drift
+  camera.position.x = camBase.x + Math.sin(t * 0.15) * 0.8;
+  camera.position.y = camBase.y + Math.cos(t * 0.1) * 0.5;
+  camera.lookAt(0, 0, 0);
+
+  for (const obj of objects) {
+    // Drift diagonally upper-right to lower-left with curve
+    const curveX = Math.sin(t * 0.3 + obj.phase) * 0.3;
+    obj.group.position.x -= obj.speed * 0.016 + curveX * 0.003;
+    obj.group.position.y -= obj.speed * 0.010;
+
+    // Vertical bobbing for organic feel
+    obj.group.position.y += Math.sin(t * obj.bobFreq + obj.bobPhase) * obj.bobAmp * 0.008;
+
+    // Slight z drift for depth feel
+    obj.group.position.z += Math.sin(t * 0.4 + obj.phase) * 0.003;
+
+    // Rotation
+    obj.group.rotation.x += obj.rotSpeed.x * 0.016;
+    obj.group.rotation.y += obj.rotSpeed.y * 0.016;
+    obj.group.rotation.z += obj.rotSpeed.z * 0.016;
+
+    // Wing flapping - more pronounced
+    if (obj.isToaster) {
+      const flapSpeed = 7 + Math.sin(obj.phase) * 2;
+      const flapAngle = Math.sin(t * flapSpeed + obj.phase) * 0.7;
+      obj.wingL.rotation.x = 0.1 + flapAngle;
+      obj.wingR.rotation.x = -0.1 - flapAngle;
+    }
+
+    // Respawn
+    if (obj.group.position.x < DESPAWN_X || obj.group.position.y < DESPAWN_Y) {
+      respawn(obj);
+    }
+  }
+
+  // Animate point light subtly
+  pointLight.intensity = 0.4 + Math.sin(t * 0.5) * 0.1;
+
+  renderer.render(scene, camera);
+}
+
+animate();
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>

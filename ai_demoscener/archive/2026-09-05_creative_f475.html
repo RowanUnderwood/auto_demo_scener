@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+*{margin:0;padding:0}body{overflow:hidden;background:#000}canvas{display:block}
+</style>
+</head>
+<body>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import {EffectComposer} from 'three/addons/postprocessing/EffectComposer.js';
+import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
+import {UnrealBloomPass} from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+const W=window.innerWidth,H=window.innerHeight;
+const scene=new THREE.Scene();
+const camera=new THREE.PerspectiveCamera(70,W/H,0.1,300);
+camera.position.set(0,0,55);
+
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(W,H);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.toneMapping=THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure=1.1;
+document.body.appendChild(renderer.domElement);
+
+const composer=new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene,camera));
+const bloom=new UnrealBloomPass(new THREE.Vector2(W,H),1.4,0.75,0.05);
+composer.addPass(bloom);
+
+// Background nebula sphere
+const bgGeo=new THREE.SphereGeometry(120,64,64);
+const bgMat=new THREE.ShaderMaterial({
+  side:THREE.BackSide,
+  uniforms:{uTime:{value:0}},
+  vertexShader:`varying vec3 vP;void main(){vP=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+  fragmentShader:`
+    uniform float uTime;varying vec3 vP;
+    float hash(vec3 p){return fract(sin(dot(p,vec3(127.1,311.7,74.7)))*43758.5453);}
+    float noise(vec3 p){vec3 i=floor(p);vec3 f=fract(p);f=f*f*(3.0-2.0*f);
+      return mix(mix(mix(hash(i),hash(i+vec3(1,0,0)),f.x),mix(hash(i+vec3(0,1,0)),hash(i+vec3(1,1,0)),f.x),f.y),
+                 mix(mix(hash(i+vec3(0,0,1)),hash(i+vec3(1,0,1)),f.x),mix(hash(i+vec3(0,1,1)),hash(i+vec3(1,1,1)),f.x),f.y),f.z);}
+    float fbm(vec3 p){float v=0.0;float a=0.5;for(int i=0;i<5;i++){v+=a*noise(p);p*=2.1;a*=0.48;}return v;}
+    void main(){
+      vec3 dir=normalize(vP);
+      vec3 p=dir*3.5;
+      float n=fbm(p+vec3(uTime*0.03,uTime*0.02,-uTime*0.01));
+      float n2=fbm(p*1.5+vec3(-uTime*0.02,uTime*0.04,0.0)+n*0.8);
+      vec3 deep=vec3(0.03,0.01,0.06);
+      vec3 mid=vec3(0.12,0.04,0.18);
+      vec3 bright=vec3(0.22,0.08,0.28);
+      vec3 magenta=vec3(0.18,0.05,0.22);
+      vec3 col=mix(deep,mid,smoothstep(0.3,0.7,n));
+      col=mix(col,bright,smoothstep(0.6,0.9,n)*0.6);
+      col=mix(col,magenta,n2*0.4);
+      // Add subtle warm accent
+      float warm=fbm(p*0.8+vec3(5.2,1.3,2.8));
+      col+=vec3(0.05,0.0,0.02)*smoothstep(0.5,0.8,warm)*0.5;
+      // Stars
+      vec3 sp=floor(dir*150.0);
+      float star=step(0.997,hash(sp));
+      float twinkle=0.5+0.5*sin(uTime*2.0+hash(sp+1.0)*20.0);
+      col+=star*(0.3+0.4*twinkle)*vec3(0.7,0.8,1.0);
+      // Vignette
+      float vig=1.0-dot(dir.xy,dir.xy)*0.3;
+      col*=vig;
+      gl_FragColor=vec4(col,1.0);
+    }`
+});
+scene.add(new THREE.Mesh(bgGeo,bgMat));
+
+// Node generation - golden spiral in 3D blob
+const NODE_COUNT=160;
+const nodes=[];
+const nodePhases=[];
+const goldenAngle=Math.PI*(3-Math.sqrt(5));
+for(let i=0;i<NODE_COUNT;i++){
+  const y=1-(i/(NODE_COUNT-1))*2;
+  const r=Math.sqrt(1-y*y);
+  const theta=goldenAngle*i;
+  const scale=16+Math.random()*10;
+  const x=Math.cos(theta)*r*scale;
+  const z=Math.sin(theta)*r*scale;
+  const yy=y*scale*(0.7+Math.random()*0.3);
+  nodes.push(new THREE.Vector3(x,yy,z));
+  nodePhases.push({x:Math.random()*Math.PI*2,y:Math.random()*Math.PI*2,z:Math.random()*Math.PI*2,amp:0.15+Math.random()*0.25,speed:0.3+Math.random()*0.4});
+}
+
+// Find nearest neighbors for connections
+const connections=[];
+const connSet=new Set();
+for(let i=0;i<NODE_COUNT;i++){
+  const dists=[];
+  for(let j=0;j<NODE_COUNT;j++){
+    if(i===j)continue;
+    const d=nodes[i].distanceToSquared(nodes[j]);
+    dists.push({j,d});
+  }
+  dists.sort((a,b)=>a.d-b.d);
+  for(let k=0;k<4;k++){
+    const j=dists[k].j;
+    const key=i<j?`${i}-${j}`:`${j}-${i}`;
+    if(!connSet.has(key)){
+      connSet.add(key);
+      connections.push([i,j]);
+    }
+  }
+}
+
+// Node mesh - instanced spheres
+const nodeGeo=new THREE.SphereGeometry(0.35,10,10);
+const nodeMat=new THREE.MeshBasicMaterial({color:0xffffff});
+const nodeMesh=new THREE.InstancedMesh(nodeGeo,nodeMat,NODE_COUNT);
+const dummy=new THREE.Object3D();
+for(let i=0;i<NODE_COUNT;i++){
+  dummy.position.copy(nodes[i]);
+  dummy.scale.setScalar(1);
+  dummy.updateMatrix();
+  nodeMesh.setMatrixAt(i,dummy.matrix);
+  const c=new THREE.Color(0.06,0.18,0.25);
+  nodeMesh.setColorAt(i,c);
+}
+scene.add(nodeMesh);
+
+// Connection lines
+const linePositions=new Float32Array(connections.length*6);
+const lineColors=new Float32Array(connections.length*6);
+for(let i=0;i<connections.length;i++){
+  const[a,b]=connections[i];
+  linePositions.set([nodes[a].x,nodes[a].y,nodes[a].z,nodes[b].x,nodes[b].y,nodes[b].z],i*6);
+  lineColors.set([0.04,0.12,0.18,0.04,0.12,0.18],i*6);
+}
+const lineGeo=new THREE.BufferGeometry();
+lineGeo.setAttribute('position',new THREE.BufferAttribute(linePositions,3));
+lineGeo.setAttribute('color',new THREE.BufferAttribute(lineColors,3));
+const lineMat=new THREE.LineBasicMaterial({vertexColors:true,transparent:true,opacity:0.7,blending:THREE.AdditiveBlending});
+const lineMesh=new THREE.LineSegments(lineGeo,lineMat);
+scene.add(lineMesh);
+
+// Central glow
+const glowCanvas=document.createElement('canvas');
+glowCanvas.width=256;glowCanvas.height=256;
+const gctx=glowCanvas.getContext('2d');
+const ggrad=gctx.createRadialGradient(128,128,0,128,128,128);
+ggrad.addColorStop(0,'rgba(0.15,0.4,0.6,0.15)');
+ggrad.addColorStop(0.4,'rgba(0.1,0.25,0.4,0.08)');
+ggrad.addColorStop(1,'rgba(0,0,0,0)');
+gctx.fillStyle=ggrad;gctx.fillRect(0,0,256,256);
+const glowTex=new THREE.CanvasTexture(glowCanvas);
+const glowSprite=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex,blending:THREE.AdditiveBlending,transparent:true,opacity:0.8}));
+glowSprite.scale.set(50,50,1);
+scene.add(glowSprite);
+
+// Pulse system - bright dots traveling along connections
+const PULSE_COUNT=40;
+const pulses=[];
+const pulseGeo=new THREE.SphereGeometry(0.25,8,8);
+const pulseMeshes=[];
+for(let i=0;i<PULSE_COUNT;i++){
+  const m=new THREE.Mesh(pulseGeo,new THREE.MeshBasicMaterial({color:0x00ffff,transparent:true,opacity:0}));
+  m.visible=false;
+  scene.add(m);
+  pulseMeshes.push(m);
+  pulses.push({active:false,t:0,speed:0.5+Math.random()*0.8,from:0,to:0});
+}
+
+function spawnPulse(nodeIdx){
+  const conns=connections.filter(c=>c[0]===nodeIdx||c[1]===nodeIdx);
+  if(conns.length===0)return;
+  const conn=conns[Math.floor(Math.random()*conns.length)];
+  const from=conn[0]===nodeIdx?conn[0]:conn[1];
+  const to=conn[0]===nodeIdx?conn[1]:conn[0];
+  const p=pulses.find(p=>!p.active);
+  if(!p)return;
+  p.active=true;p.t=0;p.speed=0.5+Math.random()*0.7;p.from=from;p.to=to;
+  const hue=0.45+Math.random()*0.25;
+  pulseMeshes[pulses.indexOf(p)].material.color.setHSL(hue,1,0.75);
+}
+
+// Spore particles with size variation
+const SPORE_COUNT=500;
+const sporePositions=new Float32Array(SPORE_COUNT*3);
+const sporeVelocities=new Float32Array(SPORE_COUNT*3);
+const sporeSizes=new Float32Array(SPORE_COUNT);
+for(let i=0;i<SPORE_COUNT;i++){
+  sporePositions[i*3]=(Math.random()-0.5)*70;
+  sporePositions[i*3+1]=(Math.random()-0.5)*50;
+  sporePositions[i*3+2]=(Math.random()-0.5)*70;
+  sporeVelocities[i*3]=(Math.random()-0.5)*0.015;
+  sporeVelocities[i*3+1]=(Math.random()-0.5)*0.012;
+  sporeVelocities[i*3+2]=(Math.random()-0.5)*0.015;
+  sporeSizes[i]=0.3+Math.random()*0.8;
+}
+const sporeGeo=new THREE.BufferGeometry();
+sporeGeo.setAttribute('position',new THREE.BufferAttribute(sporePositions,3));
+sporeGeo.setAttribute('size',new THREE.BufferAttribute(sporeSizes,1));
+const sporeCanvas=document.createElement('canvas');
+sporeCanvas.width=64;sporeCanvas.height=64;
+const sctx=sporeCanvas.getContext('2d');
+const grad=sctx.createRadialGradient(32,32,0,32,32,32);
+grad.addColorStop(0,'rgba(140,220,255,1.0)');
+grad.addColorStop(0.3,'rgba(100,180,255,0.6)');
+grad.addColorStop(1,'rgba(80,150,255,0)');
+sctx.fillStyle=grad;sctx.fillRect(0,0,64,64);
+const sporeTex=new THREE.CanvasTexture(sporeCanvas);
+const sporeMat=new THREE.PointsMaterial({
+  size:0.4,map:sporeTex,transparent:true,opacity:0.5,
+  blending:THREE.AdditiveBlending,depthWrite:false,sizeAttenuation:true
+});
+scene.add(new THREE.Points(sporeGeo,sporeMat));
+
+// Animation
+const clock=new THREE.Clock();
+let pulseTimer=0;
+const nodeGlow=new Float32Array(NODE_COUNT);
+
+function animate(){
+  requestAnimationFrame(animate);
+  const dt=Math.min(clock.getDelta(),0.05);
+  const t=clock.elapsedTime;
+
+  bgMat.uniforms.uTime.value=t;
+
+  // Breathing scale
+  const breath=1.0+Math.sin(t*0.35)*0.04+Math.sin(t*0.7)*0.015;
+
+  // Rotate the network with multi-axis organic motion
+  const rotY=t*0.06;
+  const rotX=Math.sin(t*0.04)*0.12;
+  const rotZ=Math.sin(t*0.03)*0.05;
+  const rotQ=new THREE.Quaternion().setFromEuler(new THREE.Euler(rotX,rotY,rotZ,'XYZ'));
+
+  // Update node positions with organic per-node sway
+  for(let i=0;i<NODE_COUNT;i++){
+    const ph=nodePhases[i];
+    const ox=Math.sin(t*ph.speed+ph.x)*ph.amp;
+    const oy=Math.sin(t*ph.speed*1.1+ph.y)*ph.amp;
+    const oz=Math.sin(t*ph.speed*0.9+ph.z)*ph.amp;
+    const v=new THREE.Vector3(
+      nodes[i].x+ox,
+      nodes[i].y+oy,
+      nodes[i].z+oz
+    ).multiplyScalar(breath).applyQuaternion(rotQ);
+    dummy.position.copy(v);
+    dummy.scale.setScalar(0.8+nodeGlow[i]*2.0);
+    dummy.updateMatrix();
+    nodeMesh.setMatrixAt(i,dummy.matrix);
+
+    // Decay glow
+    nodeGlow[i]*=0.96;
+
+    // Color by glow
+    const c=new THREE.Color(
+      0.06+nodeGlow[i]*0.15,
+      0.18+nodeGlow[i]*0.7,
+      0.25+nodeGlow[i]*0.65
+    );
+    nodeMesh.setColorAt(i,c);
+  }
+  nodeMesh.instanceMatrix.needsUpdate=true;
+  nodeMesh.instanceColor.needsUpdate=true;
+
+  // Update line positions
+  const posAttr=lineGeo.attributes.position;
+  const colAttr=lineGeo.attributes.color;
+  for(let i=0;i<connections.length;i++){
+    const[a,b]=connections[i];
+    const phA=nodePhases[a],phB=nodePhases[b];
+    const va=new THREE.Vector3(
+      nodes[a].x+Math.sin(t*phA.speed+phA.x)*phA.amp,
+      nodes[a].y+Math.sin(t*phA.speed*1.1+phA.y)*phA.amp,
+      nodes[a].z+Math.sin(t*phA.speed*0.9+phA.z)*phA.amp
+    ).multiplyScalar(breath).applyQuaternion(rotQ);
+    const vb=new THREE.Vector3(
+      nodes[b].x+Math.sin(t*phB.speed+phB.x)*phB.amp,
+      nodes[b].y+Math.sin(t*phB.speed*1.1+phB.y)*phB.amp,
+      nodes[b].z+Math.sin(t*phB.speed*0.9+phB.z)*phB.amp
+    ).multiplyScalar(breath).applyQuaternion(rotQ);
+    posAttr.setXYZ(i*2,va.x,va.y,va.z);
+    posAttr.setXYZ(i*2+1,vb.x,vb.y,vb.z);
+    const glowA=Math.min(nodeGlow[a]*2.5,1);
+    const glowB=Math.min(nodeGlow[b]*2.5,1);
+    const cA=new THREE.Color(0.04+glowA*0.6,0.12+glowA*0.8,0.18+glowA*0.9);
+    const cB=new THREE.Color(0.04+glowB*0.6,0.12+glowB*0.8,0.18+glowB*0.9);
+    colAttr.setXYZ(i*2,cA.r,cA.g,cA.b);
+    colAttr.setXYZ(i*2+1,cB.r,cB.g,cB.b);
+  }
+  posAttr.needsUpdate=true;
+  colAttr.needsUpdate=true;
+
+  // Update pulses
+  pulseTimer+=dt;
+  if(pulseTimer>0.12){
+    pulseTimer=0;
+    spawnPulse(Math.floor(Math.random()*NODE_COUNT));
+  }
+  for(let i=0;i<PULSE_COUNT;i++){
+    const p=pulses[i];
+    const mesh=pulseMeshes[i];
+    if(!p.active){mesh.visible=false;continue;}
+    p.t+=p.speed*dt;
+    if(p.t>=1){
+      p.active=false;
+      mesh.visible=false;
+      mesh.material.opacity=0;
+      nodeGlow[p.to]=Math.min(nodeGlow[p.to]+1.2,1.5);
+      if(Math.random()<0.55)spawnPulse(p.to);
+      continue;
+    }
+    const phA=nodePhases[p.from],phB=nodePhases[p.to];
+    const from=new THREE.Vector3(
+      nodes[p.from].x+Math.sin(t*phA.speed+phA.x)*phA.amp,
+      nodes[p.from].y+Math.sin(t*phA.speed*1.1+phA.y)*phA.amp,
+      nodes[p.from].z+Math.sin(t*phA.speed*0.9+phA.z)*phA.amp
+    ).multiplyScalar(breath).applyQuaternion(rotQ);
+    const to=new THREE.Vector3(
+      nodes[p.to].x+Math.sin(t*phB.speed+phB.x)*phB.amp,
+      nodes[p.to].y+Math.sin(t*phB.speed*1.1+phB.y)*phB.amp,
+      nodes[p.to].z+Math.sin(t*phB.speed*0.9+phB.z)*phB.amp
+    ).multiplyScalar(breath).applyQuaternion(rotQ);
+    mesh.position.lerpVectors(from,to,p.t);
+    mesh.visible=true;
+    const fade=Math.sin(p.t*Math.PI);
+    mesh.material.opacity=fade;
+    mesh.scale.setScalar(0.4+fade*1.0);
+  }
+
+  // Update spores
+  const sPos=sporeGeo.attributes.position;
+  for(let i=0;i<SPORE_COUNT;i++){
+    sporePositions[i*3]+=sporeVelocities[i*3];
+    sporePositions[i*3+1]+=sporeVelocities[i*3+1];
+    sporePositions[i*3+2]+=sporeVelocities[i*3+2];
+    if(sporePositions[i*3]>40)sporePositions[i*3]=-40;
+    if(sporePositions[i*3]<-40)sporePositions[i*3]=40;
+    if(sporePositions[i*3+1]>30)sporePositions[i*3+1]=-30;
+    if(sporePositions[i*3+1]<-30)sporePositions[i*3+1]=30;
+    if(sporePositions[i*3+2]>40)sporePositions[i*3+2]=-40;
+    if(sporePositions[i*3+2]<-40)sporePositions[i*3+2]=40;
+  }
+  sPos.needsUpdate=true;
+
+  // Central glow pulse
+  const glowPulse=0.6+Math.sin(t*0.3)*0.2;
+  glowSprite.material.opacity=glowPulse;
+  glowSprite.scale.set(45+Math.sin(t*0.2)*5,45+Math.sin(t*0.2)*5,1);
+
+  // Camera slow drift
+  camera.position.x=Math.sin(t*0.08)*4;
+  camera.position.y=Math.cos(t*0.06)*3;
+  camera.position.z=55+Math.sin(t*0.05)*3;
+  camera.lookAt(0,0,0);
+
+  composer.render();
+}
+animate();
+
+window.addEventListener('resize',()=>{
+  const w=window.innerWidth,h=window.innerHeight;
+  camera.aspect=w/h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w,h);
+  composer.setSize(w,h);
+});
+</script>
+</body>
+</html>

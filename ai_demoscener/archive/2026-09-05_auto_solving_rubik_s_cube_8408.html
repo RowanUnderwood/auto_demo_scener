@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Rubik's Cube</title>
+    <style>
+        html, body { margin: 0; overflow: hidden; background: #0a0a1a; }
+        canvas { display: block; }
+        #vignette {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            background: radial-gradient(ellipse at center,
+                rgba(0,0,0,0) 38%,
+                rgba(0,0,0,0.35) 78%,
+                rgba(0,0,0,0.7) 100%);
+            z-index: 2;
+        }
+        #glow {
+            position: fixed;
+            left: 50%; top: 52%;
+            width: 70vmin; height: 70vmin;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            background: radial-gradient(ellipse at center,
+                rgba(80,90,200,0.18) 0%,
+                rgba(80,90,200,0) 65%);
+            z-index: 1;
+            transition: background 1.2s ease;
+        }
+    </style>
+</head>
+<body>
+<div id="glow"></div>
+<div id="vignette"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0a1a);
+scene.fog = new THREE.Fog(0x0a0a1a, 9, 18);
+
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.outputEncoding = THREE.sRGBEncoding;
+document.body.appendChild(renderer.domElement);
+
+const hemi = new THREE.HemisphereLight(0xbfd0ff, 0x1a1430, 0.55);
+scene.add(hemi);
+const dir1 = new THREE.DirectionalLight(0xffffff, 0.85);
+dir1.position.set(5, 8, 7);
+scene.add(dir1);
+const dir2 = new THREE.DirectionalLight(0x6f7bff, 0.35);
+dir2.position.set(-4, -2, -6);
+scene.add(dir2);
+const rim = new THREE.PointLight(0x88aaff, 0.5, 30);
+scene.add(rim);
+
+const CUBIE_SIZE = 0.94;
+const SPACING = 1.0;
+const ANIM_DURATION = 0.42;
+const TURN_INTERVAL = 0.9;
+const PAUSE_BETWEEN = 1.6;
+
+const COLORS = {
+    right:  0xe53935,
+    left:   0xfb8c00,
+    top:    0xfafafa,
+    bottom: 0xfdd835,
+    front:  0x43a047,
+    back:   0x1e88e5,
+    inner:  0x101018
+};
+
+const geo = new THREE.BoxGeometry(CUBIE_SIZE, CUBIE_SIZE, CUBIE_SIZE);
+const cubies = [];
+
+for (let gx = -1; gx <= 1; gx++)
+for (let gy = -1; gy <= 1; gy++)
+for (let gz = -1; gz <= 1; gz++) {
+    const make = (c) => new THREE.MeshPhongMaterial({
+        color: c,
+        shininess: 70,
+        specular: 0x333333
+    });
+    const mats = [
+        make(gx === 1  ? COLORS.right  : COLORS.inner),
+        make(gx === -1 ? COLORS.left   : COLORS.inner),
+        make(gy === 1  ? COLORS.top    : COLORS.inner),
+        make(gy === -1 ? COLORS.bottom : COLORS.inner),
+        make(gz === 1  ? COLORS.front  : COLORS.inner),
+        make(gz === -1 ? COLORS.back   : COLORS.inner)
+    ];
+    const mesh = new THREE.Mesh(geo, mats);
+    mesh.position.set(gx * SPACING, gy * SPACING, gz * SPACING);
+    scene.add(mesh);
+    cubies.push(mesh);
+}
+
+const T = {
+    U: { axis: 'y', layer:  1, angle: -Math.PI / 2 },
+    D: { axis: 'y', layer: -1, angle:  Math.PI / 2 },
+    R: { axis: 'x', layer:  1, angle: -Math.PI / 2 },
+    L: { axis: 'x', layer: -1, angle:  Math.PI / 2 },
+    F: { axis: 'z', layer:  1, angle: -Math.PI / 2 },
+    B: { axis: 'z', layer: -1, angle:  Math.PI / 2 },
+};
+
+function getCubiesForTurn(turn) {
+    const idx = turn.axis === 'x' ? 0 : turn.axis === 'y' ? 1 : 2;
+    const target = turn.layer * SPACING;
+    return cubies.filter(c => Math.abs(c.position.getComponent(idx) - target) < 0.15);
+}
+
+function snapPositions() {
+    for (const c of cubies) {
+        c.position.x = Math.round(c.position.x / SPACING) * SPACING;
+        c.position.y = Math.round(c.position.y / SPACING) * SPACING;
+        c.position.z = Math.round(c.position.z / SPACING) * SPACING;
+    }
+}
+
+const FACES = ['U','D','R','L','F','B'];
+const SCRAMBLE_LEN = 16;
+
+function genScramble() {
+    const s = [];
+    let last = '';
+    for (let i = 0; i < SCRAMBLE_LEN; i++) {
+        let f;
+        do { f = FACES[Math.floor(Math.random() * 6)]; } while (f === last);
+        s.push(T[f]);
+        last = f;
+    }
+    return s;
+}
+
+function reverseScramble(s) {
+    return s.map(t => ({ axis: t.axis, layer: t.layer, angle: -t.angle })).reverse();
+}
+
+let scramble = genScramble();
+let queue = [...scramble];
+let phase = 'scrambling';
+let phaseTimer = 0;
+let animState = null;
+let lastTurnTime = -TURN_INTERVAL;
+
+const PHASE_BG = {
+    scrambling: new THREE.Color(0x0d1026),
+    solving:    new THREE.Color(0x1c0f18),
+    pause:      new THREE.Color(0x0a0a1a)
+};
+const PHASE_GLOW = {
+    scrambling: 'rgba(70,110,220,0.20)',
+    solving:    'rgba(220,90,80,0.18)',
+    pause:      'rgba(120,120,160,0.12)'
+};
+const glowEl = document.getElementById('glow');
+let curBg = PHASE_BG.scrambling.clone();
+
+function startTurn() {
+    if (animState || queue.length === 0) return;
+    const turn = queue.shift();
+    const toTurn = getCubiesForTurn(turn);
+    if (toTurn.length !== 9) return;
+
+    const group = new THREE.Group();
+    scene.add(group);
+
+    for (const c of toTurn) {
+        group.attach(c);
+    }
+
+    const axisVec = new THREE.Vector3(
+        turn.axis === 'x' ? 1 : 0,
+        turn.axis === 'y' ? 1 : 0,
+        turn.axis === 'z' ? 1 : 0
+    );
+    const targetQuat = new THREE.Quaternion().setFromAxisAngle(axisVec, turn.angle);
+
+    animState = {
+        group,
+        cubies: toTurn,
+        startQuat: new THREE.Quaternion(),
+        targetQuat,
+        elapsed: 0
+    };
+}
+
+const clock = new THREE.Clock();
+let orbitAngle = Math.PI * 0.25;
+
+function easeInOutCubic(t) {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+function animate() {
+    requestAnimationFrame(animate);
+    const dt = Math.min(clock.getDelta(), 0.05);
+    const time = clock.elapsedTime;
+
+    orbitAngle += dt * 0.22;
+    const camR = 6.9;
+    const camH = 2.3 + 0.8 * Math.sin(orbitAngle * 0.5);
+    camera.position.set(
+        camR * Math.sin(orbitAngle),
+        camH,
+        camR * Math.cos(orbitAngle)
+    );
+    camera.lookAt(0, 0, 0);
+    rim.position.copy(camera.position).multiplyScalar(0.6);
+
+    curBg.lerp(PHASE_BG[phase] || PHASE_BG.pause, 1 - Math.pow(0.001, dt));
+    scene.background.copy(curBg);
+    scene.fog.color.copy(curBg);
+
+    if (animState) {
+        animState.elapsed += dt;
+        const t = Math.min(animState.elapsed / ANIM_DURATION, 1);
+        const ease = easeInOutCubic(t);
+        animState.group.quaternion.copy(animState.startQuat).slerp(animState.targetQuat, ease);
+
+        if (t >= 1) {
+            snapPositions();
+            for (const c of animState.cubies) {
+                scene.attach(c);
+            }
+            scene.remove(animState.group);
+            animState = null;
+        }
+    } else {
+        if (phase === 'pause') {
+            phaseTimer += dt;
+            if (phaseTimer >= PAUSE_BETWEEN) {
+                if (queue.length === 0) {
+                    phase = 'solving';
+                    queue = reverseScramble(scramble);
+                } else {
+                    phase = 'scrambling';
+                    scramble = genScramble();
+                    queue = [...scramble];
+                }
+                glowEl.style.background = 'radial-gradient(ellipse at center,' +
+                    (PHASE_GLOW[phase] || PHASE_GLOW.pause) + ' 0%, rgba(0,0,0,0) 65%)';
+            }
+        } else if (queue.length > 0) {
+            if (time - lastTurnTime >= TURN_INTERVAL) {
+                lastTurnTime = time;
+                startTurn();
+            }
+        } else {
+            phase = 'pause';
+            phaseTimer = 0;
+            glowEl.style.background = 'radial-gradient(ellipse at center,' +
+                (PHASE_GLOW[phase] || PHASE_GLOW.pause) + ' 0%, rgba(0,0,0,0) 65%)';
+        }
+    }
+
+    renderer.render(scene, camera);
+}
+
+animate();
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>

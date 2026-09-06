@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Demoscene Scrolling Text</title>
+<style>
+  body { margin: 0; overflow: hidden; background: #000; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const scene = new THREE.Scene();
+
+const planeWidth = 10;
+const planeHeight = 1;
+
+const geometry = new THREE.PlaneGeometry(planeWidth, planeHeight, 200, 10);
+
+const canvas = document.createElement('canvas');
+canvas.width = 2048;
+canvas.height = 256;
+const ctx = canvas.getContext('2d');
+
+const texture = new THREE.CanvasTexture(canvas);
+
+const material = new THREE.ShaderMaterial({
+  uniforms: {
+    uTexture: { value: texture },
+    uTime: { value: 0.0 }
+  },
+  vertexShader: `
+    uniform float uTime;
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      vec3 pos = position;
+      pos.y += sin(position.x * 0.5 + uTime * 2.0) * 0.3;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D uTexture;
+    varying vec2 vUv;
+    void main() {
+      gl_FragColor = texture2D(uTexture, vUv);
+    }
+  `
+});
+
+const plane = new THREE.Mesh(geometry, material);
+scene.add(plane);
+
+const frustumSize = planeHeight + 1.0;
+const aspect = window.innerWidth / window.innerHeight;
+const camera = new THREE.OrthographicCamera(
+  -frustumSize * aspect / 2, frustumSize * aspect / 2,
+  frustumSize / 2, -frustumSize / 2,
+  0.1, 100
+);
+camera.position.set(0, 0, 10);
+camera.lookAt(0, 0, 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+const text = ">> HELLO WORLD << WELCOME TO THE DEMOSCENE << BRIGHT FUTURE AHEAD << ";
+
+function drawCanvas(time) {
+  ctx.fillStyle = '#1a0033';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.font = 'bold 72px "Courier New", monospace';
+  ctx.fillStyle = '#ffff00';
+  ctx.shadowColor = '#ffff00';
+  ctx.shadowBlur = 18;
+
+  const textWidth = ctx.measureText(text).width;
+  const xOff = (-(time * 100) % textWidth + textWidth) % textWidth;
+
+  for (let i = -1; i < Math.ceil(canvas.width / textWidth) + 2; i++) {
+    ctx.fillText(text, xOff - textWidth + i * textWidth, canvas.height * 0.65);
+  }
+
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.12)';
+  for (let y = 0; y < canvas.height; y += 4) {
+    ctx.fillRect(0, y, canvas.width, 2);
+  }
+
+  texture.needsUpdate = true;
+}
+
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const time = clock.getElapsedTime();
+  material.uniforms.uTime.value = time;
+  drawCanvas(time);
+  renderer.render(scene, camera);
+}
+
+animate();
+
+window.addEventListener('resize', () => {
+  const a = window.innerWidth / window.innerHeight;
+  camera.left = -frustumSize * a / 2;
+  camera.right = frustumSize * a / 2;
+  camera.top = frustumSize / 2;
+  camera.bottom = -frustumSize / 2;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>

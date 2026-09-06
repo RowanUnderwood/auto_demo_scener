@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Bioluminescent L-System Coral</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #030308; }
+        canvas { display: block; }
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: rgba(0, 255, 200, 0.4);
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            letter-spacing: 2px;
+            pointer-events: none;
+            text-shadow: 0 0 8px rgba(0,255,200,0.3);
+        }
+    </style>
+</head>
+<body>
+<div id="info">BIOLUMINESCENT CORAL // L-SYSTEM</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x030308, 0.045);
+
+const camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.1, 200);
+camera.position.set(0, 4, 10);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.35;
+renderer.setClearColor(0x030308);
+document.body.appendChild(renderer.domElement);
+
+// Soft radial glow texture (turns square points into soft orbs)
+function makeGlowTexture() {
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const ctx = c.getContext('2d');
+    const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    g.addColorStop(0.0, 'rgba(255,255,255,1)');
+    g.addColorStop(0.2, 'rgba(255,255,255,0.85)');
+    g.addColorStop(0.5, 'rgba(255,255,255,0.25)');
+    g.addColorStop(1.0, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 64, 64);
+    return new THREE.CanvasTexture(c);
+}
+const glowTex = makeGlowTexture();
+
+// L-System
+const axiom = 'X';
+const rules = {
+    X: 'F[+X][-X]FX',
+    F: 'FF'
+};
+const ITER = 4;
+
+function genLSystem(ax, ru, it) {
+    let s = ax;
+    for (let i = 0; i < it; i++) {
+        s = s.split('').map(c => ru[c] || c).join('');
+    }
+    return s;
+}
+
+// 3D Turtle
+const STEP = 0.35;
+const ANGLE = 24 * Math.PI / 180;
+const segments = [];
+let maxH = 0;
+
+function buildTree(str) {
+    const stack = [];
+    let pos = new THREE.Vector3(0, 0, 0);
+    let dir = new THREE.Vector3(0, 1, 0);
+    let depth = 0;
+    let angleCounter = 0;
+
+    for (const cmd of str) {
+        switch (cmd) {
+            case 'F': {
+                const end = pos.clone().add(dir.clone().multiplyScalar(STEP));
+                segments.push({ start: pos.clone(), end: end.clone(), depth });
+                if (end.y > maxH) maxH = end.y;
+                pos = end;
+                break;
+            }
+            case '+': {
+                angleCounter++;
+                const axis = angleCounter % 3 === 0
+                    ? new THREE.Vector3(0, 0, 1)
+                    : new THREE.Vector3(1, 0, 0);
+                const perp = new THREE.Vector3().crossVectors(dir, axis).normalize();
+                if (perp.length() < 0.001) perp.set(1, 0, 0);
+                dir.applyAxisAngle(perp, ANGLE).normalize();
+                break;
+            }
+            case '-': {
+                angleCounter++;
+                const axis = angleCounter % 3 === 0
+                    ? new THREE.Vector3(0, 0, 1)
+                    : new THREE.Vector3(1, 0, 0);
+                const perp = new THREE.Vector3().crossVectors(dir, axis).normalize();
+                if (perp.length() < 0.001) perp.set(1, 0, 0);
+                dir.applyAxisAngle(perp, -ANGLE).normalize();
+                break;
+            }
+            case '[': {
+                stack.push({ pos: pos.clone(), dir: dir.clone(), depth, ac: angleCounter });
+                depth++;
+                break;
+            }
+            case ']': {
+                const s = stack.pop();
+                pos = s.pos;
+                dir = s.dir;
+                depth = s.depth;
+                angleCounter = s.ac;
+                break;
+            }
+        }
+    }
+}
+
+const lStr = genLSystem(axiom, rules, ITER);
+buildTree(lStr);
+
+const maxDepth = ITER + 1;
+const treeGroup = new THREE.Group();
+scene.add(treeGroup);
+
+// Branches as instanced cylinders
+const branchGeo = new THREE.CylinderGeometry(0.016, 0.034, 1, 6, 1);
+branchGeo.translate(0, 0.5, 0);
+
+const branchMat = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    emissive: 0x0a4a3a,
+    emissiveIntensity: 0.5,
+    roughness: 0.45,
+    metalness: 0.15,
+    transparent: true,
+    opacity: 0.95
+});
+
+const instancedBranches = new THREE.InstancedMesh(branchGeo, branchMat, segments.length);
+const dummy = new THREE.Object3D();
+const colors = new Float32Array(segments.length * 3);
+const quaternions = [];
+const lengths = [];
+const radii = [];
+
+for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    const dir = seg.end.clone().sub(seg.start).normalize();
+    const len = seg.start.distanceTo(seg.end);
+    const radius = Math.max(0.35, 1 - seg.depth * 0.16);
+
+    dummy.position.copy(seg.start);
+    const up = new THREE.Vector3(0, 1, 0);
+    const quat = new THREE.Quaternion().setFromUnitVectors(up, dir);
+    dummy.quaternion.copy(quat);
+    dummy.scale.set(radius, len / STEP, radius);
+    dummy.updateMatrix();
+    instancedBranches.setMatrixAt(i, dummy.matrix);
+
+    quaternions.push(quat.clone());
+    lengths.push(len);
+    radii.push(radius);
+
+    const t = seg.depth / maxDepth;
+    // deep indigo base -> bright cyan/white tips
+    const r = 0.10 + t * 0.55;
+    const g = 0.30 + t * 0.70;
+    const b = 0.55 + t * 0.45;
+    colors[i * 3] = r;
+    colors[i * 3 + 1] = g;
+    colors[i * 3 + 2] = b;
+}
+
+instancedBranches.instanceColor = new THREE.InstancedBufferAttribute(colors, 3);
+treeGroup.add(instancedBranches);
+
+// Glowing "vein" points hugging each branch (additive soft orbs)
+const glowPts = [];
+for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    const mid = seg.start.clone().lerp(seg.end, 0.5);
+    glowPts.push(mid.x, mid.y, mid.z);
+    if (seg.depth >= maxDepth - 1) glowPts.push(seg.end.x, seg.end.y, seg.end.z);
+}
+const glowGeo = new THREE.BufferGeometry();
+glowGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(glowPts), 3));
+const glowMat = new THREE.PointsMaterial({
+    color: 0x66ffee,
+    size: 0.16,
+    map: glowTex,
+    transparent: true,
+    opacity: 0.55,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    sizeAttenuation: true
+});
+const glowPoints = new THREE.Points(glowGeo, glowMat);
+treeGroup.add(glowPoints);
+
+// Glowing tips
+const tipSegs = segments.filter(s => s.depth >= maxDepth - 1);
+const tipGeo = new THREE.SphereGeometry(0.06, 8, 6);
+const tipMat = new THREE.MeshBasicMaterial({
+    color: 0xaaffff,
+    transparent: true,
+    opacity: 0.9,
+    blending: THREE.AdditiveBlending
+});
+const tipsMesh = new THREE.InstancedMesh(tipGeo, tipMat, tipSegs.length);
+
+for (let i = 0; i < tipSegs.length; i++) {
+    dummy.position.copy(tipSegs[i].end);
+    dummy.scale.set(1, 1, 1);
+    dummy.quaternion.set(0, 0, 0, 1);
+    dummy.updateMatrix();
+    tipsMesh.setMatrixAt(i, dummy.matrix);
+}
+treeGroup.add(tipsMesh);
+
+// Atmospheric halo behind the tree
+const haloMat = new THREE.SpriteMaterial({
+    map: glowTex,
+    color: 0x0a5a55,
+    transparent: true,
+    opacity: 0.45,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+});
+const halo = new THREE.Sprite(haloMat);
+halo.position.set(0, maxH * 0.45, 0);
+halo.scale.set(maxH * 1.7, maxH * 1.7, 1);
+scene.add(halo);
+
+// Particles (soft glowing plankton)
+const P_COUNT = 900;
+const pGeo = new THREE.BufferGeometry();
+const pPos = new Float32Array(P_COUNT * 3);
+const pVel = new Float32Array(P_COUNT * 3);
+const pPhase = new Float32Array(P_COUNT);
+
+for (let i = 0; i < P_COUNT; i++) {
+    pPos[i * 3] = (Math.random() - 0.5) * 16;
+    pPos[i * 3 + 1] = Math.random() * (maxH + 3);
+    pPos[i * 3 + 2] = (Math.random() - 0.5) * 16;
+    pVel[i * 3] = (Math.random() - 0.5) * 0.004;
+    pVel[i * 3 + 1] = Math.random() * 0.005 + 0.001;
+    pVel[i * 3 + 2] = (Math.random() - 0.5) * 0.004;
+    pPhase[i] = Math.random() * Math.PI * 2;
+}
+
+pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+const pMat = new THREE.PointsMaterial({
+    color: 0x55ffdd,
+    size: 0.13,
+    map: glowTex,
+    transparent: true,
+    opacity: 0.6,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    sizeAttenuation: true
+});
+const particles = new THREE.Points(pGeo, pMat);
+scene.add(particles);
+
+// Second particle layer (magenta)
+const P2_COUNT = 500;
+const p2Geo = new THREE.BufferGeometry();
+const p2Pos = new Float32Array(P2_COUNT * 3);
+const p2Vel = new Float32Array(P2_COUNT * 3);
+for (let i = 0; i < P2_COUNT; i++) {
+    p2Pos[i * 3] = (Math.random() - 0.5) * 18;
+    p2Pos[i * 3 + 1] = Math.random() * (maxH + 4);
+    p2Pos[i * 3 + 2] = (Math.random() - 0.5) * 18;
+    p2Vel[i * 3] = (Math.random() - 0.5) * 0.0025;
+    p2Vel[i * 3 + 1] = Math.random() * 0.0025 + 0.001;
+    p2Vel[i * 3 + 2] = (Math.random() - 0.5) * 0.0025;
+}
+p2Geo.setAttribute('position', new THREE.BufferAttribute(p2Pos, 3));
+const p2Mat = new THREE.PointsMaterial({
+    color: 0xff55bb,
+    size: 0.09,
+    map: glowTex,
+    transparent: true,
+    opacity: 0.4,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    sizeAttenuation: true
+});
+const particles2 = new THREE.Points(p2Geo, p2Mat);
+scene.add(particles2);
+
+// Lights
+scene.add(new THREE.AmbientLight(0x0a0a22, 0.9));
+
+const light1 = new THREE.PointLight(0x00ffcc, 1.8, 20);
+light1.position.set(0, maxH * 0.55, 2);
+scene.add(light1);
+
+const light2 = new THREE.PointLight(0xff44aa, 0.7, 15);
+light2.position.set(-3, 2, -2);
+scene.add(light2);
+
+const light3 = new THREE.PointLight(0x4488ff, 0.5, 13);
+light3.position.set(3, maxH * 0.7, -3);
+scene.add(light3);
+
+// Ground disc (subtle) + base glow
+const groundGeo = new THREE.CircleGeometry(7, 64);
+const groundMat = new THREE.MeshStandardMaterial({
+    color: 0x050510,
+    emissive: 0x001818,
+    emissiveIntensity: 0.4,
+    transparent: true,
+    opacity: 0.6
+});
+const ground = new THREE.Mesh(groundGeo, groundMat);
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -0.1;
+scene.add(ground);
+
+const baseGlowMat = new THREE.SpriteMaterial({
+    map: glowTex,
+    color: 0x0a6a5a,
+    transparent: true,
+    opacity: 0.5,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+});
+const baseGlow = new THREE.Sprite(baseGlowMat);
+baseGlow.position.set(0, 0.1, 0);
+baseGlow.scale.set(8, 8, 1);
+scene.add(baseGlow);
+
+// Auto-frame camera to the tree
+const focusY = maxH * 0.45;
+const camRadius = Math.max(9, maxH * 0.85);
+
+// Animation
+const clock = new THREE.Clock();
+
+function animate() {
+    requestAnimationFrame(animate);
+    const t = clock.getElapsedTime();
+
+    // Camera orbit
+    const camAngle = t * 0.14;
+    const r = camRadius + Math.sin(t * 0.2) * 1.2;
+    camera.position.x = Math.sin(camAngle) * r;
+    camera.position.z = Math.cos(camAngle) * r;
+    camera.position.y = focusY + 1.5 + Math.sin(t * 0.4) * 0.7;
+    camera.lookAt(0, focusY, 0);
+
+    // Tree sway
+    treeGroup.rotation.y = Math.sin(t * 0.3) * 0.06;
+    treeGroup.rotation.x = Math.sin(t * 0.2 + 1) * 0.025;
+
+    // Pulse emissive
+    branchMat.emissiveIntensity = 0.4 + Math.sin(t * 1.8) * 0.18 + Math.sin(t * 3.2) * 0.06;
+    tipMat.opacity = 0.55 + Math.sin(t * 2.5) * 0.35;
+    glowMat.opacity = 0.4 + Math.sin(t * 1.6 + 0.5) * 0.2;
+
+    // Animate tips scale (breathing)
+    for (let i = 0; i < tipSegs.length; i++) {
+        const s = 0.8 + Math.sin(t * 2 + i * 0.5) * 0.4;
+        dummy.position.copy(tipSegs[i].end);
+        dummy.scale.set(s, s, s);
+        dummy.quaternion.set(0, 0, 0, 1);
+        dummy.updateMatrix();
+        tipsMesh.setMatrixAt(i, dummy.matrix);
+    }
+    tipsMesh.instanceMatrix.needsUpdate = true;
+
+    // Halo breathing
+    haloMat.opacity = 0.35 + Math.sin(t * 0.9) * 0.12;
+    baseGlowMat.opacity = 0.4 + Math.sin(t * 1.1 + 1) * 0.15;
+
+    // Particles 1
+    const pp = pGeo.attributes.position.array;
+    for (let i = 0; i < P_COUNT; i++) {
+        pp[i * 3] += pVel[i * 3] + Math.sin(t + pPhase[i]) * 0.0015;
+        pp[i * 3 + 1] += pVel[i * 3 + 1];
+        pp[i * 3 + 2] += pVel[i * 3 + 2] + Math.cos(t + pPhase[i]) * 0.0015;
+        if (pp[i * 3 + 1] > maxH + 3) {
+            pp[i * 3] = (Math.random() - 0.5) * 16;
+            pp[i * 3 + 1] = 0;
+            pp[i * 3 + 2] = (Math.random() - 0.5) * 16;
+        }
+    }
+    pGeo.attributes.position.needsUpdate = true;
+    pMat.opacity = 0.4 + Math.sin(t * 0.8) * 0.2;
+
+    // Particles 2
+    const pp2 = p2Geo.attributes.position.array;
+    for (let i = 0; i < P2_COUNT; i++) {
+        pp2[i * 3] += p2Vel[i * 3];
+        pp2[i * 3 + 1] += p2Vel[i * 3 + 1];
+        pp2[i * 3 + 2] += p2Vel[i * 3 + 2];
+        if (pp2[i * 3 + 1] > maxH + 4) {
+            pp2[i * 3] = (Math.random() - 0.5) * 18;
+            pp2[i * 3 + 1] = 0;
+            pp2[i * 3 + 2] = (Math.random() - 0.5) * 18;
+        }
+    }
+    p2Geo.attributes.position.needsUpdate = true;
+
+    // Light pulses
+    light1.intensity = 1.5 + Math.sin(t * 1.5) * 0.5;
+    light2.intensity = 0.5 + Math.sin(t * 2.1 + 2) * 0.3;
+    light3.intensity = 0.4 + Math.sin(t * 1.2 + 4) * 0.2;
+
+    renderer.render(scene, camera);
+}
+
+animate();
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>

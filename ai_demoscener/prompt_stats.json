@@ -1,17 +1,17 @@
 {
   "update": {
     "crashes": 0,
-    "blanks": 0,
-    "total": 0,
-    "runs": 13,
+    "blanks": 1,
+    "total": 1,
+    "runs": 25,
     "deletions": 0,
-    "last_fail": null,
+    "last_fail": "2026-09-05T15:35:20.270837",
     "by_model": {
       "qwen3.8-27b": {
         "crashes": 0,
-        "blanks": 0,
-        "total": 0,
-        "runs": 13
+        "blanks": 1,
+        "total": 1,
+        "runs": 25
       }
     }
   },
@@ -51,7 +51,7 @@
     "crashes": 0,
     "blanks": 0,
     "total": 0,
-    "runs": 1,
+    "runs": 2,
     "deletions": 0,
     "last_fail": null,
     "by_model": {
@@ -59,7 +59,7 @@
         "crashes": 0,
         "blanks": 0,
         "total": 0,
-        "runs": 1
+        "runs": 2
       }
     }
   },
@@ -67,7 +67,7 @@
     "crashes": 0,
     "blanks": 1,
     "total": 1,
-    "runs": 11,
+    "runs": 20,
     "deletions": 0,
     "last_fail": "2026-09-05T12:59:18.844510",
     "by_model": {
@@ -75,7 +75,7 @@
         "crashes": 0,
         "blanks": 1,
         "total": 1,
-        "runs": 11
+        "runs": 20
       }
     }
   },
@@ -83,7 +83,7 @@
     "crashes": 0,
     "blanks": 0,
     "total": 0,
-    "runs": 1,
+    "runs": 2,
     "deletions": 0,
     "last_fail": null,
     "by_model": {
@@ -91,7 +91,7 @@
         "crashes": 0,
         "blanks": 0,
         "total": 0,
-        "runs": 1
+        "runs": 2
       }
     }
   },
@@ -99,7 +99,7 @@
     "crashes": 0,
     "blanks": 1,
     "total": 1,
-    "runs": 1,
+    "runs": 2,
     "deletions": 0,
     "last_fail": "2026-09-05T11:33:18.611444",
     "by_model": {
@@ -107,7 +107,7 @@
         "crashes": 0,
         "blanks": 1,
         "total": 1,
-        "runs": 1
+        "runs": 2
       }
     }
   },
@@ -336,6 +336,214 @@
     }
   },
   "Vector Field Streamlines": {
+    "crashes": 0,
+    "blanks": 0,
+    "total": 0,
+    "runs": 2,
+    "deletions": 0,
+    "last_fail": null,
+    "by_model": {
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 2
+      }
+    }
+  },
+  "Voronoi Bloom": {
+    "crashes": 0,
+    "blanks": 0,
+    "total": 0,
+    "runs": 1,
+    "deletions": 0,
+    "last_fail": null,
+    "by_model": {
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      }
+    }
+  },
+  "Rotozoomer": {
+    "crashes": 0,
+    "blanks": 0,
+    "total": 0,
+    "runs": 1,
+    "deletions": 0,
+    "last_fail": null,
+    "by_model": {
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      }
+    }
+  },
+  "Audio Sphere": {
+    "crashes": 0,
+    "blanks": 0,
+    "total": 0,
+    "runs": 1,
+    "deletions": 0,
+    "last_fail": null,
+    "by_model": {
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      }
+    }
+  },
+  "Auto-Play Tetris": {
+    "crashes": 0,
+    "blanks": 0,
+    "total": 0,
+    "runs": 1,
+    "deletions": 0,
+    "last_fail": null,
+    "by_model": {
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      }
+    }
+  },
+  "Caustics": {
+    "crashes": 0,
+    "blanks": 0,
+    "total": 0,
+    "runs": 1,
+    "deletions": 0,
+    "last_fail": null,
+    "by_model": {
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      }
+    }
+  },
+  "Sine Scroller": {
+    "crashes": 0,
+    "blanks": 0,
+    "total": 0,
+    "runs": 1,
+    "deletions": 0,
+    "last_fail": null,
+    "by_model": {
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      }
+    }
+  },
+  "Flying Toasters": {
+    "crashes": 0,
+    "blanks": 0,
+    "total": 0,
+    "runs": 1,
+    "deletions": 0,
+    "last_fail": null,
+    "by_model": {
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      }
+    }
+  },
+  "Black Hole Lensing": {
+    "crashes": 0,
+    "blanks": 1,
+    "total": 1,
+    "runs": 1,
+    "deletions": 0,
+    "last_fail": "2026-09-05T15:04:58.227316",
+    "by_model": {
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
+        "runs": 1
+      }
+    }
+  },
+  "Wolfram Rule 30": {
+    "crashes": 0,
+    "blanks": 0,
+    "total": 0,
+    "runs": 1,
+    "deletions": 0,
+    "last_fail": null,
+    "by_model": {
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      }
+    }
+  },
+  "Dragon Curve": {
+    "crashes": 0,
+    "blanks": 1,
+    "total": 1,
+    "runs": 1,
+    "deletions": 0,
+    "last_fail": "2026-09-05T15:12:58.595624",
+    "by_model": {
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
+        "runs": 1
+      }
+    }
+  },
+  "Lava Lamp": {
+    "crashes": 0,
+    "blanks": 0,
+    "total": 0,
+    "runs": 1,
+    "deletions": 0,
+    "last_fail": null,
+    "by_model": {
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      }
+    }
+  },
+  "Retrowave Sunset": {
+    "crashes": 0,
+    "blanks": 0,
+    "total": 0,
+    "runs": 1,
+    "deletions": 0,
+    "last_fail": null,
+    "by_model": {
+      "qwen3.8-27b": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      }
+    }
+  },
+  "Bouncing Balls": {
     "crashes": 0,
     "blanks": 0,
     "total": 0,

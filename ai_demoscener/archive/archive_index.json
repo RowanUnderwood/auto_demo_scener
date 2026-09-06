@@ -3178,5 +3178,320 @@
     "model": "qwen3.8-27b",
     "title": "Resonant Chamber Standing Waves",
     "description": "Indigo voids breathe with golden pressure as nodal surfaces shimmer in slow orbit."
+  },
+  "2026-09-05_voronoi_bloom_0d12.html": {
+    "created": "2026-09-05T14:13:32.292850",
+    "mode": "stock",
+    "effect": "Voronoi Bloom",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Luminous Voronoi Drift",
+    "description": "Cool geometric cells breathe softly along glowing cyan seams."
+  },
+  "2026-09-05_creative_0e28.html": {
+    "created": "2026-09-05T14:16:14.273445",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Breathing Chromatic Lattice",
+    "description": "A pulsing grid of light breathes beneath a starlit void."
+  },
+  "2026-05-10_copper_bars_ec6a_v2.html": {
+    "created": "2026-09-05T14:18:07.321876",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Spectral Bloom Resonance",
+    "description": "Violet frequencies breathe softly against the midnight void."
+  },
+  "2026-09-05_vector_field_streamlines_9911.html": {
+    "created": "2026-09-05T14:19:55.564070",
+    "mode": "stock",
+    "effect": "Vector Field Streamlines",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Cyan Currents Amber Swirl",
+    "description": "Teal particles drift through invisible winds, igniting into warm amber flames."
+  },
+  "2026-09-05_creative_0e05.html": {
+    "created": "2026-09-05T14:22:31.065157",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Synaptic Bloom in Deep Space",
+    "description": "Electric whispers ripple through the void, igniting constellations of thought."
+  },
+  "2026-05-14_caustics_6435_v2.html": {
+    "created": "2026-09-05T14:24:19.065876",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Molten Voronoi Drift",
+    "description": "Amber fractures breathe beneath a slow, organic tide of heat."
+  },
+  "2026-09-05_creative_e3bb.html": {
+    "created": "2026-09-05T14:25:40.595473",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Pulsing Crimson Tissue Grid",
+    "description": "Spheres throb in rhythmic unison, bleeding crimson light through the void."
+  },
+  "2026-09-05_creative_5b57.html": {
+    "created": "2026-09-05T14:28:08.556345",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Morphing Geometric Meltdown",
+    "description": "Twisted polyhedra melt into liquid light while orbiting spheres dance in spectral hues."
+  },
+  "2026-09-05_rotozoomer_a86c.html": {
+    "created": "2026-09-05T14:28:57.224021",
+    "mode": "stock",
+    "effect": "Rotozoomer",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Infinite Rotating Checkerboard",
+    "description": "Dark and amber tiles spin endlessly through the void."
+  },
+  "2026-05-15_creative_f78d_v3.html": {
+    "created": "2026-09-05T14:31:32.170398",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Pulsing Aurora Veil",
+    "description": "Emerald curtains sway to a deep, resonant heartbeat beneath the starless sky."
+  },
+  "2026-09-05_audio_sphere_cb75.html": {
+    "created": "2026-09-05T14:33:11.913247",
+    "mode": "stock",
+    "effect": "Audio Sphere",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Pulsing Indigo Sphere",
+    "description": "A breathing orb of electric blue pulses with rhythmic, organic waves."
+  },
+  "2026-09-05_creative_3388.html": {
+    "created": "2026-09-05T14:35:54.464080",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Synaptic Storm",
+    "description": "Electric whispers ripple through a violet constellation of dreaming neurons."
+  },
+  "2026-09-05_auto_play_tetris_55be.html": {
+    "created": "2026-09-05T14:41:21.652856",
+    "mode": "stock",
+    "effect": "Auto-Play Tetris",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Neon Tetris Auto Pilot",
+    "description": "Glowing blocks cascade endlessly through the digital void."
+  },
+  "2026-05-12_creative_a8c9_v2.html": {
+    "created": "2026-09-05T14:43:29.344979",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Aureus Fractal Organism",
+    "description": "Golden veins pulse through a breathing, infinite lattice of violet light."
+  },
+  "2026-05-10_barnsley_fern_5750_v2.html": {
+    "created": "2026-09-05T14:45:34.249557",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Indigo Nebula Breathing",
+    "description": "Twelve thousand stars pulse in a deep indigo nebula, breathing with silent cosmic rhythm."
+  },
+  "2026-05-13_dragon_curve_9abc_v3.html": {
+    "created": "2026-09-05T14:48:20.279459",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Copper Trace Fractal Snowflake",
+    "description": "Ancient copper circuits trace the infinite geometry of a breathing snowflake."
+  },
+  "2026-09-05_caustics_9c8f.html": {
+    "created": "2026-09-05T14:49:08.566176",
+    "mode": "stock",
+    "effect": "Caustics",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Bioluminescent Voronoi Flow",
+    "description": "Cyan cells drift like living tissue through the dark abyss."
+  },
+  "2026-05-15_l_system_tree_1ab1_v2.html": {
+    "created": "2026-09-05T14:51:45.518290",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Bioluminescent L-System Coral",
+    "description": "Fractal branches pulse with cyan light in the abyss."
+  },
+  "2026-09-05_sine_scroller_1ad3.html": {
+    "created": "2026-09-05T14:52:35.387463",
+    "mode": "stock",
+    "effect": "Sine Scroller",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Undulating Neon Scrolling Text",
+    "description": "Yellow monospace waves ripple across a dark, scanlined void."
+  },
+  "2026-09-05_creative_850f.html": {
+    "created": "2026-09-05T14:55:23.927397",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Neural Constellations Morphing Through Cosmic Drift",
+    "description": "Electric synapses weave through nebulae as ancient geometries breathe in the void."
+  },
+  "2026-09-05_flying_toasters_ddc2.html": {
+    "created": "2026-09-05T14:57:15.596546",
+    "mode": "stock",
+    "effect": "Flying Toasters",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Aerodynamic Breakfast Machines",
+    "description": "Chrome toasters glide through misty skies, trailing golden slices of morning."
+  },
+  "2026-09-05_particle_system_c981.html": {
+    "created": "2026-09-05T14:59:36.934221",
+    "mode": "stock",
+    "effect": "Particle System",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Luminous Ember Fountain",
+    "description": "Golden sparks arc through the void, cooling into deep violet twilight."
+  },
+  "2026-09-05_creative_294e.html": {
+    "created": "2026-09-05T15:02:54.443161",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Bioluminescent Abyssal Drift",
+    "description": "Luminous jellyfish pulse through the deep, trailing ethereal light in the dark."
+  },
+  "2026-09-05_creative_10f4.html": {
+    "created": "2026-09-05T15:06:12.980659",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Rain Erosion Procedural Terrain",
+    "description": "Digital rain sculpts a living landscape beneath a starlit sky."
+  },
+  "2026-05-10_raymarched_scene_46ea_v3.html": {
+    "created": "2026-09-05T15:08:15.639397",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Bioluminal Drift Lattice",
+    "description": "Glowing geometric cells breathe and rotate through the deep, silent void."
+  },
+  "2026-09-05_wolfram_rule_30_60f6.html": {
+    "created": "2026-09-05T15:10:25.664190",
+    "mode": "stock",
+    "effect": "Wolfram Rule 30",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Violet Cellular Automata Cascade",
+    "description": "A single seed blooms into cascading violet trails across the digital void."
+  },
+  "2026-09-05_sine_wave_news_crawl_b8db.html": {
+    "created": "2026-09-05T15:14:06.267920",
+    "mode": "stock",
+    "effect": "Sine-Wave News Crawl",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Cybernetic Dispatch Signal",
+    "description": "Neon bulletins ripple across a CRT screen, broadcasting secrets from the electronic underground."
+  },
+  "2026-09-05_lava_lamp_b0d1.html": {
+    "created": "2026-09-05T15:16:25.367660",
+    "mode": "stock",
+    "effect": "Lava Lamp",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Iridescent Orbital Spheres",
+    "description": "Violet spheres drift in a cosmic orbit, shimmering with iridescent light."
+  },
+  "2026-09-05_creative_3897_v2.html": {
+    "created": "2026-09-05T15:19:11.473434",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Bioluminal Drift Abyssal Garden",
+    "description": "Glowing tendrils pulse through the dark, weaving a living constellation of light."
+  },
+  "2026-05-10_creative_9693_v2.html": {
+    "created": "2026-09-05T15:21:54.744528",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Molten Ember Tunnel Descent",
+    "description": "Twisted crystalline rings breathe through a corridor of flowing volcanic gold."
+  },
+  "2026-09-05_retrowave_sunset_b476.html": {
+    "created": "2026-09-05T15:24:28.685495",
+    "mode": "stock",
+    "effect": "Retrowave Sunset",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Neon Sunset Grid Horizon",
+    "description": "Magenta waves ripple across a digital dusk beneath the fractured sun."
+  },
+  "2026-09-05_auto_solving_rubik_s_cube_8408.html": {
+    "created": "2026-09-05T15:26:56.932843",
+    "mode": "stock",
+    "effect": "Auto-Solving Rubik's Cube",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Chromatic Cube Scramble",
+    "description": "Neon facets fracture into rhythmic chaos before resolving into perfect order."
+  },
+  "2026-09-05_creative_f475.html": {
+    "created": "2026-09-05T15:29:24.624647",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Neon Constellation Nebula Drift",
+    "description": "A luminous web of nodes pulses gently within a deep violet cosmic void."
+  },
+  "2026-05-10_bouncing_balls_e263_v2.html": {
+    "created": "2026-09-05T15:31:35.515415",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Shattered Glass Sphere Physics",
+    "description": "Vibrant orbs tumble endlessly within a translucent cylinder of light."
+  },
+  "2026-09-05_bouncing_balls_2252.html": {
+    "created": "2026-09-05T15:32:30.388457",
+    "mode": "stock",
+    "effect": "Bouncing Balls",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Prismatic Gravity Chamber",
+    "description": "Chromatic spheres tumble endlessly within a wireframe void."
   }
 }

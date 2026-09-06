@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Voronoi Drift</title>
+<style>
+* { margin: 0; padding: 0; }
+body { overflow: hidden; background: #000; }
+canvas { display: block; }
+</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const vertexShader = `
+void main() {
+    gl_Position = vec4(position, 1.0);
+}
+`;
+
+const fragmentShader = `
+precision highp float;
+
+uniform float uTime;
+uniform vec2 uResolution;
+
+vec2 getPoint(int i, float time) {
+    float fi = float(i);
+    float s1 = 0.10 + 0.18 * fract(fi * 0.6180339887);
+    float s2 = 0.12 + 0.22 * fract(fi * 0.4142135624);
+    float s3 = 0.08 + 0.15 * fract(fi * 0.7548776662);
+    float p1 = fi * 2.39996323;
+    float p2 = fi * 1.71828183;
+    float p3 = fi * 3.14159265;
+    float r1 = 0.22 + 0.22 * sin(fi * 0.53 + 1.0);
+    float r2 = 0.22 + 0.22 * cos(fi * 0.71 + 2.0);
+    float cx = 0.5 + 0.32 * sin(fi * 1.23 + 0.5);
+    float cy = 0.5 + 0.32 * cos(fi * 0.97 + 1.5);
+    float x = cx + r1 * sin(time * s1 + p1) + r2 * 0.3 * cos(time * s3 + p3);
+    float y = cy + r2 * cos(time * s2 + p2) + r1 * 0.3 * sin(time * s3 * 0.7 + p1);
+    return vec2(x, y);
+}
+
+vec3 hsl2rgb(vec3 c) {
+    vec3 rgb = clamp(abs(mod(c.x * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+    return c.z + c.y * (rgb - 0.5) * (1.0 - abs(2.0 * c.z - 1.0));
+}
+
+void main() {
+    vec2 uv = gl_FragCoord.xy / uResolution.xy;
+    vec2 aspect = vec2(uResolution.x / uResolution.y, 1.0);
+    vec2 p = vec2(uv.x * aspect.x, uv.y);
+
+    float f1 = 1e10;
+    float f2 = 1e10;
+    int id1 = 0;
+
+    for (int i = 0; i < 32; i++) {
+        vec2 pt = getPoint(i, uTime);
+        vec2 d = p - vec2(pt.x * aspect.x, pt.y);
+        float dist = length(d);
+        if (dist < f1) {
+            f2 = f1;
+            f1 = dist;
+            id1 = i;
+        } else if (dist < f2) {
+            f2 = dist;
+        }
+    }
+
+    float edge = f2 - f1;
+
+    // Per-cell color: cool palette with slow drift
+    float fi = float(id1);
+    float hueBase = fract(fi * 0.6180339887 + uTime * 0.015);
+    float hue = 0.5 + 0.18 * sin(hueBase * 6.28318) + 0.05 * sin(fi * 0.3 + uTime * 0.03);
+    float sat = 0.7 + 0.2 * sin(fi * 0.7 + uTime * 0.02);
+    float lit = 0.18 + 0.12 * sin(fi * 0.4 + uTime * 0.04);
+
+    vec3 cellColor = hsl2rgb(vec3(hue, sat, lit));
+
+    // Subtle per-cell breathing
+    float breathe = 0.04 * sin(uTime * 0.5 + fi * 0.9);
+    cellColor += vec3(0.02, 0.04, 0.06) * breathe;
+
+    // Edge color: white core -> cyan -> blue
+    vec3 edgeWhite = vec3(1.0, 1.0, 1.0);
+    vec3 edgeCyan = vec3(0.2, 0.95, 1.0);
+    vec3 edgeBlue = vec3(0.1, 0.4, 0.9);
+
+    // Multi-layer edge
+    float coreMask = exp(-edge * 80.0);
+    float midMask = exp(-edge * 25.0);
+    float outerMask = exp(-edge * 8.0);
+
+    vec3 edgeColor = edgeWhite * coreMask + edgeCyan * midMask * 0.7 + edgeBlue * outerMask * 0.3;
+
+    // Blend cell with edge
+    float edgeBlend = smoothstep(0.0, 0.12, edge);
+    vec3 color = mix(edgeColor, cellColor, edgeBlend);
+
+    // Add subtle inner glow near cell edges (lighter cell color near seams)
+    float innerGlow = exp(-edge * 12.0) * 0.3;
+    color += cellColor * 1.5 * innerGlow;
+
+    // Subtle radial depth within cell (darker center)
+    float centerDark = smoothstep(0.05, 0.3, edge) * 0.3;
+    color *= 1.0 - centerDark * 0.4;
+
+    // Vignette - softer, more cinematic
+    vec2 vc = uv - 0.5;
+    float vig = 1.0 - dot(vc, vc) * 0.8;
+    vig = smoothstep(0.0, 1.0, vig);
+    color *= vig;
+
+    // Subtle color grading: lift shadows slightly toward blue
+    color = mix(color, color * vec3(0.9, 0.95, 1.1), 0.3 * (1.0 - color.g));
+
+    // Very subtle tonemapping to prevent harsh clipping
+    color = color / (1.0 + color * 0.15);
+    color = pow(color, vec3(0.95));
+
+    gl_FragColor = vec4(color, 1.0);
+}
+`;
+
+const renderer = new THREE.WebGLRenderer({ antialias: false });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+const uniforms = {
+    uTime: { value: 0.0 },
+    uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+};
+
+const material = new THREE.ShaderMaterial({
+    vertexShader,
+    fragmentShader,
+    uniforms,
+    depthTest: false,
+    depthWrite: false
+});
+
+const geometry = new THREE.PlaneGeometry(2, 2);
+const mesh = new THREE.Mesh(geometry, material);
+scene.add(mesh);
+
+const clock = new THREE.Clock();
+
+function animate() {
+    requestAnimationFrame(animate);
+    uniforms.uTime.value = clock.getElapsedTime();
+    renderer.render(scene, camera);
+}
+
+window.addEventListener('resize', () => {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    renderer.setSize(w, h);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    const pr = Math.min(window.devicePixelRatio, 2);
+    uniforms.uResolution.value.set(w * pr, h * pr);
+});
+
+const pr = Math.min(window.devicePixelRatio, 2);
+uniforms.uResolution.value.set(window.innerWidth * pr, window.innerHeight * pr);
+
+animate();
+</script>
+</body>
+</html>

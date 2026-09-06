@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Throbbing Orb</title>
+<style>
+  body { margin: 0; overflow: hidden; background: #000; }
+  canvas { display: block; }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x020208);
+
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 0, 3.2);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+const geometry = new THREE.SphereGeometry(1, 128, 128);
+
+const vertexShader = `
+  uniform float uTime;
+  varying float vDisplacement;
+  varying vec3 vNormal;
+  varying vec3 vViewDir;
+
+  void main() {
+    vec3 pos = position;
+    vec3 dir = normalize(pos);
+
+    float d = 0.0;
+    d += sin(pos.x * 3.0 + uTime * 0.9) * 0.30;
+    d += sin(pos.y * 4.0 - uTime * 0.7) * 0.25;
+    d += sin(pos.z * 2.5 + uTime * 1.1) * 0.22;
+    d += sin((pos.x + pos.y) * 5.0 + uTime * 0.5) * 0.12;
+    d += sin((pos.y + pos.z) * 3.5 - uTime * 0.8) * 0.15;
+    d += sin((pos.x + pos.z) * 2.0 + uTime * 1.4) * 0.10;
+
+    // Breathing pulse
+    float breath = sin(uTime * 0.5) * 0.05;
+    d += breath;
+
+    vDisplacement = d;
+
+    vec3 displaced = pos + dir * d * 0.22;
+
+    // Approximate normal by sampling neighbors
+    float eps = 0.01;
+    vec3 tangent = normalize(cross(dir, vec3(0.0, 1.0, 0.0)) + vec3(0.001));
+    vec3 bitangent = normalize(cross(dir, tangent));
+
+    vec3 p1 = pos + tangent * eps;
+    vec3 p2 = pos + bitangent * eps;
+
+    float d1 = sin(p1.x * 3.0 + uTime * 0.9) * 0.30 + sin(p1.y * 4.0 - uTime * 0.7) * 0.25 + sin(p1.z * 2.5 + uTime * 1.1) * 0.22 + sin((p1.x + p1.y) * 5.0 + uTime * 0.5) * 0.12 + sin((p1.y + p1.z) * 3.5 - uTime * 0.8) * 0.15 + sin((p1.x + p1.z) * 2.0 + uTime * 1.4) * 0.10 + breath;
+    float d2 = sin(p2.x * 3.0 + uTime * 0.9) * 0.30 + sin(p2.y * 4.0 - uTime * 0.7) * 0.25 + sin(p2.z * 2.5 + uTime * 1.1) * 0.22 + sin((p2.x + p2.y) * 5.0 + uTime * 0.5) * 0.12 + sin((p2.y + p2.z) * 3.5 - uTime * 0.8) * 0.15 + sin((p2.x + p2.z) * 2.0 + uTime * 1.4) * 0.10 + breath;
+
+    vec3 disp1 = p1 + normalize(p1) * d1 * 0.22;
+    vec3 disp2 = p2 + normalize(p2) * d2 * 0.22;
+
+    vec3 newNormal = normalize(cross(disp1 - displaced, disp2 - displaced));
+
+    vNormal = normalize(normalMatrix * newNormal);
+    vec4 mvPosition = modelViewMatrix * vec4(displaced, 1.0);
+    vViewDir = normalize(-mvPosition.xyz);
+    gl_Position = projectionMatrix * mvPosition;
+  }
+`;
+
+const fragmentShader = `
+  uniform float uTime;
+  varying float vDisplacement;
+  varying vec3 vNormal;
+  varying vec3 vViewDir;
+
+  void main() {
+    float t = clamp(vDisplacement * 0.55 + 0.5, 0.0, 1.0);
+
+    // Richer color palette
+    vec3 deepIndigo = vec3(0.03, 0.01, 0.18);
+    vec3 electricBlue = vec3(0.08, 0.25, 0.95);
+    vec3 brightCyan = vec3(0.2, 0.75, 1.0);
+    vec3 white = vec3(1.0, 1.0, 1.0);
+
+    vec3 color;
+    if (t < 0.35) {
+      color = mix(deepIndigo, electricBlue, t / 0.35);
+    } else if (t < 0.65) {
+      color = mix(electricBlue, brightCyan, (t - 0.35) / 0.30);
+    } else {
+      color = mix(brightCyan, white, (t - 0.65) / 0.35);
+    }
+
+    // Fresnel rim glow
+    float fresnel = pow(1.0 - abs(dot(vNormal, vViewDir)), 2.5);
+    vec3 rimColor = vec3(0.3, 0.6, 1.0);
+    color += rimColor * fresnel * 0.5;
+
+    // Subtle inner glow pulse
+    float pulse = sin(uTime * 1.2) * 0.5 + 0.5;
+    color += vec3(0.1, 0.2, 0.5) * pulse * 0.08;
+
+    gl_FragColor = vec4(color, 1.0);
+  }
+`;
+
+const material = new THREE.ShaderMaterial({
+  uniforms: {
+    uTime: { value: 0 }
+  },
+  vertexShader,
+  fragmentShader,
+  side: THREE.FrontSide
+});
+
+const mesh = new THREE.Mesh(geometry, material);
+scene.add(mesh);
+
+// Post-processing with bloom
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  0.55,   // strength - reduced to avoid overexposure
+  0.7,    // radius - wider for softer glow
+  0.25    // threshold
+);
+composer.addPass(bloomPass);
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
+});
+
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  material.uniforms.uTime.value = clock.getElapsedTime();
+
+  // Slow rotation for organic feel
+  mesh.rotation.y = clock.getElapsedTime() * 0.1;
+  mesh.rotation.x = Math.sin(clock.getElapsedTime() * 0.07) * 0.15;
+
+  composer.render();
+}
+
+animate();
+</script>
+</body>
+</html>

@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Chrono Tissue</title>
+<style>
+* { margin: 0; padding: 0; }
+body { overflow: hidden; background: #000; }
+canvas { display: block; }
+</style>
+<script type="importmap">
+{
+    "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+    }
+}
+</script>
+</head>
+<body>
+<script type="module">
+import * as THREE from 'three';
+
+const scene = new THREE.Scene();
+const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const renderer = new THREE.WebGLRenderer({ antialias: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+const vertexShader = `
+varying vec2 vUv;
+void main() {
+    vUv = uv;
+    gl_Position = vec4(position.xy, 0.0, 1.0);
+}
+`;
+
+const fragmentShader = `
+precision highp float;
+uniform vec2 uResolution;
+uniform float uTime;
+varying vec2 vUv;
+
+#define MAX_STEPS 80
+#define MAX_DIST 40.0
+#define SURF_DIST 0.004
+#define SPACING 2.8
+
+float sdSphere(vec3 p, float r) {
+    return length(p) - r;
+}
+
+float smin(float a, float b, float k) {
+    float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+    return mix(b, a, h) - k * h * (1.0 - h);
+}
+
+float heartbeat(float t) {
+    float cycle = mod(t, 1.4);
+    float lub = exp(-pow((cycle - 0.0) / 0.07, 2.0));
+    float dub = 0.55 * exp(-pow((cycle - 0.14) / 0.055, 2.0));
+    return lub + dub;
+}
+
+float map(vec3 p) {
+    vec3 cell = floor((p + 0.5 * SPACING) / SPACING);
+    vec3 lp = mod(p + 0.5 * SPACING, SPACING) - 0.5 * SPACING;
+
+    float phase = (cell.x * 0.7 + cell.y * 0.5 + cell.z * 0.9) * 0.18;
+    float beat = heartbeat(uTime * 0.7 + phase);
+
+    float baseR = 1.15;
+    float pulseR = baseR + 0.3 * beat;
+
+    vec3 sp = lp;
+    sp.y *= 1.0 / (1.0 + 0.2 * beat);
+
+    float d = sdSphere(sp, pulseR);
+
+    float fade = 1.0 - smoothstep(10.0, 25.0, length(p));
+    d = max(d, 0.001) / max(fade, 0.001);
+
+    return d;
+}
+
+vec3 calcNormal(vec3 p) {
+    const vec2 e = vec2(0.003, 0.0);
+    return normalize(vec3(
+        map(p + e.xyy) - map(p - e.xyy),
+        map(p + e.yxy) - map(p - e.yxy),
+        map(p + e.yyx) - map(p - e.yyx)
+    ));
+}
+
+float calcAO(vec3 p, vec3 n) {
+    float occ = 0.0;
+    float sca = 1.0;
+    for(int i = 0; i < 5; i++) {
+        float h = 0.02 + 0.1 * float(i);
+        float d = map(p + n * h);
+        occ += (h - d) * sca;
+        sca *= 0.8;
+    }
+    return clamp(1.0 - 2.5 * occ, 0.0, 1.0);
+}
+
+float softShadow(vec3 ro, vec3 rd, float mint, float maxt, float k) {
+    float res = 1.0;
+    float t = mint;
+    for(int i = 0; i < 12; i++) {
+        float h = map(ro + rd * t);
+        res = min(res, k * h / t);
+        t += clamp(h, 0.03, 0.6);
+        if(res < 0.001 || t > maxt) break;
+    }
+    return clamp(res, 0.0, 1.0);
+}
+
+void main() {
+    vec2 uv = (gl_FragCoord.xy - 0.5 * uResolution) / uResolution.y;
+
+    float camAngle = uTime * 0.08;
+    float camBob = sin(uTime * 0.05) * 2.0;
+    vec3 ro = vec3(sin(camAngle) * 14.0, camBob + 2.0, cos(camAngle) * 14.0);
+    vec3 ta = vec3(0.0, 0.0, 0.0);
+    vec3 fw = normalize(ta - ro);
+    vec3 ri = normalize(cross(vec3(0.0, 1.0, 0.0), fw));
+    vec3 up = cross(fw, ri);
+    vec3 rd = normalize(fw * 1.6 + uv.x * ri + uv.y * up);
+
+    float t = 0.0;
+    float hit = -1.0;
+    for(int i = 0; i < MAX_STEPS; i++) {
+        vec3 p = ro + rd * t;
+        float d = map(p);
+        if(d < SURF_DIST) { hit = t; break; }
+        t += d * 0.75;
+        if(t > MAX_DIST) break;
+    }
+
+    vec3 col = vec3(0.015, 0.005, 0.025);
+
+    if(hit > 0.0) {
+        vec3 p = ro + rd * hit;
+        vec3 n = calcNormal(p);
+
+        vec3 ligPos = vec3(4.0, 6.0, 3.0);
+        vec3 ligDir = normalize(ligPos - p);
+        float dif = clamp(dot(n, ligDir), 0.0, 1.0);
+        float sha = softShadow(p + n * 0.01, ligDir, 0.05, 8.0, 10.0);
+        float ao = calcAO(p, n);
+
+        float fresnel = pow(1.0 - clamp(dot(-rd, n), 0.0, 1.0), 3.0);
+
+        float spacing = SPACING;
+        vec3 cell = floor((p + 0.5 * spacing) / spacing);
+        float phase = (cell.x * 0.7 + cell.y * 0.5 + cell.z * 0.9) * 0.18;
+        float beat = heartbeat(uTime * 0.7 + phase);
+
+        vec3 baseCol = vec3(0.12, 0.015, 0.03);
+        vec3 beatCol = vec3(0.9, 0.25, 0.15) * beat * 1.8;
+        vec3 hotCol = vec3(1.0, 0.75, 0.5) * beat * beat * 2.5;
+        vec3 sssCol = vec3(0.7, 0.08, 0.05) * pow(beat, 1.5) * pow(clamp(dot(-rd, -ligDir), 0.0, 1.0), 2.0);
+        vec3 rimCol = vec3(0.4, 0.08, 0.15) * fresnel * (0.3 + 0.7 * beat);
+        vec3 ambient = vec3(0.04, 0.01, 0.04);
+
+        col = baseCol * (0.2 + 0.8 * dif * sha) * ao;
+        col += beatCol * (0.4 + 0.6 * dif) * ao;
+        col += hotCol * fresnel * 0.6;
+        col += sssCol * ao;
+        col += rimCol * ao;
+        col += ambient;
+
+        float fog = 1.0 - exp(-hit * 0.06);
+        col = mix(col, vec3(0.015, 0.005, 0.025), clamp(fog, 0.0, 1.0));
+    }
+
+    float vig = 1.0 - 0.35 * dot(uv, uv);
+    col *= vig;
+
+    col = pow(col, vec3(0.85));
+
+    gl_FragColor = vec4(col, 1.0);
+}
+`;
+
+const uniforms = {
+    uResolution: { value: new THREE.Vector2(window.innerWidth * renderer.getPixelRatio(), window.innerHeight * renderer.getPixelRatio()) },
+    uTime: { value: 0 }
+};
+
+const material = new THREE.ShaderMaterial({
+    uniforms,
+    vertexShader,
+    fragmentShader
+});
+
+const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material);
+scene.add(quad);
+
+function animate() {
+    requestAnimationFrame(animate);
+    uniforms.uTime.value = performance.now() * 0.001;
+    renderer.render(scene, camera);
+}
+animate();
+
+window.addEventListener('resize', () => {
+    const pr = renderer.getPixelRatio();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    uniforms.uResolution.value.set(window.innerWidth * pr, window.innerHeight * pr);
+});
+</script>
+</body>
+</html>

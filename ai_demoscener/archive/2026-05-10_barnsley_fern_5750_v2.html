@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <style>
+        html, body { margin: 0; overflow: hidden; background-color: #02060f; }
+        canvas { display: block; }
+        #vignette {
+            position: fixed; inset: 0; pointer-events: none;
+            background: radial-gradient(ellipse at center,
+                rgba(0,0,0,0) 35%, rgba(0,0,0,0.35) 75%, rgba(0,0,0,0.85) 100%);
+            z-index: 2;
+        }
+        #glow-bg {
+            position: fixed; inset: 0; pointer-events: none; z-index: 1;
+            background: radial-gradient(ellipse at 50% 50%,
+                rgba(40,70,160,0.18) 0%, rgba(10,20,60,0.05) 40%, rgba(0,0,0,0) 70%);
+        }
+    </style>
+</head>
+<body>
+<div id="glow-bg"></div>
+<div id="vignette"></div>
+<script type="module">
+    import * as THREE from 'https://unpkg.com/three@0.150.1/build/three.module.js';
+
+    const count = 120000;
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x02060f, 0.016);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setClearColor(0x02060f);
+    document.body.appendChild(renderer.domElement);
+
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 300);
+    camera.position.set(0, 0, 32);
+
+    const geometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(count * 3);
+    const colors = new Float32Array(count * 3);
+    const sizes = new Float32Array(count);
+    const glows = new Float32Array(count);
+
+    const transforms = [
+        { a: 0.30, b: 0.00,  c: 0.00,  d: 0.30, tx: 0.0,   ty: 0.0,   z: 0.0,  prob: 0.05 },
+        { a: 0.48, b: 0.12,  c: -0.12, d: 0.48, tx: 0.0,   ty: 2.8,   z: 1.5,  prob: 0.22 },
+        { a: 0.44, b: -0.18, c: 0.18,  d: 0.44, tx: -1.8,  ty: 1.2,   z: -1.0, prob: 0.20 },
+        { a: 0.44, b: 0.18,  c: -0.18, d: 0.44, tx: 1.8,   ty: 1.2,   z: 1.0,  prob: 0.20 },
+        { a: 0.40, b: -0.22, c: 0.22,  d: 0.40, tx: -1.2,  ty: -1.4,  z: -0.5, prob: 0.15 },
+        { a: 0.40, b: 0.22,  c: -0.22, d: 0.40, tx: 1.2,   ty: -1.4,  z: 0.5,  prob: 0.15 },
+        { a: 0.25, b: 0.08,  c: -0.08, d: 0.25, tx: 0.3,   ty: 0.4,   z: 0.0,  prob: 0.03 },
+    ];
+
+    const cumProbs = [];
+    let cum = 0;
+    for (const t of transforms) { cum += t.prob; cumProbs.push(cum); }
+
+    function pickTransform() {
+        const r = Math.random();
+        for (let i = 0; i < cumProbs.length; i++) { if (r < cumProbs[i]) return transforms[i]; }
+        return transforms[transforms.length - 1];
+    }
+
+    // deep indigo -> teal/cyan -> warm white core
+    function palette(t) {
+        const c0 = [0.06, 0.04, 0.30];
+        const c1 = [0.10, 0.45, 0.85];
+        const c2 = [0.95, 0.85, 1.00];
+        let r, g, b;
+        if (t < 0.5) {
+            const k = t / 0.5;
+            r = c0[0] + (c1[0]-c0[0])*k;
+            g = c0[1] + (c1[1]-c0[1])*k;
+            b = c0[2] + (c1[2]-c0[2])*k;
+        } else {
+            const k = (t - 0.5) / 0.5;
+            r = c1[0] + (c2[0]-c1[0])*k;
+            g = c1[1] + (c2[1]-c1[1])*k;
+            b = c1[2] + (c2[2]-c1[2])*k;
+        }
+        return [r, g, b];
+    }
+
+    function generateFractal() {
+        let x = 0, y = 0;
+        for (let i = 0; i < count; i++) {
+            const t = pickTransform();
+            const nx = t.a * x + t.b * y + t.tx;
+            const ny = t.c * x + t.d * y + t.ty;
+            x = nx; y = ny;
+
+            const py = y - 1.5;
+            const idx = i * 3;
+            positions[idx] = x;
+            positions[idx + 1] = py;
+            positions[idx + 2] = t.z + (Math.random() - 0.5) * 0.35;
+
+            const dist = Math.sqrt(x * x + py * py);
+            const intensity = Math.pow(Math.max(0.0, 1.0 - dist / 4.2), 1.6);
+
+            const [r1, g1, b1] = palette(intensity);
+            colors[idx] = r1;
+            colors[idx + 1] = g1;
+            colors[idx + 2] = b1;
+
+            glows[i] = intensity;
+            sizes[i] = 0.9 + intensity * 3.2;
+        }
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('glow', new THREE.BufferAttribute(glows, 1));
+    }
+    generateFractal();
+
+    const uniforms = { uTime: { value: 0 } };
+    const vertexShader = `
+        attribute float size;
+        attribute float glow;
+        varying vec3 vColor;
+        varying float vGlow;
+        void main() {
+            vColor = color;
+            vGlow = glow;
+            vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+            gl_PointSize = size * (220.0 / -mvPosition.z);
+            gl_Position = projectionMatrix * mvPosition;
+        }
+    `;
+    const fragmentShader = `
+        uniform float uTime;
+        varying vec3 vColor;
+        varying float vGlow;
+        void main() {
+            vec2 uv = gl_PointCoord - vec2(0.5);
+            float d = length(uv);
+            float alpha = smoothstep(0.5, 0.0, d);
+            alpha *= alpha;
+            // breathing: core pulses more than the shell
+            float pulse = 0.78 + 0.22 * sin(uTime * 1.4) * (0.3 + vGlow);
+            vec3 col = vColor * pulse;
+            col += vec3(0.05, 0.10, 0.18) * vGlow * (0.5 + 0.5*sin(uTime*1.4));
+            gl_FragColor = vec4(col, alpha * 0.45);
+        }
+    `;
+    const material = new THREE.ShaderMaterial({
+        vertexShader, fragmentShader, uniforms,
+        transparent: true, depthWrite: false,
+        blending: THREE.AdditiveBlending, vertexColors: true
+    });
+    const points = new THREE.Points(geometry, material);
+    scene.add(points);
+
+    // soft luminous halo behind the fractal
+    function makeHaloTexture() {
+        const c = document.createElement('canvas'); c.width = c.height = 256;
+        const ctx = c.getContext('2d');
+        const g = ctx.createRadialGradient(128,128,0,128,128,128);
+        g.addColorStop(0.0, 'rgba(150,190,255,0.55)');
+        g.addColorStop(0.25,'rgba(70,110,220,0.28)');
+        g.addColorStop(0.6, 'rgba(30,50,140,0.08)');
+        g.addColorStop(1.0, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g; ctx.fillRect(0,0,256,256);
+        const tex = new THREE.CanvasTexture(c);
+        return tex;
+    }
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: makeHaloTexture(), transparent: true,
+        blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.9
+    }));
+    halo.scale.set(16, 16, 1);
+    halo.position.set(0, -1.5, 0);
+    scene.add(halo);
+
+    // ambient particle field
+    const ambientCount = 4000;
+    const ambientGeo = new THREE.BufferGeometry();
+    const ambientPos = new Float32Array(ambientCount * 3);
+    const ambientCol = new Float32Array(ambientCount * 3);
+    for (let i = 0; i < ambientCount; i++) {
+        const idx = i * 3;
+        ambientPos[idx]     = (Math.random() - 0.5) * 90;
+        ambientPos[idx + 1] = (Math.random() - 0.5) * 90;
+        ambientPos[idx + 2] = (Math.random() - 0.5) * 90;
+        const b = 0.4 + Math.random() * 0.6;
+        ambientCol[idx]     = 0.05 + Math.random()*0.05;
+        ambientCol[idx + 1] = 0.12 + Math.random() * 0.18;
+        ambientCol[idx + 2] = b;
+    }
+    ambientGeo.setAttribute('position', new THREE.BufferAttribute(ambientPos, 3));
+    ambientGeo.setAttribute('color', new THREE.BufferAttribute(ambientCol, 3));
+    const ambientMat = new THREE.PointsMaterial({
+        size: 0.6, sizeAttenuation: true, vertexColors: true,
+        transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false
+    });
+    const ambientPoints = new THREE.Points(ambientGeo, ambientMat);
+    scene.add(ambientPoints);
+
+    let time = 0;
+    function animate() {
+        requestAnimationFrame(animate);
+        time += 0.008;
+        uniforms.uTime.value = time;
+
+        const pulse = 1.0 + Math.sin(time * 0.8) * 0.04;
+        points.scale.set(pulse, pulse, pulse);
+
+        points.rotation.y += 0.0035;
+        points.rotation.x = Math.sin(time * 0.4) * 0.06;
+        points.rotation.z = Math.cos(time * 0.3) * 0.04;
+        points.position.y = -1.5;
+
+        halo.material.opacity = 0.7 + 0.25 * (0.5 + 0.5*Math.sin(time*1.4));
+        halo.scale.setScalar(15 + Math.sin(time*0.8) * 1.2);
+
+        ambientPoints.rotation.y -= 0.0012;
+        ambientPoints.rotation.x += 0.0006;
+        ambientMat.opacity = 0.45 + 0.15 * Math.sin(time * 0.6);
+
+        camera.position.x = Math.sin(time * 0.15) * 2.2;
+        camera.position.y = Math.cos(time * 0.10) * 1.2;
+        camera.position.z = 32 + Math.sin(time * 0.12) * 3.0;
+        camera.lookAt(0, 0, 0);
+
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+</script>
+</body>
+</html>

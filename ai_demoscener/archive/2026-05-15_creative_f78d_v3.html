@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aurora Veil</title>
+<style>
+html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #010508; }
+canvas { display: block; width: 100%; height: 100%; }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x010a08, 0.025);
+
+const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 150);
+camera.position.set(0, 1.5, 9);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+document.body.appendChild(renderer.domElement);
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.85, 0.7, 0.35);
+composer.addPass(bloom);
+
+// Audio: 80 BPM deep resonance
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+const masterGain = audioCtx.createGain();
+masterGain.gain.value = 0.15;
+masterGain.connect(audioCtx.destination);
+
+const BPM = 80;
+const beatInterval = 60 / BPM;
+let beatTime = -beatInterval;
+
+function triggerBeat() {
+  const now = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(48, now);
+  osc.frequency.exponentialRampToValueAtTime(26, now + 0.6);
+  gain.gain.setValueAtTime(1.0, now);
+  gain.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
+  osc.connect(gain).connect(masterGain);
+  osc.start(now);
+  osc.stop(now + 0.65);
+
+  if (Math.random() > 0.4) {
+    const o2 = audioCtx.createOscillator();
+    const g2 = audioCtx.createGain();
+    const flt = audioCtx.createBiquadFilter();
+    o2.type = 'sine';
+    o2.frequency.value = 165 + Math.random() * 280;
+    flt.type = 'lowpass';
+    flt.frequency.setValueAtTime(1500, now);
+    flt.frequency.exponentialRampToValueAtTime(300, now + 0.5);
+    g2.gain.setValueAtTime(0.08, now);
+    g2.gain.exponentialRampToValueAtTime(0.01, now + 0.55);
+    o2.connect(flt).connect(g2).connect(masterGain);
+    o2.start(now);
+    o2.stop(now + 0.6);
+  }
+}
+
+// Aurora curtain shaders
+const auroraVert = `
+uniform float uTime;
+uniform float uBeat;
+uniform float uPhase;
+varying vec2 vUv;
+varying vec3 vNormal;
+varying vec3 vViewPos;
+void main() {
+  vUv = uv;
+  vec3 pos = position;
+  float t = uTime * 0.6 + uPhase;
+
+  // Gentle horizontal drift
+  pos.z += sin(pos.x * 0.4 + t * 0.3) * 0.5;
+  // Vertical curtain sway
+  pos.z += sin(pos.x * 1.8 + t * 0.5 + sin(pos.y * 1.5 + t * 0.2) * 0.8) * 0.35;
+  // Fine ripple
+  pos.z += sin(pos.y * 8.0 - t * 0.8 + pos.x * 2.0) * 0.1;
+  // Beat pulse
+  pos.z += uBeat * sin(pos.x * 2.0 + t * 1.5) * 0.25;
+  // Slight y drift
+  pos.y += sin(pos.x * 0.8 + t * 0.3) * 0.08;
+
+  vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
+  vViewPos = mvPos.xyz;
+  vNormal = normalize(normalMatrix * normal);
+  gl_Position = projectionMatrix * mvPos;
+}`;
+
+const auroraFrag = `
+uniform float uTime;
+uniform float uBeat;
+uniform float uPhase;
+varying vec2 vUv;
+varying vec3 vNormal;
+varying vec3 vViewPos;
+
+float hash(float n) { return fract(sin(n) * 43758.5453); }
+
+void main() {
+  vec3 viewDir = normalize(-vViewPos);
+  float fresnel = pow(1.0 - abs(dot(viewDir, normalize(vNormal))), 3.0);
+
+  // Rich aurora palette
+  vec3 deepGreen = vec3(0.02, 0.75, 0.30);
+  vec3 brightGreen = vec3(0.2, 0.95, 0.45);
+  vec3 cyan = vec3(0.0, 0.55, 0.65);
+  vec3 teal = vec3(0.0, 0.4, 0.45);
+  vec3 violet = vec3(0.35, 0.08, 0.65);
+  vec3 magenta = vec3(0.5, 0.1, 0.55);
+  vec3 blue = vec3(0.05, 0.15, 0.6);
+  vec3 pale = vec3(0.7, 0.95, 0.85);
+
+  float t = uTime * 0.4;
+
+  // Vertical finger structure - hanging aurora rays
+  float fingerFreq = 5.0 + sin(uPhase * 3.0) * 2.0;
+  float fingers = sin(vUv.x * fingerFreq + t * 0.5 + sin(vUv.x * 3.0 + uPhase) * 1.2) * 0.5 + 0.5;
+  float fingers2 = sin(vUv.x * (fingerFreq * 1.7) - t * 0.3 + cos(vUv.x * 5.0 + uPhase * 2.0) * 0.8) * 0.5 + 0.5;
+  float fingerMask = fingers * 0.6 + fingers2 * 0.4;
+
+  // Horizontal color bands drifting
+  float band1 = sin(vUv.x * 4.0 + t * 0.7 + uPhase) * 0.5 + 0.5;
+  float band2 = sin(vUv.x * 8.0 - t * 0.4 + vUv.y * 2.0 + uPhase * 1.5) * 0.5 + 0.5;
+  float band3 = sin(vUv.x * 14.0 + t * 1.2 + sin(vUv.y * 6.0) * 1.5) * 0.5 + 0.5;
+
+  // Color mixing - more varied
+  vec3 col = mix(teal, deepGreen, band1 * 0.7 + 0.3);
+  col = mix(col, cyan, band2 * 0.4);
+  col = mix(col, brightGreen, fingerMask * 0.3 * smoothstep(0.3, 0.8, vUv.y));
+  // Add violet/magenta at the bottom edges
+  col = mix(col, violet, smoothstep(0.4, 0.0, vUv.y) * 0.35 * band3);
+  col = mix(col, magenta, smoothstep(0.25, 0.0, vUv.y) * 0.2 * band2);
+  // Blue tint at very top
+  col = mix(col, blue, smoothstep(0.85, 1.0, vUv.y) * 0.3);
+  // Pale highlights on bright fingers
+  col += pale * fingerMask * 0.15 * smoothstep(0.5, 1.0, vUv.y);
+
+  // Fresnel rim glow
+  col += cyan * fresnel * 0.2;
+  col += brightGreen * uBeat * 0.3 * fingerMask;
+
+  // Vertical intensity: bright at top, fading with finger structure at bottom
+  float vGrad = smoothstep(0.05, 0.5, vUv.y);
+  float topBright = smoothstep(0.6, 1.0, vUv.y) * 0.8 + 0.4;
+  // Fingers create variation in how far down the glow extends
+  float fingerExtend = 0.3 + fingerMask * 0.5;
+  float vIntensity = smoothstep(0.0, fingerExtend, vUv.y) * topBright;
+
+  // Subtle breathing
+  float breathe = 0.7 + 0.3 * sin(t * 0.5 + uPhase + vUv.x * 2.0);
+  vIntensity *= breathe;
+  vIntensity += uBeat * 0.25 * vGrad;
+
+  // Wide soft edge fade
+  float edgeFade = smoothstep(0.0, 0.18, vUv.x) * smoothstep(1.0, 0.82, vUv.x);
+  // Bottom fade with finger influence
+  float bottomFade = smoothstep(0.0, 0.15 + fingerMask * 0.1, vUv.y);
+  // Top soft edge
+  float topFade = smoothstep(1.0, 0.95, vUv.y) * 0.5 + 0.5;
+
+  float alpha = vIntensity * edgeFade * bottomFade * topFade * 0.45;
+
+  gl_FragColor = vec4(col * (0.7 + uBeat * 0.25), alpha);
+}`;
+
+// Create aurora curtains - more spread out, less overlapping
+const auroraMats = [];
+const auroraGroup = new THREE.Group();
+
+const curtainConfigs = [
+  { w: 10, h: 8, x: -3, y: 3.5, z: -5, ry: 0.05, phase: 0 },
+  { w: 12, h: 9, x: 2, y: 4.0, z: -8, ry: -0.08, phase: 1.7 },
+  { w: 9, h: 7, x: -1, y: 3.0, z: -11, ry: 0.12, phase: 3.2 },
+  { w: 14, h: 10, x: 4, y: 4.5, z: -14, ry: -0.05, phase: 4.8 },
+  { w: 8, h: 6.5, x: -5, y: 2.5, z: -9, ry: 0.15, phase: 6.1 },
+  { w: 11, h: 8.5, x: 1, y: 5.0, z: -18, ry: 0.03, phase: 2.4 },
+  { w: 7, h: 5.5, x: 6, y: 3.0, z: -7, ry: -0.18, phase: 5.3 },
+];
+
+for (const cfg of curtainConfigs) {
+  const geo = new THREE.PlaneGeometry(cfg.w, cfg.h, 128, 32);
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+      uBeat: { value: 0 },
+      uPhase: { value: cfg.phase }
+    },
+    vertexShader: auroraVert,
+    fragmentShader: auroraFrag,
+    transparent: true,
+    side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  });
+  auroraMats.push(mat);
+
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(cfg.x, cfg.y, cfg.z);
+  mesh.rotation.y = cfg.ry;
+  auroraGroup.add(mesh);
+}
+scene.add(auroraGroup);
+
+// Ground: subtle reflective dark surface
+const groundGeo = new THREE.PlaneGeometry(80, 80, 64, 64);
+const groundMat = new THREE.ShaderMaterial({
+  uniforms: { uTime: { value: 0 }, uBeat: { value: 0 } },
+  vertexShader: `
+    uniform float uTime;
+    varying vec2 vUv;
+    varying vec3 vPos;
+    void main() {
+      vUv = uv;
+      vec3 pos = position;
+      pos.z += sin(pos.x * 0.3 + uTime * 0.15) * sin(pos.y * 0.3 + uTime * 0.1) * 0.1;
+      vPos = pos;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform float uTime;
+    uniform float uBeat;
+    varying vec2 vUv;
+    varying vec3 vPos;
+    void main() {
+      float d = length(vUv - 0.5) * 2.0;
+      // Dark base with subtle green tint
+      vec3 col = vec3(0.005, 0.03, 0.04) * (1.0 - d * 0.8);
+      // Subtle ripple reflections
+      float ripple = sin(vPos.x * 2.0 + uTime * 0.3) * sin(vPos.y * 2.0 - uTime * 0.2);
+      col += vec3(0.0, 0.08, 0.05) * ripple * 0.1 * (1.0 - d);
+      // Beat glow
+      col += vec3(0.0, 0.12, 0.06) * uBeat * (1.0 - d * 1.5) * 0.2;
+      float alpha = smoothstep(1.0, 0.3, d) * 0.7;
+      gl_FragColor = vec4(col, alpha);
+    }
+  `,
+  transparent: true,
+  side: THREE.DoubleSide,
+  depthWrite: false
+});
+const ground = new THREE.Mesh(groundGeo, groundMat);
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -1.5;
+scene.add(ground);
+
+// Snow particles - more depth variation
+const snowCount = 3000;
+const snowGeo = new THREE.BufferGeometry();
+const snowPos = new Float32Array(snowCount * 3);
+const snowSize = new Float32Array(snowCount);
+const snowSeed = new Float32Array(snowCount);
+
+for (let i = 0; i < snowCount; i++) {
+  snowPos[i * 3] = (Math.random() - 0.5) * 35;
+  snowPos[i * 3 + 1] = Math.random() * 14 - 3;
+  snowPos[i * 3 + 2] = (Math.random() - 0.5) * 35;
+  // Mix of small and large particles for depth
+  const r = Math.random();
+  snowSize[i] = r < 0.6 ? Math.random() * 1.0 + 0.2 : Math.random() * 2.5 + 1.0;
+  snowSeed[i] = Math.random();
+}
+snowGeo.setAttribute('position', new THREE.BufferAttribute(snowPos, 3));
+snowGeo.setAttribute('aSize', new THREE.BufferAttribute(snowSize, 1));
+snowGeo.setAttribute('aSeed', new THREE.BufferAttribute(snowSeed, 1));
+
+const snowVert = `
+attribute float aSize;
+attribute float aSeed;
+uniform float uTime;
+uniform float uBeat;
+varying float vAlpha;
+varying float vSize;
+void main() {
+  vec3 pos = position;
+  float fallSpeed = 0.15 + aSeed * 0.2;
+  pos.y = mod(pos.y - uTime * fallSpeed + 7.0, 14.0) - 3.0;
+  float t = uTime * 0.3 + aSeed * 25.0;
+  pos.x += sin(t + aSeed * 5.0) * (0.4 + aSeed * 0.5);
+  pos.z += cos(t * 0.7 + aSeed * 3.0) * 0.4;
+
+  vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
+  gl_Position = projectionMatrix * mvPos;
+  gl_PointSize = aSize * (200.0 / -mvPos.z) * (1.0 + uBeat * 0.1);
+  vAlpha = 0.08 + 0.1 * sin(t * 1.2 + aSeed * 12.0);
+  vSize = aSize;
+}`;
+
+const snowFrag = `
+varying float vAlpha;
+varying float vSize;
+void main() {
+  float d = length(gl_PointCoord - 0.5);
+  if(d > 0.5) discard;
+  float alpha = smoothstep(0.5, 0.0, d) * vAlpha;
+  // Slightly cooler tint
+  vec3 col = mix(vec3(0.6, 0.8, 0.9), vec3(0.8, 0.95, 1.0), vSize * 0.3);
+  gl_FragColor = vec4(col, alpha);
+}`;
+
+const snowMat = new THREE.ShaderMaterial({
+  uniforms: { uTime: { value: 0 }, uBeat: { value: 0 } },
+  vertexShader: snowVert,
+  fragmentShader: snowFrag,
+  transparent: true,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false
+});
+const snow = new THREE.Points(snowGeo, snowMat);
+scene.add(snow);
+
+// Star field
+const starCount = 1200;
+const starGeo = new THREE.BufferGeometry();
+const starPos = new Float32Array(starCount * 3);
+const starSize = new Float32Array(starCount);
+for (let i = 0; i < starCount; i++) {
+  const theta = Math.random() * Math.PI * 2;
+  const phi = Math.acos(Math.random() * 0.8 + 0.2);
+  const r = 50 + Math.random() * 50;
+  starPos[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+  starPos[i * 3 + 1] = r * Math.cos(phi) + 8;
+  starPos[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+  starSize[i] = Math.random() * 1.8 + 0.2;
+}
+starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+starGeo.setAttribute('aSize', new THREE.BufferAttribute(starSize, 1));
+
+const starVert = `
+attribute float aSize;
+uniform float uTime;
+varying float vTwinkle;
+void main() {
+  vTwinkle = 0.3 + 0.7 * sin(uTime * 0.4 + position.x * 2.0 + position.y * 3.0 + position.z);
+  vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+  gl_Position = projectionMatrix * mvPos;
+  gl_PointSize = aSize * (350.0 / -mvPos.z);
+}`;
+
+const starFrag = `
+varying float vTwinkle;
+void main() {
+  float d = length(gl_PointCoord - 0.5);
+  if(d > 0.5) discard;
+  float alpha = smoothstep(0.5, 0.0, d) * vTwinkle * 0.5;
+  gl_FragColor = vec4(0.6, 0.75, 0.95, alpha);
+}`;
+
+const starMat = new THREE.ShaderMaterial({
+  uniforms: { uTime: { value: 0 } },
+  vertexShader: starVert,
+  fragmentShader: starFrag,
+  transparent: true,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false
+});
+const stars = new THREE.Points(starGeo, starMat);
+scene.add(stars);
+
+// Resize
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+});
+
+document.addEventListener('click', () => { if (audioCtx.state === 'suspended') audioCtx.resume(); }, { once: true });
+document.addEventListener('keydown', () => { if (audioCtx.state === 'suspended') audioCtx.resume(); }, { once: true });
+
+const clock = new THREE.Clock();
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+
+  if (t - beatTime >= beatInterval) {
+    beatTime = t;
+    triggerBeat();
+  }
+
+  const beatPhase = Math.max(0, (t - beatTime) / beatInterval);
+  const beatPulse = Math.exp(-beatPhase * 2.0);
+
+  auroraMats.forEach(mat => {
+    mat.uniforms.uTime.value = t;
+    mat.uniforms.uBeat.value = beatPulse;
+  });
+  groundMat.uniforms.uTime.value = t;
+  groundMat.uniforms.uBeat.value = beatPulse;
+  snowMat.uniforms.uTime.value = t;
+  snowMat.uniforms.uBeat.value = beatPulse;
+  starMat.uniforms.uTime.value = t;
+
+  // Slow drift of aurora group
+  auroraGroup.rotation.y = Math.sin(t * 0.015) * 0.04;
+  auroraGroup.position.y = Math.sin(t * 0.08) * 0.1;
+
+  // Camera: very slow majestic orbit
+  camera.position.x = Math.sin(t * 0.04) * 2.5;
+  camera.position.y = 1.5 + Math.sin(t * 0.06) * 0.3;
+  camera.position.z = 9 + Math.cos(t * 0.03) * 0.8;
+  camera.lookAt(0, 3.0, -8);
+
+  composer.render();
+}
+
+animate();
+</script>
+</body>
+</html>

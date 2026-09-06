@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AUREUS // FRACTAL ORGANISM</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #07030d; }
+        canvas { display: block; }
+        #ui {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #ffd699;
+            text-shadow: 0 0 20px rgba(255, 180, 80, 0.4), 0 0 60px rgba(180, 100, 255, 0.2);
+            pointer-events: none;
+            letter-spacing: 8px;
+            font-size: 11px;
+            font-family: 'Georgia', serif;
+            opacity: 0;
+            animation: fadeIn 3s ease 1.2s forwards;
+            text-align: center;
+            line-height: 2.2;
+            mix-blend-mode: screen;
+        }
+        #ui span {
+            display: block;
+            font-size: 9px;
+            letter-spacing: 12px;
+            opacity: 0.5;
+        }
+        @keyframes fadeIn {
+            to { opacity: 0.55; }
+        }
+    </style>
+</head>
+<body>
+    <div id="ui">AUREUS<span>fractal organism // iteration ∞</span></div>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+        document.body.appendChild(renderer.domElement);
+
+        const mouse = { x: 0, y: 0, sx: 0, sy: 0 };
+        window.addEventListener('mousemove', (e) => {
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+        });
+
+        const fragmentShader = `
+            uniform float uTime;
+            uniform vec2 uResolution;
+            uniform vec2 uMouse;
+
+            #define MAX_STEPS 88
+            #define SURF_DIST .0006
+            #define MAX_DIST 14.
+
+            mat2 rot(float a) {
+                float s = sin(a), c = cos(a);
+                return mat2(c, -s, s, c);
+            }
+
+            float sdSphere(vec3 p, float r) {
+                return length(p) - r;
+            }
+
+            float sdEllipsoid(vec3 p, vec3 r) {
+                float k1 = length(p / r);
+                float k2 = length(p / (r * r));
+                return k1 * (1.0 - k1 / k2);
+            }
+
+            float map(vec3 p) {
+                float t = uTime * 0.25;
+
+                // Slow orbital rotation driven by time + mouse
+                p.xy *= rot(t * 0.18 + uMouse.x * 0.6);
+                p.xz *= rot(t * 0.10 + uMouse.y * 0.4);
+                p.yz *= rot(t * 0.14);
+
+                // Breathing scale
+                float breathe = 1.0 + 0.10 * sin(t * 0.6);
+                p *= breathe;
+
+                vec3 q = p;
+                float scale = 1.0;
+
+                for(int i = 0; i < 5; i++) {
+                    // Organic fold pattern (larger cells => visible body)
+                    q.xz = abs(q.xz) - vec2(0.55, 0.40);
+                    q.xy = abs(q.xy) - vec2(0.45, 0.55);
+                    q.yz = abs(q.yz) - vec2(0.50, 0.30);
+
+                    q.xy *= rot(t * 0.35 + float(i) * 0.7);
+                    q.xz *= rot(t * 0.25 - float(i) * 0.4);
+                    q.yz *= rot(float(i) * 1.1 + t * 0.18);
+
+                    q *= 1.55;
+                    scale *= 1.55;
+                }
+
+                // Final soft ellipsoid core
+                float d1 = sdEllipsoid(q, vec3(0.9, 1.1, 0.8)) / scale;
+
+                // Secondary carved lobe that drifts
+                vec3 q2 = p;
+                q2.xy *= rot(-t * 0.22);
+                q2.xz *= rot(t * 0.17);
+                float d2 = sdSphere(q2 * 1.8 - vec3(0.25 * sin(t * 0.45), 0.0, 0.25 * cos(t * 0.35)), 0.6);
+
+                float d = d1 - d2 * 0.10;
+
+                // Subtle surface undulation
+                d += 0.004 * sin(p.x * 14.0 + t * 1.2) * sin(p.y * 14.0 + t * 1.5) * sin(p.z * 14.0 + t * 0.9);
+
+                // Enlarge the organism so it fills the frame
+                return d * 0.42;
+            }
+
+            vec3 getNormal(vec3 p) {
+                vec2 e = vec2(0.004, 0);
+                float d = map(p);
+                vec3 n = d - vec3(
+                    map(p - e.xyy),
+                    map(p - e.yxy),
+                    map(p - e.yyx)
+                );
+                return normalize(n);
+            }
+
+            vec3 palette(float t) {
+                // Warm bioluminescent: deep violet -> amber -> gold -> soft white
+                vec3 a = vec3(0.20, 0.07, 0.30);
+                vec3 b = vec3(1.0, 0.65, 0.15);
+                vec3 c = vec3(0.55, 0.22, 0.90);
+                vec3 d = vec3(1.0, 0.90, 0.60);
+
+                float pulse = 0.5 + 0.5 * sin(uTime * 0.45);
+                return a + b * cos(6.28318 * (t + uTime * 0.06)) * 0.7
+                     + c * cos(6.28318 * (t * 1.3 + 0.3 + uTime * 0.04)) * 0.35
+                     + d * pulse * 0.30;
+            }
+
+            void main() {
+                vec2 uv = (gl_FragCoord.xy - 0.5 * uResolution.xy) / min(uResolution.y, uResolution.x);
+                vec2 uv2 = (gl_FragCoord.xy - 0.5 * uResolution.xy) / uResolution.y;
+
+                // Background: deep space with subtle nebula + faint drifting motes
+                vec3 col = vec3(0.015, 0.008, 0.035);
+                col += vec3(0.10, 0.03, 0.16) * exp(-2.6 * length(uv2));
+                col += vec3(0.04, 0.01, 0.07) * sin(uv.x * 4.0 + uTime * 0.12) * sin(uv.y * 4.0 - uTime * 0.18) * 0.5;
+
+                float motes = fract(sin(dot(floor(uv * 60.0), vec2(12.9898, 78.233))) * 43758.5453);
+                col += vec3(0.5, 0.3, 0.8) * step(0.992, motes) * 0.10 * (0.5 + 0.5 * sin(uTime * 0.5 + motes * 40.0));
+
+                // Camera
+                vec3 ro = vec3(0, 0, 1.7 + uMouse.y * 0.25);
+                vec3 rd = normalize(vec3(uv * 1.2, 1.0));
+
+                // Slight camera wobble
+                ro.x += 0.08 * sin(uTime * 0.22);
+                ro.y += 0.05 * cos(uTime * 0.31);
+
+                float dO = 0.0;
+                float glow = 0.0;
+                bool hit = false;
+
+                for(int i = 0; i < MAX_STEPS; i++) {
+                    vec3 p = ro + rd * dO;
+                    float dS = map(p);
+                    dO += dS * 0.9;
+
+                    // Accumulate glow from proximity (inner luminescence)
+                    glow += exp(-abs(dS) * 6.0) * 0.004;
+
+                    if(dO > MAX_DIST) break;
+                    if(abs(dS) < SURF_DIST) { hit = true; break; }
+                }
+
+                if(hit) {
+                    vec3 p = ro + rd * dO;
+                    vec3 n = getNormal(p);
+
+                    vec3 lightDir1 = normalize(vec3(1.5, 2.0, 3.0));
+                    vec3 lightDir2 = normalize(vec3(-2.0, -1.0, 1.0));
+
+                    float diff1 = max(dot(n, lightDir1), 0.0);
+                    float diff2 = max(dot(n, lightDir2), 0.0);
+                    float spec1 = pow(max(dot(reflect(rd, n), lightDir1), 0.0), 56.0);
+                    float spec2 = pow(max(dot(reflect(rd, n), lightDir2), 0.0), 28.0);
+
+                    float fresnel = pow(1.0 - max(dot(-rd, n), 0.0), 3.0);
+
+                    float colParam = length(p) * 0.6 + dot(n, vec3(0.3, 0.5, 0.2)) * 0.6;
+                    vec3 baseColor = palette(colParam);
+
+                    col = baseColor * (diff1 * 1.1 + diff2 * 0.35);
+                    col += vec3(1.0, 0.92, 0.72) * spec1 * 1.0;
+                    col += vec3(0.65, 0.35, 1.0) * spec2 * 0.4;
+                    col += fresnel * vec3(0.45, 0.18, 0.65) * 1.0;
+
+                    col *= exp(-0.10 * dO);
+                }
+
+                // Add accumulated glow (inner luminescence)
+                col += vec3(0.85, 0.42, 0.12) * glow * 3.2;
+                col += vec3(0.35, 0.12, 0.55) * glow * 2.0;
+
+                // Soft vignette
+                float vig = 1.0 - 0.45 * length(uv2);
+                col *= vig;
+
+                // Subtle film grain
+                float grain = fract(sin(dot(gl_FragCoord.xy + uTime * 100.0, vec2(12.9898, 78.233))) * 43758.5453);
+                col += (grain - 0.5) * 0.012;
+
+                // Gentle tone curve
+                col = col / (1.0 + col);
+                col = pow(col, vec3(0.92));
+
+                // Warm color grading
+                col.r *= 1.06;
+                col.b *= 0.97;
+
+                gl_FragColor = vec4(col, 1.0);
+            }
+        `;
+
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const uniforms = {
+            uTime: { value: 0 },
+            uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+            uMouse: { value: new THREE.Vector2(0, 0) }
+        };
+
+        const material = new THREE.ShaderMaterial({
+            fragmentShader,
+            uniforms
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        function resize() {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            renderer.setSize(w, h);
+            const pr = Math.min(window.devicePixelRatio, 1.5);
+            uniforms.uResolution.value.set(w * pr, h * pr);
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        function animate(time) {
+            mouse.sx += (mouse.x - mouse.sx) * 0.04;
+            mouse.sy += (mouse.y - mouse.sy) * 0.04;
+            uniforms.uMouse.value.set(mouse.sx, mouse.sy);
+            uniforms.uTime.value = time * 0.001;
+            renderer.render(scene, camera);
+            requestAnimationFrame(animate);
+        }
+
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>

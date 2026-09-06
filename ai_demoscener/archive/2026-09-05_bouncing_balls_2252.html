@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Glowing Ball Box</title>
+<style>
+  body { margin: 0; overflow: hidden; background: #000; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+let composer = null;
+
+// --- Scene Setup ---
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x050508);
+scene.fog = new THREE.FogExp2(0x050508, 0.012);
+
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 200);
+camera.position.set(14, 10, 14);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+document.body.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
+controls.target.set(0, 0, 0);
+
+// --- Lights ---
+const ambientLight = new THREE.AmbientLight(0x222233, 0.5);
+scene.add(ambientLight);
+
+const pointLight1 = new THREE.PointLight(0xffffff, 0.8, 50);
+pointLight1.position.set(5, 8, 5);
+scene.add(pointLight1);
+
+const pointLight2 = new THREE.PointLight(0x4444ff, 0.4, 40);
+pointLight2.position.set(-5, -3, -5);
+scene.add(pointLight2);
+
+// --- Box Setup ---
+const BOX = 5;
+const ballRadius = 0.25;
+
+// Wireframe edges
+const boxGeo = new THREE.BoxGeometry(BOX * 2, BOX * 2, BOX * 2);
+const edges = new THREE.EdgesGeometry(boxGeo);
+const edgeMat = new THREE.LineBasicMaterial({ color: 0x4488ff, transparent: true, opacity: 0.6 });
+const wireframe = new THREE.LineSegments(edges, edgeMat);
+scene.add(wireframe);
+
+// Transparent faces
+const faceMat = new THREE.MeshPhongMaterial({
+  color: 0x112244,
+  transparent: true,
+  opacity: 0.04,
+  side: THREE.DoubleSide,
+  depthWrite: false
+});
+const boxMesh = new THREE.Mesh(boxGeo, faceMat);
+scene.add(boxMesh);
+
+// --- Balls ---
+const NUM_BALLS = 60;
+const TRAIL_LENGTH = 8;
+const GRAVITY = -9.8;
+const RESTITUTION = 0.98;
+
+const balls = [];
+const trailGeo = new THREE.SphereGeometry(1, 8, 6);
+
+function randomInBox(min, max) {
+  return (Math.random() * (max - min) + min);
+}
+
+for (let i = 0; i < NUM_BALLS; i++) {
+  const hue = Math.random();
+  const baseColor = new THREE.Color().setHSL(hue, 0.9, 0.5);
+  const emissiveColor = new THREE.Color().setHSL(hue, 1.0, 0.3);
+
+  const mat = new THREE.MeshPhongMaterial({
+    color: baseColor,
+    emissive: emissiveColor,
+    shininess: 80,
+    specular: 0x444444
+  });
+
+  const mesh = new THREE.Mesh(trailGeo, mat);
+  mesh.scale.setScalar(ballRadius);
+  scene.add(mesh);
+
+  // Trail
+  const trail = [];
+  for (let t = 0; t < TRAIL_LENGTH; t++) {
+    const trailMat = new THREE.MeshPhongMaterial({
+      color: baseColor.clone(),
+      emissive: emissiveColor.clone(),
+      transparent: true,
+      opacity: 0.5 * (1 - t / TRAIL_LENGTH),
+      depthWrite: false
+    });
+    const trailMesh = new THREE.Mesh(trailGeo, trailMat);
+    trailMesh.scale.setScalar(ballRadius * (1 - t / (TRAIL_LENGTH + 2)) * 0.7);
+    trailMesh.visible = false;
+    scene.add(trailMesh);
+    trail.push(trailMesh);
+  }
+
+  const pos = new THREE.Vector3(
+    randomInBox(-BOX + 1, BOX - 1),
+    randomInBox(-BOX + 1, BOX - 1),
+    randomInBox(-BOX + 1, BOX - 1)
+  );
+  const vel = new THREE.Vector3(
+    randomInBox(-3, 3),
+    randomInBox(-2, 4),
+    randomInBox(-3, 3)
+  );
+
+  mesh.position.copy(pos);
+
+  balls.push({
+    mesh,
+    trail,
+    pos,
+    vel,
+    baseHue: hue,
+    hueOffset: Math.random() * Math.PI * 2,
+    hueSpeed: 0.15 + Math.random() * 0.15
+  });
+}
+
+// --- Physics Update ---
+function updatePhysics(dt) {
+  const limit = BOX - ballRadius;
+
+  for (let i = 0; i < NUM_BALLS; i++) {
+    const ball = balls[i];
+
+    // Gravity
+    ball.vel.y += GRAVITY * dt;
+
+    // Integrate position
+    ball.pos.x += ball.vel.x * dt;
+    ball.pos.y += ball.vel.y * dt;
+    ball.pos.z += ball.vel.z * dt;
+
+    // Wall collisions
+    if (ball.pos.x > limit) { ball.pos.x = limit; ball.vel.x *= -RESTITUTION; }
+    if (ball.pos.x < -limit) { ball.pos.x = -limit; ball.vel.x *= -RESTITUTION; }
+    if (ball.pos.y > limit) { ball.pos.y = limit; ball.vel.y *= -RESTITUTION; }
+    if (ball.pos.y < -limit) { ball.pos.y = -limit; ball.vel.y *= -RESTITUTION; }
+    if (ball.pos.z > limit) { ball.pos.z = limit; ball.vel.z *= -RESTITUTION; }
+    if (ball.pos.z < -limit) { ball.pos.z = -limit; ball.vel.z *= -RESTITUTION; }
+
+    // Update mesh position
+    ball.mesh.position.copy(ball.pos);
+
+    // Update trail positions (shift)
+    for (let t = TRAIL_LENGTH - 1; t > 0; t--) {
+      ball.trail[t].position.copy(ball.trail[t - 1].position);
+      ball.trail[t].visible = true;
+    }
+    ball.trail[0].position.copy(ball.pos);
+    ball.trail[0].visible = true;
+  }
+}
+
+// --- Colour Cycling ---
+function updateColors(time) {
+  for (let i = 0; i < NUM_BALLS; i++) {
+    const ball = balls[i];
+    const hue = (ball.baseHue + time * ball.hueSpeed + Math.sin(time * 0.5 + ball.hueOffset) * 0.05) % 1.0;
+
+    const baseColor = new THREE.Color().setHSL(hue, 0.9, 0.5);
+    const emissiveColor = new THREE.Color().setHSL(hue, 1.0, 0.25 + 0.1 * Math.sin(time + ball.hueOffset));
+
+    ball.mesh.material.color.copy(baseColor);
+    ball.mesh.material.emissive.copy(emissiveColor);
+
+    for (let t = 0; t < TRAIL_LENGTH; t++) {
+      ball.trail[t].material.color.copy(baseColor);
+      ball.trail[t].material.emissive.copy(emissiveColor);
+    }
+  }
+}
+
+// --- Bloom Setup (Optional) ---
+try {
+  const { EffectComposer } = await import('three/addons/postprocessing/EffectComposer.js');
+  const { RenderPass } = await import('three/addons/postprocessing/RenderPass.js');
+  const { UnrealBloomPass } = await import('three/addons/postprocessing/UnrealBloomPass.js');
+
+  composer = new EffectComposer(renderer);
+  const renderPass = new RenderPass(scene, camera);
+  composer.addPass(renderPass);
+
+  const bloomPass = new UnrealBloomPass(
+    new THREE.Vector2(window.innerWidth, window.innerHeight),
+    0.8,   // strength
+    0.4,   // radius
+    0.2    // threshold
+  );
+  composer.addPass(bloomPass);
+} catch (e) {
+  console.warn('Bloom not available, using standard rendering.');
+  composer = null;
+}
+
+// --- Animation Loop ---
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.033);
+  const time = clock.elapsedTime;
+
+  updatePhysics(dt);
+  updateColors(time);
+  controls.update();
+
+  // Subtle box pulse
+  edgeMat.opacity = 0.4 + 0.2 * Math.sin(time * 0.8);
+
+  if (composer) {
+    composer.render();
+  } else {
+    renderer.render(scene, camera);
+  }
+}
+
+animate();
+
+// --- Resize ---
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  if (composer) {
+    composer.setSize(window.innerWidth, window.innerHeight);
+  }
+});
+</script>
+</body>
+</html>

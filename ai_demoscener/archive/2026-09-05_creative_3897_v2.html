@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+body{margin:0;overflow:hidden;background:#020a0f}
+canvas{display:block}
+#info{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);color:rgba(120,220,200,0.25);font:10px 'Courier New',monospace;letter-spacing:5px;text-transform:lowercase;pointer-events:none;animation:fadeText 4s ease-in-out infinite}
+@keyframes fadeText{0%,100%{opacity:0.4}50%{opacity:1}}
+</style>
+</head>
+<body>
+<div id="info">bioluminal drift</div>
+<script type="module">
+import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js';
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x020a0f, 0.012);
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 400);
+camera.position.set(0, 1, 22);
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setClearColor(0x020a0f);
+document.body.appendChild(renderer.domElement);
+
+const MAX_BRANCHES = 10000;
+const CURVE_SEGS = 3;
+const MAX_LINES = MAX_BRANCHES * CURVE_SEGS;
+const MAX_FLOW = 60000;
+const MAX_BLOOM = 30000;
+const MAX_GEN = 7;
+
+let branches = [];
+let branchIndex = 0;
+let lineIndex = 0;
+
+const linePositions = new Float32Array(MAX_LINES * 6);
+const lineColors = new Float32Array(MAX_LINES * 6);
+const lineGeom = new THREE.BufferGeometry();
+lineGeom.setAttribute('position', new THREE.BufferAttribute(linePositions, 3));
+lineGeom.setAttribute('color', new THREE.BufferAttribute(lineColors, 3));
+const lineMat = new THREE.LineBasicMaterial({
+  vertexColors: true,
+  blending: THREE.AdditiveBlending,
+  transparent: true,
+  opacity: 0.85
+});
+const lines = new THREE.LineSegments(lineGeom, lineMat);
+
+const flowPos = new Float32Array(MAX_FLOW * 3);
+const flowCol = new Float32Array(MAX_FLOW * 3);
+const flowGeom = new THREE.BufferGeometry();
+flowGeom.setAttribute('position', new THREE.BufferAttribute(flowPos, 3));
+flowGeom.setAttribute('color', new THREE.BufferAttribute(flowCol, 3));
+const flowMat = new THREE.PointsMaterial({
+  size: 0.1,
+  vertexColors: true,
+  blending: THREE.AdditiveBlending,
+  transparent: true,
+  opacity: 0.9,
+  depthWrite: false
+});
+const flowPts = new THREE.Points(flowGeom, flowMat);
+
+const bloomPos = new Float32Array(MAX_BLOOM * 3);
+const bloomCol = new Float32Array(MAX_BLOOM * 3);
+const bloomGeom = new THREE.BufferGeometry();
+bloomGeom.setAttribute('position', new THREE.BufferAttribute(bloomPos, 3));
+bloomGeom.setAttribute('color', new THREE.BufferAttribute(bloomCol, 3));
+const bloomMat = new THREE.PointsMaterial({
+  size: 0.2,
+  vertexColors: true,
+  blending: THREE.AdditiveBlending,
+  transparent: true,
+  opacity: 1.0,
+  depthWrite: false
+});
+const bloomPts = new THREE.Points(bloomGeom, bloomMat);
+
+const GLOW_COUNT = 5000;
+const glowPos = new Float32Array(GLOW_COUNT * 3);
+const glowCol = new Float32Array(GLOW_COUNT * 3);
+const glowGeom = new THREE.BufferGeometry();
+glowGeom.setAttribute('position', new THREE.BufferAttribute(glowPos, 3));
+glowGeom.setAttribute('color', new THREE.BufferAttribute(glowCol, 3));
+const glowMat = new THREE.PointsMaterial({
+  size: 0.45,
+  vertexColors: true,
+  blending: THREE.AdditiveBlending,
+  transparent: true,
+  opacity: 0.3,
+  depthWrite: false
+});
+const glowPts = new THREE.Points(glowGeom, glowMat);
+
+const DUST_COUNT = 3000;
+const dustPos = new Float32Array(DUST_COUNT * 3);
+const dustCol = new Float32Array(DUST_COUNT * 3);
+for (let i = 0; i < DUST_COUNT; i++) {
+  const r = 8 + Math.random() * 50;
+  const theta = Math.random() * Math.PI * 2;
+  const phi = Math.acos(2 * Math.random() - 1);
+  dustPos[i*3] = r * Math.sin(phi) * Math.cos(theta);
+  dustPos[i*3+1] = r * Math.sin(phi) * Math.sin(theta) - 3;
+  dustPos[i*3+2] = r * Math.cos(phi);
+  const b = 0.06 + Math.random() * 0.1;
+  const tint = Math.random();
+  if (tint < 0.4) {
+    dustCol[i*3] = b * 0.5;
+    dustCol[i*3+1] = b * 1.2;
+    dustCol[i*3+2] = b * 1.4;
+  } else if (tint < 0.7) {
+    dustCol[i*3] = b * 1.2;
+    dustCol[i*3+1] = b * 0.5;
+    dustCol[i*3+2] = b * 1.0;
+  } else {
+    dustCol[i*3] = b * 0.8;
+    dustCol[i*3+1] = b * 1.0;
+    dustCol[i*3+2] = b * 0.6;
+  }
+}
+const dustGeom = new THREE.BufferGeometry();
+dustGeom.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
+dustGeom.setAttribute('color', new THREE.BufferAttribute(dustCol, 3));
+const dustMat = new THREE.PointsMaterial({
+  size: 0.05,
+  vertexColors: true,
+  blending: THREE.AdditiveBlending,
+  transparent: true,
+  opacity: 0.5,
+  depthWrite: false
+});
+const dustPts = new THREE.Points(dustGeom, dustMat);
+
+const flowState = new Float32Array(MAX_FLOW * 6);
+const bloomState = new Float32Array(MAX_BLOOM * 8);
+let flowCount = 0;
+let bloomCount = 0;
+let glowIdx = 0;
+
+const root = new THREE.Group();
+root.add(lines, flowPts, bloomPts, glowPts);
+scene.add(root);
+scene.add(dustPts);
+
+function hslToRGB(h, s, l) {
+  h = ((h % 1) + 1) % 1;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n) => {
+    const k = (n + h * 12) % 12;
+    return l - a * Math.max(-1, Math.min(k - 3, Math.min(9 - k, 1)));
+  };
+  return [f(0), f(8), f(4)];
+}
+
+function branchColor(gen, t) {
+  const base = gen * 0.11 + t * 0.01;
+  const hue = ((base % 1) + 1) % 1;
+  let mappedHue;
+  if (hue < 0.35) {
+    mappedHue = 0.45 + hue * 0.4;
+  } else if (hue < 0.65) {
+    mappedHue = 0.65 + (hue - 0.35) * 0.5;
+  } else {
+    mappedHue = 0.85 + (hue - 0.65) * 0.3;
+  }
+  const sat = 0.95;
+  const light = 0.3 + 0.2 * Math.sin(gen * 0.5 + t * 0.6);
+  return hslToRGB(mappedHue, sat, light);
+}
+
+function spawnBranch(start, dir, gen) {
+  if (gen >= MAX_GEN || branchIndex >= MAX_BRANCHES) return;
+  const baseLen = 2.0 - gen * 0.17 + Math.random() * 0.5;
+  const len = baseLen * (0.8 + Math.random() * 0.5);
+  const target = new THREE.Vector3().addVectors(start, dir.clone().multiplyScalar(len));
+  const mid1 = new THREE.Vector3().lerpVectors(start, target, 0.33);
+  const mid2 = new THREE.Vector3().lerpVectors(start, target, 0.66);
+  const up = new THREE.Vector3(0, 1, 0);
+  const perp1 = new THREE.Vector3().crossVectors(dir, up).normalize();
+  const perp2 = new THREE.Vector3().crossVectors(dir, perp1).normalize();
+  const ca = 0.1 + Math.random() * 0.2;
+  mid1.addScaledVector(perp1, (Math.random() - 0.5) * ca);
+  mid1.addScaledVector(perp2, (Math.random() - 0.5) * ca);
+  mid2.addScaledVector(perp1, (Math.random() - 0.5) * ca * 0.5);
+  mid2.addScaledVector(perp2, (Math.random() - 0.5) * ca * 0.5);
+  const end = target.clone();
+
+  const bi = branchIndex++;
+  const points = [start.clone(), mid1.clone(), mid2.clone(), end.clone()];
+  for (let s = 0; s < CURVE_SEGS; s++) {
+    const li = lineIndex++;
+    const i6 = li * 6;
+    linePositions[i6] = points[s].x;
+    linePositions[i6+1] = points[s].y;
+    linePositions[i6+2] = points[s].z;
+    linePositions[i6+3] = points[s+1].x;
+    linePositions[i6+4] = points[s+1].y;
+    linePositions[i6+5] = points[s+1].z;
+  }
+
+  branches.push({ start: start.clone(), end: end.clone(), points, gen, dir: dir.clone() });
+
+  const nFlow = Math.floor(4 + Math.random() * 6);
+  for (let f = 0; f < nFlow && flowCount < MAX_FLOW; f++) {
+    const fi = flowCount++;
+    const si = fi * 6;
+    flowState[si] = bi;
+    flowState[si+1] = Math.random();
+    flowState[si+2] = 0.12 + Math.random() * 0.35;
+    flowState[si+3] = gen;
+    flowState[si+4] = Math.random() * Math.PI * 2;
+    flowState[si+5] = 0.06 + Math.random() * 0.2;
+  }
+
+  const nChildren = gen < 2 ? 3 : (gen < 4 ? 2 : (gen < 6 ? 1 : (Math.random() > 0.4 ? 1 : 0)));
+  for (let c = 0; c < nChildren; c++) {
+    const spread = 0.5 + gen * 0.13 + Math.random() * 0.25;
+    const newDir = new THREE.Vector3(
+      dir.x + (Math.random() - 0.5) * spread,
+      dir.y + (Math.random() - 0.5) * spread * 0.6,
+      dir.z + (Math.random() - 0.5) * spread
+    ).normalize();
+    setTimeout(() => spawnBranch(end, newDir, gen + 1), gen * 45 + c * 90);
+  }
+}
+
+function initTree() {
+  branchIndex = 0;
+  lineIndex = 0;
+  branches = [];
+  flowCount = 0;
+  bloomCount = 0;
+  glowIdx = 0;
+  const nRoots = 5;
+  for (let i = 0; i < nRoots; i++) {
+    const angle = (i / nRoots) * Math.PI * 2 + Math.random() * 0.4;
+    const dir = new THREE.Vector3(
+      Math.cos(angle) * 0.5,
+      0.4 + Math.random() * 0.6,
+      Math.sin(angle) * 0.5
+    ).normalize();
+    spawnBranch(new THREE.Vector3(0, -2.0, 0), dir, 0);
+  }
+}
+initTree();
+
+function emitBloom(pos, gen) {
+  const n = 4 + Math.floor(Math.random() * 8);
+  const hue = (gen * 0.11) % 1;
+  for (let i = 0; i < n && bloomCount < MAX_BLOOM; i++) {
+    const bi = bloomCount++;
+    const si = bi * 8;
+    bloomState[si] = pos.x;
+    bloomState[si+1] = pos.y;
+    bloomState[si+2] = pos.z;
+    const speed = 0.2 + Math.random() * 0.8;
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2 * Math.random() - 1);
+    bloomState[si+3] = Math.sin(phi) * Math.cos(theta) * speed;
+    bloomState[si+4] = Math.sin(phi) * Math.sin(theta) * speed;
+    bloomState[si+5] = Math.cos(phi) * speed;
+    bloomState[si+6] = 1.0;
+    bloomState[si+7] = hue;
+  }
+}
+
+function getCurvePoint(branch, t) {
+  const pts = branch.points;
+  if (t < 0.33) {
+    const lt = t / 0.33;
+    return new THREE.Vector3().lerpVectors(pts[0], pts[1], lt);
+  } else if (t < 0.66) {
+    const lt = (t - 0.33) / 0.33;
+    return new THREE.Vector3().lerpVectors(pts[1], pts[2], lt);
+  } else {
+    const lt = (t - 0.66) / 0.34;
+    return new THREE.Vector3().lerpVectors(pts[2], pts[3], lt);
+  }
+}
+
+let time = 0;
+let frame = 0;
+const clock = new THREE.Clock();
+const _v = new THREE.Vector3();
+const _perp = new THREE.Vector3();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  time += dt;
+  frame++;
+
+  const breath = 1.0 + Math.sin(time * 0.3) * 0.02;
+  root.scale.setScalar(breath);
+  root.rotation.y = time * 0.05;
+  root.rotation.x = Math.sin(time * 0.04) * 0.03;
+  root.position.y = Math.sin(time * 0.15) * 0.3;
+
+  const camR = 20 + Math.sin(time * 0.1) * 3;
+  const camH = Math.sin(time * 0.05) * 2.5;
+  camera.position.x = Math.sin(time * 0.06) * camR;
+  camera.position.z = Math.cos(time * 0.06) * camR;
+  camera.position.y = camH + 0.5;
+  camera.lookAt(0, -0.5, 0);
+
+  dustPts.rotation.y = time * 0.01;
+
+  for (let i = 0; i < branchIndex; i++) {
+    const b = branches[i];
+    if (!b) continue;
+    const [r, g, bl] = branchColor(b.gen, time);
+    for (let s = 0; s < CURVE_SEGS; s++) {
+      const li = (i * CURVE_SEGS + s) * 6;
+      const fade = 0.3 + (s / CURVE_SEGS) * 0.7;
+      const pulse = 0.7 + 0.3 * Math.sin(time * 1.2 + i * 0.1);
+      lineColors[li] = r * fade * 0.4 * pulse;
+      lineColors[li+1] = g * fade * 0.4 * pulse;
+      lineColors[li+2] = bl * fade * 0.4 * pulse;
+      lineColors[li+3] = r * fade * pulse;
+      lineColors[li+4] = g * fade * pulse;
+      lineColors[li+5] = bl * fade * pulse;
+    }
+  }
+  lineGeom.attributes.color.needsUpdate = true;
+  lineGeom.setDrawRange(0, lineIndex * 2);
+
+  let newFlow = 0;
+  for (let i = 0; i < flowCount; i++) {
+    const si = i * 6;
+    const bi = Math.floor(flowState[si]);
+    const b = branches[bi];
+    if (!b) continue;
+
+    flowState[si+1] += flowState[si+2] * dt * 0.4;
+    if (flowState[si+1] > 1.0) {
+      if (Math.random() > 0.4) emitBloom(b.end, b.gen);
+      flowState[si+1] = 0;
+      flowState[si+4] = Math.random() * Math.PI * 2;
+    }
+
+    const t = flowState[si+1];
+    const pt = getCurvePoint(b, t);
+    _perp.crossVectors(b.dir, new THREE.Vector3(0, 1, 0)).normalize();
+    const swirl = flowState[si+5] * Math.sin(time * 2.0 + flowState[si+4]);
+
+    const fi = newFlow * 3;
+    flowPos[fi] = pt.x + _perp.x * swirl;
+    flowPos[fi+1] = pt.y + _perp.y * swirl;
+    flowPos[fi+2] = pt.z + _perp.z * swirl;
+
+    const [r, g, bl] = branchColor(b.gen, time + t * 0.3);
+    const pulse = 0.6 + 0.4 * Math.sin(time * 3.0 + t * 6 + flowState[si+4]);
+    const brightness = 0.8 + 0.4 * pulse;
+    flowCol[fi] = r * brightness;
+    flowCol[fi+1] = g * brightness;
+    flowCol[fi+2] = bl * brightness;
+
+    if (glowIdx < GLOW_COUNT && newFlow % 3 === 0) {
+      const gi = glowIdx * 3;
+      glowPos[gi] = pt.x;
+      glowPos[gi+1] = pt.y;
+      glowPos[gi+2] = pt.z;
+      glowCol[gi] = r * 0.4;
+      glowCol[gi+1] = g * 0.4;
+      glowCol[gi+2] = bl * 0.4;
+      glowIdx++;
+    }
+
+    const si2 = newFlow * 6;
+    flowState[si2] = flowState[si];
+    flowState[si2+1] = flowState[si+1];
+    flowState[si2+2] = flowState[si+2];
+    flowState[si2+3] = flowState[si+3];
+    flowState[si2+4] = flowState[si+4];
+    flowState[si2+5] = flowState[si+5];
+    newFlow++;
+  }
+  flowCount = newFlow;
+  flowGeom.attributes.position.needsUpdate = true;
+  flowGeom.attributes.color.needsUpdate = true;
+  flowGeom.setDrawRange(0, flowCount);
+
+  let newBloom = 0;
+  for (let i = 0; i < bloomCount; i++) {
+    const si = i * 8;
+    bloomState[si+6] -= dt * 0.4;
+    if (bloomState[si+6] <= 0) continue;
+
+    bloomState[si] += bloomState[si+3] * dt;
+    bloomState[si+1] += bloomState[si+4] * dt + dt * 0.05;
+    bloomState[si+2] += bloomState[si+5] * dt;
+    bloomState[si+3] *= 0.95;
+    bloomState[si+4] *= 0.95;
+    bloomState[si+5] *= 0.95;
+
+    const fi = newBloom * 3;
+    bloomPos[fi] = bloomState[si];
+    bloomPos[fi+1] = bloomState[si+1];
+    bloomPos[fi+2] = bloomState[si+2];
+
+    const life = bloomState[si+6];
+    const hue = bloomState[si+7];
+    let mappedHue;
+    if (hue < 0.35) {
+      mappedHue = 0.45 + hue * 0.4;
+    } else if (hue < 0.65) {
+      mappedHue = 0.65 + (hue - 0.35) * 0.5;
+    } else {
+      mappedHue = 0.85 + (hue - 0.65) * 0.3;
+    }
+    const [r, g, bl] = hslToRGB(mappedHue, 0.9, 0.5 * life);
+    const fade = life * life;
+    bloomCol[fi] = r * fade;
+    bloomCol[fi+1] = g * fade;
+    bloomCol[fi+2] = bl * fade;
+
+    const si2 = newBloom * 8;
+    for (let k = 0; k < 8; k++) bloomState[si2+k] = bloomState[si+k];
+    newBloom++;
+  }
+  bloomCount = newBloom;
+  bloomGeom.attributes.position.needsUpdate = true;
+  bloomGeom.attributes.color.needsUpdate = true;
+  bloomGeom.setDrawRange(0, bloomCount);
+
+  if (glowIdx > 0) {
+    glowGeom.attributes.position.needsUpdate = true;
+    glowGeom.attributes.color.needsUpdate = true;
+    glowGeom.setDrawRange(0, glowIdx);
+  }
+
+  if (frame % 1200 === 0 && frame > 0) {
+    initTree();
+  }
+
+  renderer.render(scene, camera);
+}
+animate();
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Rule 30 CA – GPU Ping-Pong</title>
+<style>
+  html, body { margin: 0; padding: 0; overflow: hidden; background: #05060a; }
+  canvas { display: block; width: 100vw; height: 100vh; image-rendering: pixelated; }
+  #hud {
+    position: fixed; left: 18px; bottom: 16px; z-index: 10;
+    font: 500 12px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    color: rgba(180, 230, 255, 0.55); letter-spacing: 0.08em;
+    pointer-events: none; user-select: none; text-shadow: 0 0 8px rgba(0,0,0,0.6);
+  }
+  #hud b { color: rgba(255, 255, 255, 0.85); font-weight: 700; }
+</style>
+</head>
+<body>
+<div id="hud"><b>RULE&nbsp;30</b> · elementary cellular automaton · click to reseed</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function () {
+  const SIZE = 256;
+  const DECAY = 0.82;        // trail fade per step
+  const STEPS_PER_FRAME = 1; // CA steps each animation frame
+
+  const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  document.body.appendChild(renderer.domElement);
+
+  const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+  const rtOpts = {
+    type: THREE.FloatType,
+    format: THREE.RGBAFormat,
+    minFilter: THREE.NearestFilter,
+    magFilter: THREE.NearestFilter,
+    wrapS: THREE.ClampToEdgeWrapping,
+    wrapT: THREE.ClampToEdgeWrapping
+  };
+  const targetA = new THREE.WebGLRenderTarget(SIZE, SIZE, rtOpts);
+  const targetB = new THREE.WebGLRenderTarget(SIZE, SIZE, rtOpts);
+
+  const quadGeo = new THREE.PlaneGeometry(2, 2);
+
+  const vertShader = `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = vec4(position.xy, 0.0, 1.0);
+    }
+  `;
+
+  // Seed: single live cell at column 128, row 0; trail seeded too.
+  const seedFrag = `
+    precision highp float;
+    varying vec2 vUv;
+    void main() {
+      float col = floor(vUv.x * 256.0);
+      float row = floor(vUv.y * 256.0);
+      float on = (col == 128.0 && row == 0.0) ? 1.0 : 0.0;
+      gl_FragColor = vec4(on, on, 0.0, 1.0);
+    }
+  `;
+
+  // Step: Rule 30 at row 0, shift-up for y>0. .r = binary state, .g = decaying trail.
+  const stepFrag = `
+    precision highp float;
+    varying vec2 vUv;
+    uniform sampler2D uInput;
+    uniform float uDecay;
+    void main() {
+      float col = floor(vUv.x * 256.0);
+      float row = floor(vUv.y * 256.0);
+      vec2 ts = 1.0 / 256.0;
+
+      float srcRow = (row < 0.5) ? 0.0 : (row - 1.0);
+      vec2 srcUv = vec2((col + 0.5) * ts, (srcRow + 0.5) * ts);
+      float srcTrail = texture2D(uInput, srcUv).g;
+
+      float val;
+      if (row < 0.5) {
+        float lx = max(col - 1.0, 0.0);
+        float rx = min(col + 1.0, 255.0);
+        float left   = texture2D(uInput, vec2((lx + 0.5) * ts, 0.5 * ts)).r;
+        float center = texture2D(uInput, vec2((col + 0.5) * ts, 0.5 * ts)).r;
+        float right  = texture2D(uInput, vec2((rx + 0.5) * ts, 0.5 * ts)).r;
+        float l = step(0.5, left);
+        float c = step(0.5, center);
+        float r = step(0.5, right);
+        float orcr = max(c, r);
+        val = l + orcr - 2.0 * l * orcr; // left XOR (center OR right)
+      } else {
+        val = texture2D(uInput, srcUv).r;
+      }
+
+      float trail = clamp(srcTrail * uDecay + val, 0.0, 1.0);
+      gl_FragColor = vec4(val, trail, 0.0, 1.0);
+    }
+  `;
+
+  // Display: dark vignette background + glowing hot cells + violet trail.
+  const displayFrag = `
+    precision highp float;
+    varying vec2 vUv;
+    uniform sampler2D uInput;
+    uniform float uTime;
+    void main() {
+      vec4 s = texture2D(uInput, vUv);
+      float on = s.r;
+      float trail = s.g;
+
+      // radial vignette background
+      float d = length(vUv - 0.5) * 1.45;
+      vec3 bg = mix(vec3(0.045, 0.055, 0.10), vec3(0.012, 0.014, 0.03), smoothstep(0.2, 1.0, d));
+
+      // subtle breathing in the background
+      bg += vec3(0.010, 0.014, 0.030) * (0.5 + 0.5 * sin(uTime * 0.6)) * (1.0 - smoothstep(0.0, 1.0, d));
+
+      // color ramp for live cells: white-hot core -> cyan
+      vec3 hot   = vec3(1.00, 0.98, 0.92);
+      vec3 cyan  = vec3(0.20, 0.85, 1.00);
+      vec3 cell  = mix(cyan, hot, on);
+
+      // violet glow from the fading trail
+      vec3 glow  = vec3(0.45, 0.25, 0.95);
+
+      vec3 col = bg;
+      col += glow * trail * trail * 0.9;   // soft halo
+      col += cell * on;                    // crisp cell on top
+      col = max(col, bg);
+
+      // gentle bloom lift on bright pixels
+      float lum = dot(col, vec3(0.299, 0.587, 0.114));
+      col += col * smoothstep(0.55, 1.0, lum) * 0.35;
+
+      gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+    }
+  `;
+
+  const seedMat = new THREE.ShaderMaterial({
+    vertexShader: vertShader, fragmentShader: seedFrag, depthWrite: false, depthTest: false
+  });
+  const stepMat = new THREE.ShaderMaterial({
+    vertexShader: vertShader, fragmentShader: stepFrag,
+    uniforms: { uInput: { value: null }, uDecay: { value: DECAY } },
+    depthWrite: false, depthTest: false
+  });
+  const displayMat = new THREE.ShaderMaterial({
+    vertexShader: vertShader, fragmentShader: displayFrag,
+    uniforms: { uInput: { value: null }, uTime: { value: 0.0 } },
+    depthWrite: false, depthTest: false
+  });
+
+  const seedScene = new THREE.Scene();
+  seedScene.add(new THREE.Mesh(quadGeo, seedMat));
+
+  const stepScene = new THREE.Scene();
+  stepScene.add(new THREE.Mesh(quadGeo, stepMat));
+
+  const displayScene = new THREE.Scene();
+  displayScene.add(new THREE.Mesh(quadGeo, displayMat));
+
+  // ---- Seed into current target ----
+  function reseed() {
+    renderer.setRenderTarget(current);
+    renderer.render(seedScene, camera);
+  }
+
+  let current = targetA;
+  let other   = targetB;
+  reseed();
+  renderer.setRenderTarget(null);
+
+  const clock = new THREE.Clock();
+
+  function animate() {
+    requestAnimationFrame(animate);
+    displayMat.uniforms.uTime.value = clock.getElapsedTime();
+
+    for (let i = 0; i < STEPS_PER_FRAME; i++) {
+      stepMat.uniforms.uInput.value = current.texture;
+      renderer.setRenderTarget(other);
+      renderer.render(stepScene, camera);
+      const tmp = current; current = other; other = tmp;
+    }
+
+    displayMat.uniforms.uInput.value = current.texture;
+    renderer.setRenderTarget(null);
+    renderer.render(displayScene, camera);
+  }
+  animate();
+
+  window.addEventListener('resize', () => {
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  window.addEventListener('pointerdown', reseed);
+})();
+</script>
+</body>
+</html>

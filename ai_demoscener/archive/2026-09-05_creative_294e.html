@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+* { margin: 0; padding: 0; }
+body { overflow: hidden; background: #000; }
+canvas { display: block; }
+</style>
+</head>
+<body>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x001018, 0.016);
+
+const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 200);
+camera.position.set(0, 3, 28);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 1.5, 0.75, 0.0);
+composer.addPass(bloom);
+
+scene.add(new THREE.AmbientLight(0x0a2030, 1.2));
+const dirLight = new THREE.DirectionalLight(0x224466, 0.5);
+dirLight.position.set(0, 40, 0);
+scene.add(dirLight);
+
+// Background gradient plane (deep ocean, brighter toward the surface)
+const bgGeo = new THREE.PlaneGeometry(240, 240);
+const bgMat = new THREE.ShaderMaterial({
+  depthWrite: false,
+  uniforms: { uTime: { value: 0 } },
+  vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.9999,1.0); }`,
+  fragmentShader: `
+    varying vec2 vUv; uniform float uTime;
+    void main(){
+      float h = vUv.y;
+      vec3 deep  = vec3(0.004, 0.018, 0.045);
+      vec3 mid   = vec3(0.010, 0.060, 0.110);
+      vec3 surf  = vec3(0.030, 0.120, 0.180);
+      vec3 col = mix(deep, mid, smoothstep(0.0, 0.45, h));
+      col = mix(col, surf, smoothstep(0.55, 1.0, h));
+      // soft vertical god-ray bands drifting
+      float bands = 0.0;
+      for(int i=0;i<4;i++){
+        float fi=float(i);
+        float x = vUv.x + 0.04*sin(uTime*0.12 + fi*1.7);
+        float cx = 0.2 + fi*0.22;
+        bands += exp(-pow((x-cx)*6.0,2.0)) * smoothstep(0.2,1.0,h);
+      }
+      col += vec3(0.05,0.12,0.16)*bands*0.18;
+      // subtle caustic shimmer near top
+      float c = sin(vUv.x*46.0+uTime*0.4)*sin(vUv.y*34.0+uTime*0.3);
+      col += vec3(0.01,0.03,0.04)*c*smoothstep(0.4,1.0,h)*0.4;
+      gl_FragColor = vec4(col, 1.0);
+    }`
+});
+const bgMesh = new THREE.Mesh(bgGeo, bgMat);
+bgMesh.position.z = -90;
+bgMesh.renderOrder = -1;
+scene.add(bgMesh);
+
+// Jellyfish class
+class Jellyfish {
+  constructor() {
+    this.group = new THREE.Group();
+    this.group.position.set(
+      (Math.random() - 0.5) * 50,
+      (Math.random() - 0.5) * 20,
+      (Math.random() - 0.5) * 50
+    );
+
+    this.size = 0.8 + Math.random() * 1.4;
+    // palette: bioluminescent cyan -> violet, with a few magenta
+    const magenta = Math.random() < 0.35;
+    this.hue = magenta ? 0.83 + Math.random()*0.06 : 0.48 + Math.random()*0.14;
+    this.baseColor = new THREE.Color().setHSL(this.hue, 0.85, 0.40);
+    this.glowColor = new THREE.Color().setHSL(this.hue, 1.0, 0.68);
+
+    // Bell - taller, flared-skirt dome
+    const pts = [];
+    const N = 16;
+    for (let i = 0; i <= N; i++) {
+      const t = i / N;
+      const r = this.size * Math.sin(t * Math.PI * 0.5) * (0.7 + 0.55 * t);
+      let y = this.size * 0.85 * Math.cos(t * Math.PI * 0.5);
+      // flare the skirt downward at the rim
+      if (t > 0.8) y -= (t - 0.8) * this.size * 0.5;
+      pts.push(new THREE.Vector2(r, y));
+    }
+    this.bellGeo = new THREE.LatheGeometry(pts, 28);
+    this.bellMat = new THREE.MeshPhongMaterial({
+      color: this.baseColor,
+      emissive: this.glowColor,
+      emissiveIntensity: 0.35,
+      transparent: true,
+      opacity: 0.62,
+      side: THREE.DoubleSide,
+      shininess: 240,
+      specular: new THREE.Color(0x88ffff)
+    });
+    this.bell = new THREE.Mesh(this.bellGeo, this.bellMat);
+    this.group.add(this.bell);
+
+    // Inner core glow
+    const coreGeo = new THREE.SphereGeometry(this.size * 0.34, 14, 10);
+    this.coreMat = new THREE.MeshBasicMaterial({
+      color: this.glowColor,
+      transparent: true,
+      opacity: 0.7,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+    this.core = new THREE.Mesh(coreGeo, this.coreMat);
+    this.core.position.y = this.size * 0.18;
+    this.group.add(this.core);
+
+    // Tentacles
+    this.tentacleCount = 12 + Math.floor(Math.random() * 6);
+    this.tentacles = [];
+    const tLen = this.size * (3.2 + Math.random() * 2);
+    const tSegs = 26;
+
+    for (let i = 0; i < this.tentacleCount; i++) {
+      const angle = (i / this.tentacleCount) * Math.PI * 2 + Math.random() * 0.3;
+      const r = this.size * 0.7 * (0.8 + Math.random() * 0.3);
+      const bx = Math.cos(angle) * r;
+      const bz = Math.sin(angle) * r;
+      const by = -this.size * 0.2;
+
+      const positions = new Float32Array((tSegs + 1) * 3);
+      for (let s = 0; s <= tSegs; s++) {
+        positions[s * 3] = bx;
+        positions[s * 3 + 1] = by - (s / tSegs) * tLen;
+        positions[s * 3 + 2] = bz;
+      }
+      const tGeo = new THREE.BufferGeometry();
+      tGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+      const tMat = new THREE.LineBasicMaterial({
+        color: this.glowColor.clone().multiplyScalar(0.85),
+        transparent: true,
+        opacity: 0.55,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      });
+      const line = new THREE.Line(tGeo, tMat);
+      this.group.add(line);
+      this.tentacles.push({ line, bx, by, bz, phase: Math.random() * Math.PI * 2, len: tLen, segs: tSegs });
+    }
+
+    // Oral arms (thicker, shorter, more central)
+    this.armCount = 4;
+    this.arms = [];
+    for (let i = 0; i < this.armCount; i++) {
+      const angle = (i / this.armCount) * Math.PI * 2;
+      const r = this.size * 0.22;
+      const bx = Math.cos(angle) * r;
+      const bz = Math.sin(angle) * r;
+      const by = -this.size * 0.05;
+      const aLen = tLen * 0.65;
+      const aSegs = 18;
+      const positions = new Float32Array((aSegs + 1) * 3);
+      for (let s = 0; s <= aSegs; s++) {
+        positions[s * 3] = bx;
+        positions[s * 3 + 1] = by - (s / aSegs) * aLen;
+        positions[s * 3 + 2] = bz;
+      }
+      const aGeo = new THREE.BufferGeometry();
+      aGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      const aMat = new THREE.LineBasicMaterial({
+        color: this.glowColor,
+        transparent: true,
+        opacity: 0.7,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      });
+      const line = new THREE.Line(aGeo, aMat);
+      this.group.add(line);
+      this.arms.push({ line, bx, by, bz, phase: Math.random() * Math.PI * 2, len: aLen, segs: aSegs });
+    }
+
+    this.pulsePhase = Math.random() * Math.PI * 2;
+    this.pulseSpeed = 0.6 + Math.random() * 0.5;
+    this.vel = new THREE.Vector3(
+      (Math.random() - 0.5) * 0.4,
+      (Math.random() - 0.5) * 0.12,
+      (Math.random() - 0.5) * 0.4
+    );
+    this.wanderPhase = Math.random() * 100;
+
+    scene.add(this.group);
+  }
+
+  update(time, dt) {
+    this.pulsePhase += dt * this.pulseSpeed;
+    const pulse = Math.sin(this.pulsePhase);
+    const contract = 1.0 + pulse * 0.2;
+    const expand = 1.0 / (1.0 + pulse * 0.12);
+
+    this.bell.scale.set(expand, contract, expand);
+    this.core.scale.setScalar(1.0 + Math.max(0, pulse) * 0.5);
+
+    // Emissive pulse
+    this.bellMat.emissiveIntensity = 0.25 + Math.max(0, pulse) * 0.7;
+    this.coreMat.opacity = 0.35 + Math.max(0, pulse) * 0.55;
+
+    // Movement with gentle wander
+    this.wanderPhase += dt * 0.3;
+    const wx = Math.sin(this.wanderPhase) * 0.1;
+    const wz = Math.cos(this.wanderPhase * 0.7) * 0.1;
+    this.group.position.x += (this.vel.x + wx) * dt;
+    this.group.position.y += (this.vel.y + Math.sin(time * 0.5 + this.pulsePhase) * 0.12) * dt;
+    this.group.position.z += (this.vel.z + wz) * dt;
+
+    // Wrap
+    const B = 30;
+    if (this.group.position.x > B) this.group.position.x = -B;
+    if (this.group.position.x < -B) this.group.position.x = B;
+    if (this.group.position.y > 14) this.group.position.y = -14;
+    if (this.group.position.y < -14) this.group.position.y = 14;
+    if (this.group.position.z > B) this.group.position.z = -B;
+    if (this.group.position.z < -B) this.group.position.z = B;
+
+    // Gentle body sway
+    this.group.rotation.x = Math.sin(time * 0.4 + this.pulsePhase) * 0.09;
+    this.group.rotation.z = Math.cos(time * 0.3 + this.pulsePhase) * 0.07;
+
+    // Tentacles
+    for (const t of this.tentacles) {
+      const pos = t.line.geometry.attributes.position;
+      for (let s = 0; s <= t.segs; s++) {
+        const frac = s / t.segs;
+        const sway1 = Math.sin(time * 1.8 + t.phase + frac * 3.0) * 0.3 * frac;
+        const sway2 = Math.cos(time * 1.2 + t.phase + frac * 2.5) * 0.2 * frac;
+        pos.setXYZ(s, t.bx + sway1, t.by - frac * t.len, t.bz + sway2);
+      }
+      pos.needsUpdate = true;
+    }
+
+    // Arms
+    for (const a of this.arms) {
+      const pos = a.line.geometry.attributes.position;
+      for (let s = 0; s <= a.segs; s++) {
+        const frac = s / a.segs;
+        const sway1 = Math.sin(time * 2.2 + a.phase + frac * 4.0) * 0.4 * frac;
+        const sway2 = Math.cos(time * 1.5 + a.phase + frac * 3.5) * 0.3 * frac;
+        pos.setXYZ(s, a.bx + sway1, a.by - frac * a.len, a.bz + sway2);
+      }
+      pos.needsUpdate = true;
+    }
+  }
+}
+
+// Create jellyfish
+const jellies = [];
+for (let i = 0; i < 18; i++) jellies.push(new Jellyfish());
+
+// Plankton / bioluminescent particles (shader with twinkle + color mix)
+const P_COUNT = 2500;
+const pGeo = new THREE.BufferGeometry();
+const pPos = new Float32Array(P_COUNT * 3);
+const pVel = new Float32Array(P_COUNT * 3);
+const pPhase = new Float32Array(P_COUNT);
+const pSize = new Float32Array(P_COUNT);
+const pColor = new Float32Array(P_COUNT * 3);
+
+const cCyan = new THREE.Color(0.35, 1.0, 0.85);
+const cMag = new THREE.Color(0.85, 0.5, 1.0);
+const tmpC = new THREE.Color();
+
+for (let i = 0; i < P_COUNT; i++) {
+  pPos[i * 3] = (Math.random() - 0.5) * 70;
+  pPos[i * 3 + 1] = (Math.random() - 0.5) * 35;
+  pPos[i * 3 + 2] = (Math.random() - 0.5) * 70;
+  pVel[i * 3] = (Math.random() - 0.5) * 0.3;
+  pVel[i * 3 + 1] = (Math.random() - 0.5) * 0.1;
+  pVel[i * 3 + 2] = (Math.random() - 0.5) * 0.3;
+  pPhase[i] = Math.random() * Math.PI * 2;
+  pSize[i] = 0.4 + Math.random() * 0.9;
+  tmpC.copy(cCyan).lerp(cMag, Math.random() * Math.random());
+  pColor[i * 3] = tmpC.r;
+  pColor[i * 3 + 1] = tmpC.g;
+  pColor[i * 3 + 2] = tmpC.b;
+}
+pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+pGeo.setAttribute('aPhase', new THREE.BufferAttribute(pPhase, 1));
+pGeo.setAttribute('aSize', new THREE.BufferAttribute(pSize, 1));
+pGeo.setAttribute('aColor', new THREE.BufferAttribute(pColor, 3));
+
+const pMat = new THREE.ShaderMaterial({
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+  uniforms: { uTime: { value: 0 }, uScale: { value: innerHeight * 0.5 } },
+  vertexShader: `
+    attribute float aPhase; attribute float aSize; attribute vec3 aColor;
+    uniform float uTime; uniform float uScale;
+    varying vec3 vColor; varying float vTw;
+    void main(){
+      vColor = aColor;
+      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      vTw = 0.35 + 0.65 * (0.5 + 0.5 * sin(uTime * 1.6 + aPhase));
+      gl_PointSize = aSize * (uScale / -mv.z);
+      gl_Position = projectionMatrix * mv;
+    }`,
+  fragmentShader: `
+    varying vec3 vColor; varying float vTw;
+    void main(){
+      vec2 uv = gl_PointCoord - 0.5;
+      float d = length(uv);
+      float a = smoothstep(0.5, 0.0, d);
+      a *= a;
+      gl_FragColor = vec4(vColor, a * vTw * 0.9);
+    }`
+});
+const particles = new THREE.Points(pGeo, pMat);
+scene.add(particles);
+
+// Volumetric light shafts (soft-edged shader planes)
+const shaftMat = new THREE.ShaderMaterial({
+  transparent: true,
+  depthWrite: false,
+  side: THREE.DoubleSide,
+  blending: THREE.AdditiveBlending,
+  uniforms: {
+    uTime: { value: 0 },
+    uColor: { value: new THREE.Color(0.25, 0.55, 0.7) },
+    uOpacity: { value: 0.1 }
+  },
+  vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+  fragmentShader: `
+    varying vec2 vUv; uniform float uTime; uniform vec3 uColor; uniform float uOpacity;
+    void main(){
+      float h = 1.0 - pow(abs(vUv.x - 0.5) * 2.0, 3.0);
+      float vert = smoothstep(0.0, 0.25, vUv.y) * (0.25 + 0.75 * smoothstep(1.0, 0.0, vUv.y));
+      float shimmer = 0.75 + 0.25 * sin(uTime * 0.5 + vUv.y * 4.0);
+      float a = h * vert * shimmer * uOpacity;
+      gl_FragColor = vec4(uColor, a);
+    }`
+});
+for (let i = 0; i < 7; i++) {
+  const shaftGeo = new THREE.PlaneGeometry(2.5 + Math.random() * 3.5, 60);
+  const mat = shaftMat.clone();
+  mat.uniforms.uColor.value = new THREE.Color().setHSL(0.5 + Math.random() * 0.1, 0.5, 0.4);
+  mat.uniforms.uOpacity.value = 0.06 + Math.random() * 0.06;
+  const shaft = new THREE.Mesh(shaftGeo, mat);
+  shaft.position.set((Math.random() - 0.5) * 45, 8, -10 - Math.random() * 40);
+  shaft.rotation.z = (Math.random() - 0.5) * 0.18;
+  scene.add(shaft);
+}
+
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const t = clock.elapsedTime;
+
+  bgMat.uniforms.uTime.value = t;
+  pMat.uniforms.uTime.value = t;
+  for (const s of scene.children) {
+    if (s.isMesh && s.material && s.material.uniforms && s.material.uniforms.uTime && s !== bgMesh) {
+      s.material.uniforms.uTime.value = t;
+    }
+  }
+
+  for (const jf of jellies) jf.update(t, dt);
+
+  // Particles
+  const pp = pGeo.attributes.position.array;
+  for (let i = 0; i < P_COUNT; i++) {
+    pp[i * 3] += (pVel[i * 3] + Math.sin(t * 0.3 + pPhase[i]) * 0.05) * dt;
+    pp[i * 3 + 1] += (pVel[i * 3 + 1] + Math.cos(t * 0.2 + pPhase[i]) * 0.03) * dt;
+    pp[i * 3 + 2] += (pVel[i * 3 + 2] + Math.sin(t * 0.25 + pPhase[i] * 1.3) * 0.05) * dt;
+
+    if (pp[i * 3] > 35) pp[i * 3] = -35;
+    if (pp[i * 3] < -35) pp[i * 3] = 35;
+    if (pp[i * 3 + 1] > 18) pp[i * 3 + 1] = -18;
+    if (pp[i * 3 + 1] < -18) pp[i * 3 + 1] = 18;
+    if (pp[i * 3 + 2] > 35) pp[i * 3 + 2] = -35;
+    if (pp[i * 3 + 2] < -35) pp[i * 3 + 2] = 35;
+  }
+  pGeo.attributes.position.needsUpdate = true;
+
+  // Camera drift with subtle roll
+  camera.position.x = Math.sin(t * 0.08) * 4;
+  camera.position.y = 3 + Math.sin(t * 0.05) * 2;
+  camera.position.z = 28 + Math.cos(t * 0.06) * 3;
+  camera.lookAt(0, 0, 0);
+  camera.rotation.z += Math.sin(t * 0.04) * 0.015;
+
+  composer.render();
+}
+
+animate();
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+  pMat.uniforms.uScale.value = innerHeight * 0.5;
+});
+</script>
+</body>
+</html>

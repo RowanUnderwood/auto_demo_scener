@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spectral Bloom</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #050208; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+    </style>
+</head>
+<body>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.body.appendChild(renderer.domElement);
+
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const uniforms = {
+            u_time: { value: 0 },
+            u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+            u_mouse: { value: new THREE.Vector2(0.5, 0.5) }
+        };
+
+        let mouseTarget = new THREE.Vector2(0.5, 0.5);
+        window.addEventListener('pointermove', (e) => {
+            mouseTarget.set(e.clientX / window.innerWidth, 1.0 - e.clientY / window.innerHeight);
+        });
+
+        const material = new THREE.ShaderMaterial({
+            uniforms,
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float u_time;
+                uniform vec2 u_resolution;
+                uniform vec2 u_mouse;
+                varying vec2 vUv;
+
+                #define NUM_BARS 28
+
+                float hash(float n) {
+                    return fract(sin(n) * 43758.5453123);
+                }
+
+                float noise1d(float x) {
+                    float i = floor(x);
+                    float f = fract(x);
+                    f = f * f * (3.0 - 2.0 * f);
+                    return mix(hash(i), hash(i + 1.0), f);
+                }
+
+                float vnoise1d(float x) {
+                    float a = noise1d(x);
+                    float b = noise1d(x * 2.13 + 5.2);
+                    float c = noise1d(x * 4.27 + 11.7);
+                    return a * 0.55 + b * 0.3 + c * 0.15;
+                }
+
+                vec3 palette(float t) {
+                    vec3 a = vec3(0.45, 0.12, 0.30);
+                    vec3 b = vec3(0.55, 0.40, 0.45);
+                    vec3 c = vec3(1.0, 0.65, 0.35);
+                    vec3 d = vec3(0.05, 0.20, 0.45);
+                    return a + b * cos(6.28318 * (c * t + d));
+                }
+
+                void main() {
+                    vec2 uv = vUv;
+                    float aspect = u_resolution.x / u_resolution.y;
+                    vec2 p = vec2((uv.x - 0.5) * aspect, uv.y - 0.5);
+
+                    // Deep gradient background
+                    vec3 bg = mix(
+                        vec3(0.02, 0.005, 0.04),
+                        vec3(0.09, 0.02, 0.12),
+                        smoothstep(0.0, 1.0, uv.y)
+                    );
+
+                    // Breathing central bloom
+                    float breathe = 0.5 + 0.5 * sin(u_time * 0.6);
+                    float centerGlow = exp(-dot(p, p) * 2.2) * (0.22 + 0.12 * breathe);
+                    bg += vec3(0.35, 0.08, 0.20) * centerGlow;
+
+                    // Mouse-follow bloom
+                    vec2 mp = vec2((u_mouse.x - 0.5) * aspect, u_mouse.y - 0.5);
+                    bg += vec3(0.18, 0.05, 0.22) * exp(-dot(p - mp, p - mp) * 4.0) * 0.5;
+
+                    vec3 finalColor = bg;
+
+                    // Global pulse driving the whole field
+                    float beat = 0.5 + 0.5 * sin(u_time * 1.4);
+                    float beatSharp = pow(beat, 3.0);
+
+                    float barWidth = 1.15 / float(NUM_BARS);
+                    float margin = 0.015;
+
+                    for (int i = 0; i < NUM_BARS; i++) {
+                        float fi = float(i);
+                        float barCenter = (fi + 0.5) * barWidth - 0.575 + margin;
+                        float xDist = abs(p.x - barCenter);
+
+                        // Bar presence mask (wider, softer)
+                        float barMask = smoothstep(barWidth * 0.55, barWidth * 0.22, xDist);
+
+                        // Dynamic height: layered motion + per-bar randomness + beat
+                        float t = u_time * 0.5;
+                        float h1 = sin(t * 0.9 + fi * 0.45) * 0.28;
+                        float h2 = sin(t * 1.7 + fi * 0.9 + 2.0) * 0.16;
+                        float h3 = sin(t * 0.35 + fi * 1.3 + 4.0) * 0.12;
+                        float organic = (vnoise1d(fi * 1.9 + t * 0.7) - 0.5) * 0.5;
+                        float centerBias = 1.0 - abs(fi - float(NUM_BARS) * 0.5) / (float(NUM_BARS) * 0.6);
+                        centerBias = max(centerBias, 0.15);
+                        float height = (0.35 + h1 + h2 + h3 + organic) * (0.6 + 0.5 * beatSharp) * (0.5 + 0.8 * centerBias);
+                        height = max(height, 0.06);
+
+                        float barTop = height - 0.42;
+                        float barBottom = -0.42;
+
+                        // Vertical mask with rounded ends
+                        float vMask = step(p.y, barTop) * step(p.y, barBottom);
+                        float topDist = barTop - p.y;
+                        float topRound = smoothstep(-0.015, 0.02, topDist);
+                        float botDist = p.y - barBottom;
+                        float botRound = smoothstep(-0.01, 0.02, botDist);
+                        vMask *= topRound * botRound;
+
+                        // Vertical gradient: hot at base, fading upward
+                        float yNorm = (p.y - barBottom) / max(barTop - barBottom, 0.001);
+                        float vGrad = pow(1.0 - yNorm, 1.3);
+                        float intensity = vGrad * 1.1 + 0.15;
+
+                        // Spectrum color sweeping across bars and time
+                        float colorT = fi / float(NUM_BARS) * 0.85 + sin(t * 0.25 + fi * 0.08) * 0.18 + 0.05;
+                        vec3 barColor = palette(colorT);
+                        barColor *= 0.85 + 0.6 * beatSharp;
+
+                        // Hot core at base
+                        float coreGlow = exp(-pow((p.y - barBottom) * 5.0, 2.0)) * 0.9;
+                        barColor += vec3(0.55, 0.20, 0.10) * coreGlow;
+
+                        // Bright cap at the top
+                        float capGlow = exp(-pow((p.y - barTop) * 14.0, 2.0)) * 0.7;
+                        finalColor += vec3(0.6, 0.4, 0.9) * capGlow * barMask * vMask;
+
+                        // Additive bloom halo (wider)
+                        float glow = exp(-glowDistSafe(xDist) * 260.0) * 0.45;
+                        finalColor += barColor * glow * vMask;
+
+                        // Core bar body
+                        finalColor += barColor * intensity * barMask * vMask;
+                    }
+
+                    // Glowing baseline
+                    float baseLine = exp(-abs(p.y - (-0.42)) * 220.0) * (0.5 + 0.5 * beatSharp);
+                    finalColor += vec3(0.5, 0.15, 0.35) * baseLine;
+
+                    // Faint reflection below baseline
+                    if (p.y < -0.42) {
+                        float ref = exp(-(p.y + 0.42) * (p.y + 0.42) * 140.0) * 0.18;
+                        finalColor += vec3(0.3, 0.08, 0.2) * ref;
+                    }
+
+                    // Subtle scanlines
+                    float scanline = sin(uv.y * 600.0) * 0.015;
+                    finalColor -= scanline;
+
+                    // Vignette (gentler)
+                    float vig = 1.0 - dot(p * 0.55, p * 0.55);
+                    finalColor *= clamp(vig, 0.45, 1.0);
+
+                    // Soft tone mapping for punchy colors
+                    finalColor = finalColor / (1.0 + finalColor * 0.35);
+                    finalColor = pow(max(finalColor, 0.0), vec3(0.92));
+
+                    gl_FragColor = vec4(finalColor, 1.0);
+                }
+            `
+        });
+
+        // helper referenced in shader for halo distance
+        material.fragmentShader = material.fragmentShader.replace(
+            /float glow = exp\(-glowDistSafe\(xDist\) \* 260\.0\) \* 0\.45;/,
+            'float glow = exp(-xDist * xDist * 260.0) * 0.45;'
+        );
+
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        function animate(time) {
+            uniforms.u_time.value = time * 0.001;
+            uniforms.u_mouse.value.lerp(mouseTarget, 0.08);
+            renderer.render(scene, camera);
+            requestAnimationFrame(animate);
+        }
+
+        window.addEventListener('resize', () => {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            renderer.setSize(w, h);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            uniforms.u_resolution.value.set(w, h);
+        });
+
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>

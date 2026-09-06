@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Particle Fountain</title>
+<style>
+body { margin: 0; overflow: hidden; background: #000; }
+canvas { display: block; }
+</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const COUNT = 5000;
+const GRAVITY = -9.8;
+const RESPAWN_Y = -10;
+
+// Create soft circular sprite texture via canvas
+function createSpriteTexture() {
+    const size = 64;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    const half = size / 2;
+    const gradient = ctx.createRadialGradient(half, half, 0, half, half, half);
+    gradient.addColorStop(0, 'rgba(255,255,255,1)');
+    gradient.addColorStop(0.3, 'rgba(255,255,255,0.8)');
+    gradient.addColorStop(0.7, 'rgba(255,255,255,0.2)');
+    gradient.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, size, size);
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+    return texture;
+}
+
+// Scene setup
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 3, 12);
+camera.lookAt(0, 0, 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
+document.body.appendChild(renderer.domElement);
+
+// Particle data
+const positions = new Float32Array(COUNT * 3);
+const velocities = new Float32Array(COUNT * 3);
+const colors = new Float32Array(COUNT * 3);
+const lifetimes = new Float32Array(COUNT);
+const maxLifetimes = new Float32Array(COUNT);
+
+function randomVelocity() {
+    // Random outward direction with slight upward bias
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2 * Math.random() - 1);
+    const speed = 3 + Math.random() * 5;
+
+    const vx = Math.sin(phi) * Math.cos(theta) * speed;
+    const vy = Math.abs(Math.cos(phi)) * speed * 0.6 + Math.random() * 2.0; // upward bias
+    const vz = Math.sin(phi) * Math.sin(theta) * speed;
+
+    return [vx, vy, vz];
+}
+
+function initParticle(i) {
+    positions[i * 3] = 0;
+    positions[i * 3 + 1] = 0;
+    positions[i * 3 + 2] = 0;
+
+    const [vx, vy, vz] = randomVelocity();
+    velocities[i * 3] = vx;
+    velocities[i * 3 + 1] = vy;
+    velocities[i * 3 + 2] = vz;
+
+    maxLifetimes[i] = 2.0 + Math.random() * 3.0;
+    lifetimes[i] = maxLifetimes[i];
+}
+
+for (let i = 0; i < COUNT; i++) {
+    initParticle(i);
+    // Stagger initial lifetimes so they don't all die at once
+    lifetimes[i] = Math.random() * maxLifetimes[i];
+    // Pre-advance position slightly
+    const t = (maxLifetimes[i] - lifetimes[i]);
+    positions[i * 3] = velocities[i * 3] * t;
+    positions[i * 3 + 1] = velocities[i * 3 + 1] * t + 0.5 * GRAVITY * t * t;
+    positions[i * 3 + 2] = velocities[i * 3 + 2] * t;
+}
+
+// Geometry
+const geometry = new THREE.BufferGeometry();
+geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+// Material
+const material = new THREE.PointsMaterial({
+    size: 0.15,
+    map: createSpriteTexture(),
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    transparent: true,
+    vertexColors: true,
+    sizeAttenuation: true
+});
+
+const points = new THREE.Points(geometry, material);
+scene.add(points);
+
+// Animation
+const clock = new THREE.Clock();
+
+function animate() {
+    requestAnimationFrame(animate);
+    const dt = Math.min(clock.getDelta(), 0.05);
+
+    for (let i = 0; i < COUNT; i++) {
+        const ix = i * 3;
+        const iy = ix + 1;
+        const iz = ix + 2;
+
+        // Update velocity
+        velocities[iy] += GRAVITY * dt;
+
+        // Update position
+        positions[ix] += velocities[ix] * dt;
+        positions[iy] += velocities[iy] * dt;
+        positions[iz] += velocities[iz] * dt;
+
+        // Decrease lifetime
+        lifetimes[i] -= dt;
+
+        // Respawn if below threshold or lifetime expired
+        if (positions[iy] < RESPAWN_Y || lifetimes[i] <= 0) {
+            initParticle(i);
+            continue;
+        }
+
+        // Color by remaining lifetime (normalized 0..1)
+        const t = lifetimes[i] / maxLifetimes[i];
+
+        // Gradient: white/yellow (t=1) -> orange -> red -> dark blue (t=0)
+        let r, g, b;
+        if (t > 0.6) {
+            const s = (t - 0.6) / 0.4;
+            r = 1.0;
+            g = 0.4 + 0.6 * s;
+            b = 0.1 + 0.5 * s;
+        } else if (t > 0.3) {
+            const s = (t - 0.3) / 0.3;
+            r = 0.4 + 0.6 * s;
+            g = 0.1 + 0.3 * s;
+            b = 0.1 + 0.0 * s;
+        } else {
+            const s = t / 0.3;
+            r = 0.2 * s;
+            g = 0.05 * s;
+            b = 0.4 * s;
+        }
+
+        colors[ix] = r;
+        colors[iy] = g;
+        colors[iz] = b;
+    }
+
+    geometry.attributes.position.needsUpdate = true;
+    geometry.attributes.color.needsUpdate = true;
+
+    renderer.render(scene, camera);
+}
+
+animate();
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>

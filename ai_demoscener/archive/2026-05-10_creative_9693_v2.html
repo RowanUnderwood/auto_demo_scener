@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>EMBER_TUNNEL // DEMO</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #0a0200; font-family: 'Courier New', monospace; }
+        #ui {
+            position: absolute;
+            bottom: 24px;
+            left: 24px;
+            color: #f0a030;
+            pointer-events: none;
+            text-shadow: 0 0 8px #f06010, 0 0 20px #802000;
+            font-size: 12px;
+            letter-spacing: 2px;
+            opacity: 0.85;
+        }
+        #ui span { color: #ff6020; }
+        #title {
+            position: absolute;
+            top: 24px;
+            left: 24px;
+            color: #ffb050;
+            pointer-events: none;
+            text-shadow: 0 0 10px #ff5010, 0 0 24px #902000;
+            font-size: 14px;
+            letter-spacing: 4px;
+            opacity: 0.9;
+        }
+    </style>
+</head>
+<body>
+    <div id="title">EMBER_TUNNEL</div>
+    <div id="ui">DEPTH: <span>&infin;</span> // STATE: <span>MOLTEN</span> // FLOW: <span>ACTIVE</span></div>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        /**
+         * CONCEPT: "EMBER_TUNNEL"
+         * Fly through an infinite tunnel of twisted, breathing crystalline torus rings
+         * threaded by a continuous molten helix, so the corridor is never empty.
+         * Warm volcanic palette — molten gold, deep amber, charred black.
+         */
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer({ antialias: false });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                u_time: { value: 0 },
+                u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+                u_mouse: { value: new THREE.Vector2(0.5, 0.5) }
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                precision highp float;
+                uniform float u_time;
+                uniform vec2 u_resolution;
+                uniform vec2 u_mouse;
+                varying vec2 vUv;
+
+                mat2 rot(float a) {
+                    float s = sin(a), c = cos(a);
+                    return mat2(c, -s, s, c);
+                }
+
+                float smin(float a, float b, float k) {
+                    float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+                    return mix(b, a, h) - k * h * (1.0 - h);
+                }
+
+                float hash13(vec3 p) {
+                    p = fract(p * 0.3183099 + 0.1);
+                    p *= 17.0;
+                    return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+                }
+
+                float vnoise(vec3 p) {
+                    vec3 i = floor(p);
+                    vec3 f = fract(p);
+                    f = f * f * (3.0 - 2.0 * f);
+                    return mix(
+                        mix(mix(hash13(i), hash13(i + vec3(1,0,0)), f.x),
+                            mix(hash13(i + vec3(0,1,0)), hash13(i + vec3(1,1,0)), f.x), f.y),
+                        mix(mix(hash13(i + vec3(0,0,1)), hash13(i + vec3(1,0,1)), f.x),
+                            mix(hash13(i + vec3(0,1,1)), hash13(i + vec3(1,1,1)), f.x), f.y),
+                        f.z
+                    );
+                }
+
+                float fbm(vec3 p) {
+                    float v = 0.0, a = 0.5;
+                    for(int i = 0; i < 3; i++) {
+                        v += a * vnoise(p);
+                        p *= 2.1;
+                        a *= 0.5;
+                    }
+                    return v;
+                }
+
+                // SDF of the tunnel: twisted periodic rings + continuous molten helix + orbs
+                float map(vec3 p) {
+                    float zOff = u_time * 1.6;
+                    vec3 q = p;
+                    q.z += zOff;
+
+                    // Spiral twist of the whole space
+                    float tw = q.z * 0.45 + u_time * 0.25;
+                    q.xy *= rot(tw);
+
+                    // Breathing corridor radius
+                    float br = 1.0 + 0.16 * sin(u_time * 0.7) + 0.07 * sin(u_time * 1.7 + 1.0);
+                    float R = 1.7 * br;
+
+                    // Periodic crystalline torus rings
+                    float seg = 2.4;
+                    float rz = mod(q.z, seg) - seg * 0.5;
+                    vec2 tc = vec2(length(q.xy) - (R - 0.18), rz);
+                    float ring = length(tc) - 0.42;
+
+                    // Continuous molten helix threading the tunnel (guarantees visible content)
+                    float hel = length(vec2(length(q.xz) - 0.55, q.y * 1.25 - q.z * 0.85)) - 0.13;
+
+                    // Floating ember orbs at ring nodes
+                    vec3 oc = vec3(sin(q.z * 0.7) * 0.95, cos(q.z * 0.9) * 0.95, mod(q.z, seg) - seg * 0.5);
+                    float orb = length(q - oc) - 0.16;
+
+                    float d = smin(ring, hel, 0.32);
+                    d = smin(d, orb, 0.26);
+
+                    // Organic displacement
+                    d += (fbm(q * 1.4 + u_time * 0.25) - 0.5) * 0.14;
+                    return d;
+                }
+
+                vec3 getNormal(vec3 p, float e) {
+                    vec2 k = vec2(1.0, -1.0);
+                    vec3 n =
+                        k.xyy * map(p + k.xyy * e) +
+                        k.yyx * map(p + k.yyx * e) +
+                        k.yxy * map(p + k.yxy * e) +
+                        k.xxx * map(p + k.xxx * e);
+                    return normalize(n);
+                }
+
+                // Warm ember palette with a hint of deep red -> gold -> white hot
+                vec3 ember(float t) {
+                    vec3 a = vec3(0.45, 0.12, 0.02);
+                    vec3 b = vec3(0.55, 0.30, 0.05);
+                    vec3 c = vec3(1.0, 1.0, 1.0);
+                    vec3 d = vec3(0.0, 0.12, 0.28);
+                    return a + b * cos(6.28318 * (c * t + d));
+                }
+
+                // Screen-space drifting ember particles (always present for ambiance)
+                float screenEmbers(vec2 uv, float t) {
+                    float e = 0.0;
+                    for(float i = 1.0; i < 5.0; i++) {
+                        vec2 p = uv * (2.5 + i * 0.7);
+                        p += vec2(sin(t * 0.12 * i + i * 1.7) * 0.4,
+                                  cos(t * 0.10 * i + i) * 0.3 - t * 0.06 * i);
+                        float g = pow(hash13(vec3(p, i)), 60.0);
+                        e += g * (0.4 + 0.6 * (0.5 + 0.5 * sin(t * 1.5 * i + g * 30.0)));
+                    }
+                    return e;
+                }
+
+                void main() {
+                    vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / min(u_resolution.y, u_resolution.x);
+
+                    // Camera: gentle sway + mouse parallax
+                    vec2 m = (u_mouse - 0.5);
+                    vec3 ro = vec3(m.x * 0.35 + sin(u_time * 0.3) * 0.1,
+                                   m.y * 0.35 + cos(u_time * 0.23) * 0.1,
+                                   0.0);
+                    vec3 rd = normalize(vec3(uv, -1.6));
+
+                    // Raymarch
+                    float dO = 0.0;
+                    float dS;
+                    float glow = 0.0;
+                    float hit = 0.0;
+                    vec3 hp = ro;
+                    for(int i = 0; i < 140; i++) {
+                        hp = ro + rd * dO;
+                        dS = map(hp);
+                        glow += exp(-abs(dS) * 5.0) * 0.016;
+                        dO += max(dS * 0.85, 0.012);
+                        if(dO > 18.0 || dS < 0.0015) { hit = 1.0; break; }
+                    }
+
+                    // Warm radial void background (never pure black)
+                    float rad = dot(uv * 0.62, uv * 0.62);
+                    vec3 bg = mix(vec3(0.11, 0.035, 0.012), vec3(0.02, 0.006, 0.0), rad);
+                    bg += vec3(0.04, 0.012, 0.0) * (uv.y * 0.5 + 0.5);
+                    vec3 color = bg;
+
+                    // Drifting embers
+                    color += screenEmbers(uv, u_time) * vec3(0.55, 0.22, 0.05) * 0.35;
+
+                    // Surface shading
+                    if(hit > 0.5 && dO < 18.0) {
+                        vec3 n = getNormal(hp, 0.0035);
+
+                        vec3 lightDir = normalize(vec3(0.25, 0.35, 1.0));
+                        float diff = max(dot(n, lightDir), 0.0);
+                        float back = max(dot(n, -rd), 0.0);
+                        float rim = pow(1.0 - back, 3.0);
+                        float fres = pow(1.0 - abs(dot(n, -rd)), 4.0);
+
+                        float t = dO * 0.06 + hp.z * 0.04 + sin(u_time * 0.2) * 0.12;
+                        vec3 baseCol = ember(t);
+
+                        vec3 warmLight = vec3(1.0, 0.62, 0.22) * diff * 1.4;
+                        vec3 rimCol = vec3(1.0, 0.32, 0.06) * rim * 0.9;
+                        vec3 fresCol = vec3(0.18, 0.06, 0.02) * fres;
+
+                        // Emissive hot core on inner-facing surfaces
+                        float emissive = pow(back, 2.5) * 0.85;
+                        vec3 emissiveCol = vec3(1.0, 0.45, 0.08) * emissive;
+
+                        color = baseCol * (0.35 + diff * 0.75)
+                              + warmLight * baseCol * 0.55
+                              + rimCol + fresCol + emissiveCol;
+
+                        // Warm depth fog
+                        float fog = 1.0 - exp(-dO * dO * 0.012);
+                        color = mix(color, vec3(0.07, 0.02, 0.0), fog);
+
+                        // Proximity halo
+                        color += exp(-abs(dS) * 9.0) * vec3(1.0, 0.5, 0.12) * 0.6;
+                    }
+
+                    // Volumetric glow (molten atmosphere)
+                    color += glow * vec3(0.85, 0.32, 0.06) * 2.4;
+
+                    // Vignette
+                    float vig = 1.0 - dot(uv * 0.72, uv * 0.72);
+                    color *= clamp(vig, 0.0, 1.0) * 0.85 + 0.15;
+
+                    // Filmic-ish tone map + warm gamma
+                    color = 1.0 - exp(-color * 1.35);
+                    color = pow(color, vec3(0.95, 0.9, 0.82));
+
+                    gl_FragColor = vec4(color, 1.0);
+                }
+            `
+        });
+
+        scene.add(new THREE.Mesh(geometry, material));
+
+        window.addEventListener('mousemove', (e) => {
+            material.uniforms.u_mouse.value.set(
+                e.clientX / window.innerWidth,
+                1.0 - e.clientY / window.innerHeight
+            );
+        });
+
+        let last = performance.now();
+        let elapsed = 0;
+        function animate(now) {
+            requestAnimationFrame(animate);
+            elapsed += (now - last) * 0.001;
+            last = now;
+            material.uniforms.u_time.value = elapsed;
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            material.uniforms.u_resolution.value.set(window.innerWidth, window.innerHeight);
+        });
+
+        animate(performance.now());
+    </script>
+</body>
+</html>

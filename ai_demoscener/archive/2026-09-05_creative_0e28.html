@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Chromatic Lattice</title>
+<style>
+* { margin: 0; padding: 0; }
+html, body { overflow: hidden; background: #04061a; height: 100%; }
+canvas { display: block; }
+#vignette {
+  position: fixed; inset: 0; pointer-events: none; z-index: 2;
+  background:
+    radial-gradient(ellipse at 50% 45%, rgba(0,0,0,0) 35%, rgba(2,4,18,0.55) 100%);
+  mix-blend-mode: multiply;
+}
+#glow {
+  position: fixed; inset: 0; pointer-events: none; z-index: 1;
+  background:
+    radial-gradient(ellipse at 50% 50%, rgba(60,70,180,0.18) 0%, rgba(10,12,40,0) 60%);
+}
+</style>
+</head>
+<body>
+<div id="glow"></div>
+<div id="vignette"></div>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+const N = 7;
+const SPACING = 2.0;
+const NODE_COUNT = N * N * N;
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x04061a, 0.010);
+
+const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 400);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setClearColor(0x04061a, 1);
+document.body.appendChild(renderer.domElement);
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 1.35, 0.65, 0.22);
+composer.addPass(bloom);
+
+// ---- Background starfield for depth ----
+{
+  const starCount = 700;
+  const sp = new Float32Array(starCount * 3);
+  const sc = new Float32Array(starCount * 3);
+  const c = new THREE.Color();
+  for (let i = 0; i < starCount; i++) {
+    const r = 70 + Math.random() * 90;
+    const th = Math.random() * Math.PI * 2;
+    const ph = Math.acos(2 * Math.random() - 1);
+    sp[i*3]   = r * Math.sin(ph) * Math.cos(th);
+    sp[i*3+1] = r * Math.cos(ph);
+    sp[i*3+2] = r * Math.sin(ph) * Math.sin(th);
+    const h = 0.55 + Math.random() * 0.25;
+    c.setHSL(h, 0.6, 0.35 + Math.random() * 0.4);
+    const b = 0.3 + Math.random() * 0.7;
+    sc[i*3] = c.r * b; sc[i*3+1] = c.g * b; sc[i*3+2] = c.b * b;
+  }
+  const sg = new THREE.BufferGeometry();
+  sg.setAttribute('position', new THREE.BufferAttribute(sp, 3));
+  sg.setAttribute('color', new THREE.BufferAttribute(sc, 3));
+  const sm = new THREE.PointsMaterial({
+    size: 0.5, vertexColors: true, transparent: true, opacity: 0.8,
+    depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true
+  });
+  const stars = new THREE.Points(sg, sm);
+  stars.name = 'stars';
+  scene.add(stars);
+}
+
+// Node positions
+const basePositions = [];
+const breathDirs = [];
+const baseHue = [];
+for (let ix = 0; ix < N; ix++) {
+  for (let iy = 0; iy < N; iy++) {
+    for (let iz = 0; iz < N; iz++) {
+      const x = (ix - (N - 1) / 2) * SPACING;
+      const y = (iy - (N - 1) / 2) * SPACING;
+      const z = (iz - (N - 1) / 2) * SPACING;
+      basePositions.push(new THREE.Vector3(x, y, z));
+      const d = new THREE.Vector3(
+        Math.sin(ix * 1.7 + iy * 0.9) * 0.3,
+        Math.sin(iy * 2.1 + iz * 1.3) * 0.3,
+        Math.sin(iz * 1.1 + ix * 1.9) * 0.3
+      ).normalize();
+      breathDirs.push(d);
+      baseHue.push(0.56 + 0.10 * Math.sin(ix * 0.7 + iy * 0.5) + 0.06 * Math.sin(iz * 0.9 + ix * 0.4));
+    }
+  }
+}
+
+function nodeIndex(ix, iy, iz) { return ix * N * N + iy * N + iz; }
+
+// Build edges
+const edges = [];
+const edgeMap = new Map();
+for (let ix = 0; ix < N; ix++) {
+  for (let iy = 0; iy < N; iy++) {
+    for (let iz = 0; iz < N; iz++) {
+      const a = nodeIndex(ix, iy, iz);
+      if (ix < N - 1) { const b = nodeIndex(ix+1, iy, iz); edges.push([a, b]); edgeMap.set(`${a}-${b}`, edges.length-1); edgeMap.set(`${b}-${a}`, edges.length-1); }
+      if (iy < N - 1) { const b = nodeIndex(ix, iy+1, iz); edges.push([a, b]); edgeMap.set(`${a}-${b}`, edges.length-1); edgeMap.set(`${b}-${a}`, edges.length-1); }
+      if (iz < N - 1) { const b = nodeIndex(ix, iy, iz+1); edges.push([a, b]); edgeMap.set(`${a}-${b}`, edges.length-1); edgeMap.set(`${b}-${a}`, edges.length-1); }
+    }
+  }
+}
+const EDGE_COUNT = edges.length;
+
+// Node InstancedMesh
+const nodeGeo = new THREE.SphereGeometry(0.12, 12, 12);
+const nodeMat = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: true });
+const nodeMesh = new THREE.InstancedMesh(nodeGeo, nodeMat, NODE_COUNT);
+nodeMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+for (let i = 0; i < NODE_COUNT; i++) nodeMesh.setColorAt(i, new THREE.Color(0x2233aa));
+nodeMesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
+scene.add(nodeMesh);
+
+// Edge LineSegments
+const edgePositions = new Float32Array(EDGE_COUNT * 6);
+const edgeColors = new Float32Array(EDGE_COUNT * 6);
+const edgeGeo = new THREE.BufferGeometry();
+edgeGeo.setAttribute('position', new THREE.BufferAttribute(edgePositions, 3));
+edgeGeo.setAttribute('color', new THREE.BufferAttribute(edgeColors, 3));
+const edgeMat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 1.0, blending: THREE.AdditiveBlending, depthWrite: false });
+const edgeLines = new THREE.LineSegments(edgeGeo, edgeMat);
+scene.add(edgeLines);
+
+// Pulse system
+const pulses = [];
+const nodeEnergy = new Float32Array(NODE_COUNT);
+const edgeEnergy = new Float32Array(EDGE_COUNT);
+
+function getNeighbors(idx) {
+  const ix = Math.floor(idx / (N * N));
+  const iy = Math.floor((idx % (N * N)) / N);
+  const iz = idx % N;
+  const neighbors = [];
+  if (ix > 0) neighbors.push(nodeIndex(ix-1, iy, iz));
+  if (ix < N-1) neighbors.push(nodeIndex(ix+1, iy, iz));
+  if (iy > 0) neighbors.push(nodeIndex(ix, iy-1, iz));
+  if (iy < N-1) neighbors.push(nodeIndex(ix, iy+1, iz));
+  if (iz > 0) neighbors.push(nodeIndex(ix, iy, iz-1));
+  if (iz < N-1) neighbors.push(nodeIndex(ix, iy, iz+1));
+  return neighbors;
+}
+
+function spawnPulse(from, to) {
+  if (pulses.length > 360) return;
+  const key = `${from}-${to}`;
+  if (edgeMap.has(key)) {
+    pulses.push({ from, to, progress: 0, speed: 2.8 + Math.random() * 2.4 });
+  }
+}
+
+function fireNode(idx) {
+  if (nodeEnergy[idx] > 0.3) return;
+  nodeEnergy[idx] = 1.0;
+  const neighbors = getNeighbors(idx);
+  const count = 1 + Math.floor(Math.random() * Math.min(3, neighbors.length));
+  for (let i = 0; i < count; i++) {
+    const ni = Math.floor(Math.random() * neighbors.length);
+    spawnPulse(idx, neighbors[ni]);
+  }
+}
+
+for (let i = 0; i < 22; i++) fireNode(Math.floor(Math.random() * NODE_COUNT));
+
+const dummy = new THREE.Object3D();
+const tmpColor = new THREE.Color();
+const time0 = performance.now();
+const stars = scene.getObjectByName('stars');
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = (performance.now() - time0) * 0.001;
+  const hueDrift = t * 0.018;
+
+  for (let i = pulses.length - 1; i >= 0; i--) {
+    const p = pulses[i];
+    p.progress += p.speed * 0.016;
+    if (p.progress >= 1.0) {
+      fireNode(p.to);
+      pulses.splice(i, 1);
+    } else {
+      const ek = edgeMap.get(`${p.from}-${p.to}`);
+      if (ek !== undefined) {
+        edgeEnergy[ek] = Math.max(edgeEnergy[ek], 1.0 - Math.abs(p.progress - 0.5) * 1.4);
+      }
+    }
+  }
+
+  if (Math.random() < 0.12) fireNode(Math.floor(Math.random() * NODE_COUNT));
+
+  for (let i = 0; i < NODE_COUNT; i++) nodeEnergy[i] *= 0.945;
+  for (let i = 0; i < EDGE_COUNT; i++) edgeEnergy[i] *= 0.925;
+
+  for (let i = 0; i < NODE_COUNT; i++) {
+    const base = basePositions[i];
+    const dir = breathDirs[i];
+    const breathe = Math.sin(t * 1.1 + i * 0.25) * 0.14;
+    const ripple = Math.sin(t * 1.6 - (base.x + base.y + base.z) * 0.45) * 0.12;
+    dummy.position.copy(base).addScaledVector(dir, breathe + ripple);
+    const e = nodeEnergy[i];
+    const scale = 0.65 + e * 1.9 + Math.max(0, ripple) * 0.6;
+    dummy.scale.setScalar(scale);
+    dummy.updateMatrix();
+    nodeMesh.setMatrixAt(i, dummy.matrix);
+
+    const hue = (baseHue[i] + e * 0.22 + hueDrift) % 1.0;
+    const sat = 0.85 - e * 0.35;
+    const light = 0.16 + e * 0.84;
+    tmpColor.setHSL(hue, sat, light);
+    nodeMesh.setColorAt(i, tmpColor);
+  }
+  nodeMesh.instanceMatrix.needsUpdate = true;
+  nodeMesh.instanceColor.needsUpdate = true;
+
+  for (let e = 0; e < EDGE_COUNT; e++) {
+    const [a, b] = edges[e];
+    const pa = basePositions[a];
+    const pb = basePositions[b];
+    const ea = Math.sin(t * 1.1 + a * 0.25) * 0.14 + Math.sin(t * 1.6 - (pa.x+pa.y+pa.z)*0.45) * 0.12;
+    const eb = Math.sin(t * 1.1 + b * 0.25) * 0.14 + Math.sin(t * 1.6 - (pb.x+pb.y+pb.z)*0.45) * 0.12;
+    edgePositions[e*6+0] = pa.x + breathDirs[a].x * ea;
+    edgePositions[e*6+1] = pa.y + breathDirs[a].y * ea;
+    edgePositions[e*6+2] = pa.z + breathDirs[a].z * ea;
+    edgePositions[e*6+3] = pb.x + breathDirs[b].x * eb;
+    edgePositions[e*6+4] = pb.y + breathDirs[b].y * eb;
+    edgePositions[e*6+5] = pb.z + breathDirs[b].z * eb;
+
+    const en = edgeEnergy[e];
+    const hue = ((baseHue[a] + baseHue[b]) * 0.5 + en * 0.2 + hueDrift) % 1.0;
+    const sat = 0.7 - en * 0.2;
+    const light = 0.05 + en * 0.75;
+    tmpColor.setHSL(hue, sat, light);
+    edgeColors[e*6+0] = tmpColor.r; edgeColors[e*6+1] = tmpColor.g; edgeColors[e*6+2] = tmpColor.b;
+    edgeColors[e*6+3] = tmpColor.r; edgeColors[e*6+4] = tmpColor.g; edgeColors[e*6+5] = tmpColor.b;
+  }
+  edgeGeo.attributes.position.needsUpdate = true;
+  edgeGeo.attributes.color.needsUpdate = true;
+
+  if (stars) stars.rotation.y = t * 0.01;
+
+  const camR = 21 + Math.sin(t * 0.13) * 1.5;
+  const camAngle = t * 0.16;
+  const camY = Math.sin(t * 0.09) * 5.5;
+  camera.position.set(
+    Math.cos(camAngle) * camR,
+    camY,
+    Math.sin(camAngle) * camR
+  );
+  camera.lookAt(0, 0, 0);
+
+  composer.render();
+}
+
+animate();
+
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

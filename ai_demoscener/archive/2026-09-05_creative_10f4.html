@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+body{margin:0;overflow:hidden;background:#000}
+canvas{display:block}
+</style>
+</head>
+<body>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x06080f);
+scene.fog = new THREE.FogExp2(0x06080f, 0.012);
+
+const camera = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 0.1, 300);
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+const amb = new THREE.AmbientLight(0x1a2040, 0.8);
+scene.add(amb);
+const dir = new THREE.DirectionalLight(0xffeedd, 1.2);
+dir.position.set(30, 50, -20);
+scene.add(dir);
+const rim = new THREE.DirectionalLight(0x2244aa, 0.4);
+rim.position.set(-20, 10, 30);
+scene.add(rim);
+
+// --- Terrain ---
+const N = 96;
+const W = 60;
+const geo = new THREE.PlaneGeometry(W, W, N-1, N-1);
+geo.rotateX(-Math.PI/2);
+const pos = geo.attributes.position;
+const colors = new Float32Array(N*N*3);
+geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+// Value noise
+function hash(x,y){let n=x*374761393+y*668265263;n=(n^(n>>13))*1274126177;return(n^(n>>16))&0x7fffffff}
+function noise2D(x,y){
+  const xi=Math.floor(x),yi=Math.floor(y);
+  const xf=x-xi,yf=y-yi;
+  const u=xf*xf*(3-2*xf),v=yf*yf*(3-2*yf);
+  const a=hash(xi,yi)/0x7fffffff,b=hash(xi+1,yi)/0x7fffffff;
+  const c=hash(xi,yi+1)/0x7fffffff,d=hash(xi+1,yi+1)/0x7fffffff;
+  return a+(b-a)*u+(c-a)*v+(a-b-c+d)*u*v;
+}
+function fbm(x,y,oct){
+  let v=0,amp=1,freq=1;
+  for(let i=0;i<oct;i++){v+=amp*noise2D(x*freq,y*freq);amp*=0.5;freq*=2;}
+  return v;
+}
+
+let h = new Float32Array(N*N);
+let heat = new Float32Array(N*N);
+for(let z=0;z<N;z++)for(let x=0;x<N;x++){
+  const nx=x/N*4, nz=z/N*4;
+  h[z*N+x] = fbm(nx,nz,5)*14 + fbm(nx*3+10,nz*3+10,3)*3 + 4;
+}
+
+function updateTerrain(){
+  for(let z=0;z<N;z++)for(let x=0;x<N;x++){
+    const idx=z*N+x;
+    pos.setY(idx, h[idx]);
+    const hh=h[idx];
+    let r,g,b;
+    if(hh<3){const t=hh/3;r=0.05+0.1*t;g=0.1+0.2*t;b=0.3+0.5*t;}
+    else if(hh<5){const t=(hh-3)/2;r=0.7;g=0.65;g=0.6+t*0.1;b=0.4+t*0.1;}
+    else if(hh<12){const t=(hh-5)/7;r=0.15+t*0.1;g=0.45+t*0.15;b=0.1+t*0.05;}
+    else if(hh<20){const t=(hh-12)/8;r=0.4+t*0.2;g=0.3+t*0.1;b=0.15;}
+    else if(hh<26){const t=(hh-20)/6;r=0.55+t*0.2;g=0.5+t*0.2;b=0.45+t*0.2;}
+    else{const t=Math.min(1,(hh-26)/6);r=0.75+t*0.25;g=0.75+t*0.25;b=0.8+t*0.2;}
+    const ht=heat[idx];
+    r=Math.min(1,r+ht*0.8);g=Math.min(1,g+ht*0.4);b=Math.max(0,b-ht*0.5);
+    colors[idx*3]=r;colors[idx*3+1]=g;colors[idx*3+2]=b;
+  }
+  pos.needsUpdate=true;
+  geo.attributes.color.needsUpdate=true;
+  geo.computeVertexNormals();
+}
+updateTerrain();
+
+const mat = new THREE.MeshStandardMaterial({vertexColors:true,roughness:0.8,metalness:0.1});
+const mesh = new THREE.Mesh(geo, mat);
+scene.add(mesh);
+
+const wireGeo = new THREE.PlaneGeometry(W, W, N-1, N-1);
+wireGeo.rotateX(-Math.PI/2);
+const wirePos = wireGeo.attributes.position;
+const wireMat = new THREE.MeshBasicMaterial({color:0x3388cc,wireframe:true,transparent:true,opacity:0.08});
+const wireMesh = new THREE.Mesh(wireGeo, wireMat);
+wireMesh.position.y = 0.05;
+scene.add(wireMesh);
+
+// --- Erosion ---
+const EROSION_STEPS = 40;
+const EROSION_AMOUNT = 0.06;
+const DEPOSITION_AMOUNT = 0.03;
+const WATER_DECAY = 0.98;
+
+function erode(){
+  heat.fill(0);
+  for(let s=0;s<EROSION_STEPS;s++){
+    let cx = (Math.random()*N)|0;
+    let cz = (Math.random()*N)|0;
+    let water = 0.5 + Math.random()*0.5;
+    let sediment = 0;
+    for(let step=0;step<30;step++){
+      // Find lowest neighbor
+      let bx=cx, bz=cz, bh=h[cz*N+cx];
+      let found=false;
+      for(let dz=-1;dz<=1;dz++)for(let dx=-1;dx<=1;dx++){
+        if(dx===0&&dz===0)continue;
+        const nx=cx+dx, nz=cz+dz;
+        if(nx<0||nx>=N||nz<0||nz>=N)continue;
+        const nh=h[nz*N+nx];
+        if(nh<bh-0.01||(!found&&nh<=bh)){
+          bx=nx;bz=nz;bh=nh;found=true;
+        }
+      }
+      if(!found||bh>=h[cz*N+cx]-0.005){
+        // Deposit
+        const dep=Math.min(sediment,DEPOSITION_AMOUNT);
+        h[cz*N+cx]+=dep;
+        sediment-=dep;
+        heat[cz*N+cx]=Math.min(1,heat[cz*N+cx]+0.15);
+        break;
+      }
+      // Erode
+      const ero=Math.min(water*0.5,EROSION_AMOUNT);
+      h[cz*N+cx]-=ero;
+      sediment+=ero;
+      water*=WATER_DECAY;
+      heat[cz*N+cx]=Math.min(1,heat[cz*N+cx]+0.1);
+      cx=bx;cz=bz;
+      if(water<0.05)break;
+    }
+  }
+  // Decay heat
+  for(let i=0;i<N*N;i++)heat[i]*=0.92;
+}
+
+// --- Rain particles ---
+const RAIN_COUNT = 2000;
+const rainGeo = new THREE.BufferGeometry();
+const rainPos = new Float32Array(RAIN_COUNT*3);
+const rainVel = new Float32Array(RAIN_COUNT);
+for(let i=0;i<RAIN_COUNT;i++){
+  rainPos[i*3]=(Math.random()-0.5)*W;
+  rainPos[i*3+1]=Math.random()*30;
+  rainPos[i*3+2]=(Math.random()-0.5)*W;
+  rainVel[i]=3+Math.random()*4;
+}
+rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos,3));
+const rainMat = new THREE.PointsMaterial({color:0x88bbee,size:0.15,transparent:true,opacity:0.6,blending:THREE.AdditiveBlending,depthWrite:false});
+const rain = new THREE.Points(rainGeo, rainMat);
+scene.add(rain);
+
+// --- Stars background ---
+const starGeo = new THREE.BufferGeometry();
+const starPos = new Float32Array(1500*3);
+for(let i=0;i<1500;i++){
+  const theta=Math.random()*Math.PI*2, phi=Math.acos(2*Math.random()-1);
+  const r=120+Math.random()*80;
+  starPos[i*3]=r*Math.sin(phi)*Math.cos(theta);
+  starPos[i*3+1]=Math.abs(r*Math.cos(phi))*0.5+5;
+  starPos[i*3+2]=r*Math.sin(phi)*Math.sin(theta);
+}
+starGeo.setAttribute('position', new THREE.BufferAttribute(starPos,3));
+const starMat = new THREE.PointsMaterial({color:0xaaaacc,size:0.3,transparent:true,opacity:0.7});
+scene.add(new THREE.Points(starGeo, starMat));
+
+// --- Animation ---
+const clock = new THREE.Clock();
+let frame = 0;
+
+function animate(){
+  requestAnimationFrame(animate);
+  const dt = clock.getDelta();
+  const t = clock.elapsedTime;
+  frame++;
+
+  if(frame % 2 === 0) erode();
+  if(frame % 4 === 0) updateTerrain();
+
+  // Sync wireframe
+  for(let i=0;i<wirePos.count;i++){
+    wirePos.setY(i, pos.getY(i)+0.05);
+  }
+  wirePos.needsUpdate=true;
+
+  // Rain
+  const rp = rainGeo.attributes.position.array;
+  for(let i=0;i<RAIN_COUNT;i++){
+    rp[i*3+1]-=rainVel[i]*dt;
+    if(rp[i*3+1]<0){
+      rp[i*3]=(Math.random()-0.5)*W;
+      rp[i*3+1]=25+Math.random()*10;
+      rp[i*3+2]=(Math.random()-0.5)*W;
+    }
+  }
+  rainGeo.attributes.position.needsUpdate=true;
+
+  // Camera orbit
+  const angle = t*0.15;
+  const dist = 55;
+  const camH = 22+Math.sin(t*0.1)*5;
+  camera.position.set(Math.cos(angle)*dist, camH, Math.sin(angle)*dist);
+  camera.lookAt(0, 8, 0);
+
+  renderer.render(scene, camera);
+}
+animate();
+
+window.addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+</script>
+</body>
+</html>

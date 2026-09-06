@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Glass Jar Physics</title>
+    <style>
+        * { margin: 0; padding: 0; }
+        body { overflow: hidden; background: #f3ece1; }
+        canvas { display: block; }
+        .hint {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-family: 'Georgia', serif;
+            font-size: 13px;
+            color: #9c846b;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            pointer-events: none;
+            opacity: 0.75;
+            transition: opacity 1.2s ease;
+        }
+        .hint.hidden { opacity: 0; }
+    </style>
+</head>
+<body>
+<div class="hint" id="hint">click to shake</div>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+    }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+const COUNT = 22;
+const CYL_RADIUS = 3.5;
+const CYL_HEIGHT = 10;
+const HALF_H = CYL_HEIGHT / 2;
+const GRAVITY = -4.5;
+const BOUNCE = 0.62;
+const DT = 1 / 60;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xf3ece1);
+scene.fog = new THREE.Fog(0xf3ece1, 18, 42);
+
+const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(8.5, 2.5, 9.5);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+document.body.appendChild(renderer.domElement);
+
+// Environment for crisp reflections / transmission
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, -1.0, 0);
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 0.6;
+controls.maxPolarAngle = Math.PI * 0.82;
+controls.minPolarAngle = Math.PI * 0.18;
+controls.enablePan = false;
+controls.update();
+
+// Lighting
+const hemi = new THREE.HemisphereLight(0xfff6e8, 0xd8c7b0, 0.5);
+scene.add(hemi);
+
+const ambientLight = new THREE.AmbientLight(0xfff5e0, 0.35);
+scene.add(ambientLight);
+
+const keyLight = new THREE.DirectionalLight(0xfff0d0, 2.4);
+keyLight.position.set(6, 12, 7);
+keyLight.castShadow = true;
+keyLight.shadow.mapSize.set(2048, 2048);
+keyLight.shadow.camera.near = 1;
+keyLight.shadow.camera.far = 35;
+keyLight.shadow.camera.left = -9;
+keyLight.shadow.camera.right = 9;
+keyLight.shadow.camera.top = 9;
+keyLight.shadow.camera.bottom = -9;
+keyLight.shadow.bias = -0.0004;
+scene.add(keyLight);
+
+const fillLight = new THREE.DirectionalLight(0xd0e8ff, 0.9);
+fillLight.position.set(-6, 5, -6);
+scene.add(fillLight);
+
+const rimLight = new THREE.PointLight(0xffc98a, 4, 22);
+rimLight.position.set(-4, -2, 6);
+scene.add(rimLight);
+
+// Glass material shared
+const glassMat = new THREE.MeshPhysicalMaterial({
+    color: 0xffffff,
+    metalness: 0.0,
+    roughness: 0.06,
+    transmission: 1.0,
+    thickness: 0.6,
+    ior: 1.45,
+    clearcoat: 1.0,
+    clearcoatRoughness: 0.06,
+    attenuationColor: new THREE.Color(0xeaf4ff),
+    attenuationDistance: 6,
+    side: THREE.DoubleSide,
+    transparent: true,
+    envMapIntensity: 1.2
+});
+
+// Glass Cylinder
+const glassGeo = new THREE.CylinderGeometry(CYL_RADIUS, CYL_RADIUS, CYL_HEIGHT, 96, 1, true);
+const glassCylinder = new THREE.Mesh(glassGeo, glassMat);
+glassCylinder.position.y = 0;
+scene.add(glassCylinder);
+
+// Rims to define the glass edges
+const rimGeo = new THREE.TorusGeometry(CYL_RADIUS, 0.06, 24, 96);
+const topRim = new THREE.Mesh(rimGeo, glassMat);
+topRim.rotation.x = Math.PI / 2;
+topRim.position.y = HALF_H;
+scene.add(topRim);
+
+const bottomRim = new THREE.Mesh(rimGeo, glassMat);
+bottomRim.rotation.x = Math.PI / 2;
+bottomRim.position.y = -HALF_H;
+scene.add(bottomRim);
+
+// Glass bottom
+const bottomGeo = new THREE.CircleGeometry(CYL_RADIUS, 96);
+const bottomMat = new THREE.MeshPhysicalMaterial({
+    color: 0xffffff,
+    metalness: 0.0,
+    roughness: 0.08,
+    transmission: 0.9,
+    thickness: 0.4,
+    ior: 1.45,
+    clearcoat: 1.0,
+    clearcoatRoughness: 0.08,
+    side: THREE.DoubleSide,
+    transparent: true,
+    envMapIntensity: 1.0
+});
+const bottom = new THREE.Mesh(bottomGeo, bottomMat);
+bottom.rotation.x = -Math.PI / 2;
+bottom.position.y = -HALF_H;
+bottom.receiveShadow = true;
+scene.add(bottom);
+
+// Ground plane
+const groundGeo = new THREE.PlaneGeometry(80, 80);
+const groundMat = new THREE.MeshStandardMaterial({
+    color: 0xefe6d8,
+    roughness: 0.95,
+    metalness: 0.0
+});
+const ground = new THREE.Mesh(groundGeo, groundMat);
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -HALF_H - 0.02;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// Soft contact glow under the jar
+const glowGeo = new THREE.CircleGeometry(CYL_RADIUS * 1.5, 64);
+const glowMat = new THREE.MeshBasicMaterial({
+    color: 0x000000,
+    transparent: true,
+    opacity: 0.10,
+    depthWrite: false
+});
+const glow = new THREE.Mesh(glowGeo, glowMat);
+glow.rotation.x = -Math.PI / 2;
+glow.position.y = -HALF_H - 0.01;
+scene.add(glow);
+
+// Spheres
+const spheres = [];
+const sphereGeo = new THREE.SphereGeometry(1, 48, 48);
+
+const palette = [
+    0xff5d5d, 0xff8f5e, 0xffd23d, 0x54c264,
+    0x3d8bff, 0x9b59e8, 0xff7ac0, 0x00cfd0
+];
+
+for (let i = 0; i < COUNT; i++) {
+    const radius = 0.32 + Math.random() * 0.24;
+    const color = palette[i % palette.length];
+
+    const mat = new THREE.MeshPhysicalMaterial({
+        color: color,
+        metalness: 0.0,
+        roughness: 0.12,
+        clearcoat: 1.0,
+        clearcoatRoughness: 0.04,
+        iridescence: 0.35,
+        iridescenceIOR: 1.9,
+        iridescenceThicknessRange: [120, 700],
+        envMapIntensity: 1.1
+    });
+
+    const mesh = new THREE.Mesh(sphereGeo, mat);
+    mesh.scale.setScalar(radius);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+
+    const safeR = CYL_RADIUS - radius - 0.1;
+    const angle = Math.random() * Math.PI * 2;
+    const dist = Math.random() * safeR;
+    mesh.position.set(
+        Math.cos(angle) * dist,
+        Math.random() * (HALF_H - radius - 0.5) + (HALF_H - radius - 0.5),
+        Math.sin(angle) * dist
+    );
+
+    const velocity = new THREE.Vector3(
+        (Math.random() - 0.5) * 3,
+        (Math.random() - 0.5) * 2,
+        (Math.random() - 0.5) * 3
+    );
+
+    scene.add(mesh);
+    spheres.push({ mesh, velocity, radius });
+}
+
+// Sphere-to-sphere collision (impulse with restitution on normal component)
+function resolveCollisions() {
+    for (let i = 0; i < COUNT; i++) {
+        for (let j = i + 1; j < COUNT; j++) {
+            const a = spheres[i];
+            const b = spheres[j];
+            const diff = new THREE.Vector3().subVectors(b.mesh.position, a.mesh.position);
+            const dist = diff.length();
+            const minDist = a.radius + b.radius;
+
+            if (dist < minDist && dist > 0.0001) {
+                const normal = diff.multiplyScalar(1 / dist);
+                const overlap = minDist - dist;
+
+                const massA = a.radius * a.radius * a.radius;
+                const massB = b.radius * b.radius * b.radius;
+                const invA = 1 / massA;
+                const invB = 1 / massB;
+                const invSum = invA + invB;
+
+                // Positional correction weighted by inverse mass
+                a.mesh.position.addScaledVector(normal, -overlap * (invA / invSum));
+                b.mesh.position.addScaledVector(normal, overlap * (invB / invSum));
+
+                // Relative velocity along normal
+                const relVel = new THREE.Vector3().subVectors(a.velocity, b.velocity);
+                const velAlongNormal = relVel.dot(normal);
+
+                if (velAlongNormal > 0) {
+                    const jImp = (-(1 + BOUNCE) * velAlongNormal) / invSum;
+                    const impulse = new THREE.Vector3().copy(normal).multiplyScalar(jImp);
+                    a.velocity.addScaledVector(impulse, invA);
+                    b.velocity.addScaledVector(impulse, -invB);
+                }
+            }
+        }
+    }
+}
+
+// Cylinder wall + cap collision
+function wallCollisions(s) {
+    const p = s.mesh.position;
+    const v = s.velocity;
+
+    if (p.y - s.radius < -HALF_H) {
+        p.y = -HALF_H + s.radius;
+        if (v.y < 0) v.y = -v.y * BOUNCE;
+        v.x *= 0.9;
+        v.z *= 0.9;
+    }
+
+    if (p.y + s.radius > HALF_H) {
+        p.y = HALF_H - s.radius;
+        if (v.y > 0) v.y = -v.y * BOUNCE;
+    }
+
+    const distFromAxis = Math.sqrt(p.x * p.x + p.z * p.z);
+    const maxDist = CYL_RADIUS - s.radius;
+
+    if (distFromAxis > maxDist && distFromAxis > 0.0001) {
+        const nx = p.x / distFromAxis;
+        const nz = p.z / distFromAxis;
+        p.x = nx * maxDist;
+        p.z = nz * maxDist;
+        const velDotNormal = v.x * nx + v.z * nz;
+        if (velDotNormal > 0) {
+            v.x -= (1 + BOUNCE) * velDotNormal * nx;
+            v.z -= (1 + BOUNCE) * velDotNormal * nz;
+        }
+    }
+}
+
+// Shake interaction
+let shakeTime = 0;
+const hint = document.getElementById('hint');
+window.addEventListener('click', () => {
+    shakeTime = 1.0;
+    hint.classList.add('hidden');
+    for (let i = 0; i < COUNT; i++) {
+        const s = spheres[i];
+        s.velocity.x += (Math.random() - 0.5) * 11;
+        s.velocity.y += Math.random() * 7 + 3;
+        s.velocity.z += (Math.random() - 0.5) * 11;
+    }
+});
+
+// Animation
+const clock = new THREE.Clock();
+
+function animate() {
+    requestAnimationFrame(animate);
+
+    const dt = Math.min(clock.getDelta(), DT * 2);
+    const t = clock.elapsedTime;
+
+    // Subtle idle breathing of the jar + click shake
+    const idle = 0.012 * Math.sin(t * 0.8);
+    const idleZ = 0.010 * Math.cos(t * 0.6);
+    let sx = idle, sz = idleZ;
+    if (shakeTime > 0) {
+        shakeTime = Math.max(0, shakeTime - dt * 1.6);
+        const amp = shakeTime;
+        sx += Math.sin(shakeTime * 22) * 0.08 * amp;
+        sz += Math.cos(shakeTime * 17) * 0.06 * amp;
+    }
+    glassCylinder.position.x = sx;
+    glassCylinder.position.z = sz;
+    topRim.position.x = sx; topRim.position.z = sz;
+    bottomRim.position.x = sx; bottomRim.position.z = sz;
+    bottom.position.x = sx; bottom.position.z = sz;
+    glow.position.x = sx; glow.position.z = sz;
+
+    // Physics
+    for (let i = 0; i < COUNT; i++) {
+        const s = spheres[i];
+        const v = s.velocity;
+
+        v.y += GRAVITY * dt;
+        v.multiplyScalar(0.999);
+
+        s.mesh.position.x += v.x * dt;
+        s.mesh.position.y += v.y * dt;
+        s.mesh.position.z += v.z * dt;
+
+        wallCollisions(s);
+    }
+
+    resolveCollisions();
+    resolveCollisions();
+
+    controls.update();
+    renderer.render(scene, camera);
+}
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+animate();
+</script>
+</body>
+</html>

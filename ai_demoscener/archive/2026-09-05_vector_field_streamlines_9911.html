@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Flow Field Advection</title>
+<style>
+* { margin: 0; padding: 0; }
+html, body { overflow: hidden; background: #000; height: 100%; }
+canvas { display: block; }
+#vignette {
+    position: fixed; inset: 0; pointer-events: none; z-index: 2;
+    background: radial-gradient(ellipse at center,
+        rgba(0,0,0,0) 0%,
+        rgba(0,0,0,0) 52%,
+        rgba(0,0,0,0.45) 100%);
+}
+#label {
+    position: fixed; left: 18px; bottom: 14px; z-index: 3;
+    font: 11px/1.4 "SFMono-Regular", Consolas, monospace;
+    letter-spacing: 0.18em; text-transform: uppercase;
+    color: rgba(120, 200, 210, 0.45);
+    pointer-events: none; user-select: none;
+}
+</style>
+</head>
+<body>
+<div id="vignette"></div>
+<div id="label">flow field advection</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const COUNT = 1700;
+const DT = 0.016;
+const BOUND = 15;
+const SLOW_THRESHOLD = 0.05;
+const SLOW_FRAMES = 70;
+const TRAIL_OPACITY = 0.045;
+const SPEED_NORM = 3.2;
+
+const renderer = new THREE.WebGLRenderer({ antialias: false });
+renderer.setClearColor(0x000000, 1);
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.autoClear = false;
+document.body.appendChild(renderer.domElement);
+
+// Main scene
+const camera = new THREE.OrthographicCamera(-BOUND, BOUND, BOUND, -BOUND, 0.1, 100);
+camera.position.z = 10;
+const scene = new THREE.Scene();
+
+// Trail quad scene
+const quadScene = new THREE.Scene();
+const quadCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const quadGeo = new THREE.PlaneGeometry(2, 2);
+const quadMat = new THREE.MeshBasicMaterial({
+    color: 0x000000,
+    transparent: true,
+    opacity: TRAIL_OPACITY,
+    depthTest: false,
+    depthWrite: false
+});
+const quad = new THREE.Mesh(quadGeo, quadMat);
+quadScene.add(quad);
+
+// Points
+const positions = new Float32Array(COUNT * 3);
+const colors = new Float32Array(COUNT * 3);
+const slowFrames = new Uint16Array(COUNT);
+
+for (let i = 0; i < COUNT; i++) {
+    positions[i * 3]     = (Math.random() - 0.5) * 30;
+    positions[i * 3 + 1] = (Math.random() - 0.5) * 30;
+    positions[i * 3 + 2] = 0;
+    slowFrames[i] = 0;
+}
+
+const geometry = new THREE.BufferGeometry();
+geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+const pointsMaterial = new THREE.PointsMaterial({
+    size: 1.8,
+    vertexColors: true,
+    sizeAttenuation: false,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+});
+const points = new THREE.Points(geometry, pointsMaterial);
+scene.add(points);
+
+// Analytic 2D vector field (two octaves for richer, more organic swirls)
+function fieldX(x, y, t) {
+    return Math.sin(y * 0.8)
+         + 0.55 * Math.cos(x * 0.5 + t * 0.7)
+         + 0.30 * Math.sin((x + y) * 0.3 + t * 0.4);
+}
+function fieldY(x, y, t) {
+    return Math.sin(x * 0.8)
+         - 0.55 * Math.cos(y * 0.5 + t * 0.7)
+         + 0.30 * Math.cos((x - y) * 0.3 - t * 0.4);
+}
+
+// Speed-to-color ramp: dim teal -> bright cyan -> warm amber
+const C0 = [0.05, 0.22, 0.34];
+const C1 = [0.22, 0.82, 1.00];
+const C2 = [1.00, 0.62, 0.18];
+function lerp(a, b, t) { return a + (b - a) * t; }
+function speedColor(s, out, offset) {
+    let t = s / SPEED_NORM;
+    if (t < 0) t = 0; else if (t > 1) t = 1;
+    let r, g, b;
+    if (t < 0.5) {
+        const u = t * 2;
+        r = lerp(C0[0], C1[0], u);
+        g = lerp(C0[1], C1[1], u);
+        b = lerp(C0[2], C1[2], u);
+    } else {
+        const u = (t - 0.5) * 2;
+        r = lerp(C1[0], C2[0], u);
+        g = lerp(C1[1], C2[1], u);
+        b = lerp(C1[2], C2[2], u);
+    }
+    const k = 0.9;
+    out[offset]     = r * k;
+    out[offset + 1] = g * k;
+    out[offset + 2] = b * k;
+}
+
+// Initial clear to black
+renderer.clear();
+
+let t = 0;
+
+function animate() {
+    requestAnimationFrame(animate);
+    t += DT;
+
+    // Render trail quad (dims previous frame)
+    renderer.clearDepth();
+    renderer.render(quadScene, quadCamera);
+
+    // Update point positions
+    const pos = geometry.attributes.position.array;
+    const col = geometry.attributes.color.array;
+
+    for (let i = 0; i < COUNT; i++) {
+        const ix = i * 3;
+        const x = pos[ix];
+        const y = pos[ix + 1];
+
+        const fx = fieldX(x, y, t);
+        const fy = fieldY(x, y, t);
+        const speed = Math.sqrt(fx * fx + fy * fy);
+
+        // Advect
+        pos[ix]     += fx * DT;
+        pos[ix + 1] += fy * DT;
+
+        // Track slow frames
+        if (speed < SLOW_THRESHOLD) {
+            slowFrames[i]++;
+        } else {
+            slowFrames[i] = 0;
+        }
+
+        // Re-seed if too slow or out of bounds
+        if (slowFrames[i] > SLOW_FRAMES ||
+            pos[ix] > BOUND || pos[ix] < -BOUND ||
+            pos[ix + 1] > BOUND || pos[ix + 1] < -BOUND) {
+            pos[ix]     = (Math.random() - 0.5) * 30;
+            pos[ix + 1] = (Math.random() - 0.5) * 30;
+            slowFrames[i] = 0;
+        }
+
+        // Color by speed
+        speedColor(speed, col, ix);
+    }
+
+    geometry.attributes.position.needsUpdate = true;
+    geometry.attributes.color.needsUpdate = true;
+
+    // Render points
+    renderer.clearDepth();
+    renderer.render(scene, camera);
+}
+
+animate();
+
+window.addEventListener('resize', () => {
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.clear();
+});
+</script>
+</body>
+</html>

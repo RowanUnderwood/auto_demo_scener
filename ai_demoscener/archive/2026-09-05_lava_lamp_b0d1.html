@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { margin: 0; overflow: hidden; background: #000; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const vertexShader = `
+void main() {
+  gl_Position = vec4(position, 1.0);
+}
+`;
+
+const fragmentShader = `
+precision highp float;
+
+uniform vec2 uResolution;
+uniform float uTime;
+
+float smin(float a, float b, float k) {
+  float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+  return mix(b, a, h) - k * h * (1.0 - h);
+}
+
+float sdSphere(vec3 p, float r) {
+  return length(p) - r;
+}
+
+mat2 rot2D(float a) {
+  float c = cos(a), s = sin(a);
+  return mat2(c, -s, s, c);
+}
+
+float map(vec3 p) {
+  float t = uTime;
+  float d = 1e10;
+  float rotAngle = t * 0.6;
+  p.xz = rot2D(rotAngle) * p.xz;
+  p.yz = rot2D(t * 0.3) * p.yz;
+
+  for (int i = 0; i < 6; i++) {
+    float fi = float(i);
+    float angle = fi * 1.0471975511965977 + t * 0.5;
+    float radius = 1.2 + 0.3 * sin(t * 0.8 + fi * 0.5);
+    float cx = cos(angle) * radius;
+    float cz = sin(angle) * radius;
+    float phase = fi * 1.047;
+    float cy = sin(t * 1.2 + phase) * 1.0;
+    vec3 center = vec3(cx, cy, cz);
+    float r = 0.45 + 0.15 * sin(t * 2.0 + fi * 1.1);
+    float sd = sdSphere(p - center, r);
+    d = smin(d, sd, 0.7);
+  }
+
+  float core = sdSphere(p, 0.35 + 0.1 * sin(t * 1.5));
+  d = smin(d, core, 0.6);
+  return d;
+}
+
+vec3 getNormal(vec3 p) {
+  const vec2 e = vec2(0.002, 0.0);
+  return normalize(vec3(
+    map(p + e.xyy) - map(p - e.xyy),
+    map(p + e.yxy) - map(p - e.yxy),
+    map(p + e.yyx) - map(p - e.yyx)
+  ));
+}
+
+float softShadow(vec3 ro, vec3 rd) {
+  float res = 1.0;
+  float t = 0.04;
+  for (int i = 0; i < 48; i++) {
+    vec3 p = ro + rd * t;
+    float d = map(p);
+    res = min(res, 8.0 * d / t);
+    t += clamp(d, 0.02, 0.5);
+    if (res < 0.005 || t > 6.0) break;
+  }
+  return clamp(res, 0.0, 1.0);
+}
+
+vec3 palette(float t) {
+  return 0.5 + 0.5 * cos(6.28318 * (t + vec3(0.0, 0.33, 0.67)));
+}
+
+void main() {
+  vec2 uv = (gl_FragCoord.xy - 0.5 * uResolution) / uResolution.y;
+
+  vec3 ro = vec3(0.0, 0.0, -4.5);
+  vec3 rd = normalize(vec3(uv, 1.0));
+
+  float t = 0.0;
+  float hit = -1.0;
+
+  for (int i = 0; i < 96; i++) {
+    vec3 p = ro + rd * t;
+    float d = map(p);
+    if (d < 0.001) {
+      hit = 1.0;
+      break;
+    }
+    t += d * 0.9;
+    if (t > 18.0) break;
+  }
+
+  // depth fog factor for atmosphere
+  float fog = 1.0 - exp(-0.012 * t * t);
+
+  vec3 col;
+
+  if (hit > 0.5) {
+    vec3 p = ro + rd * t;
+    vec3 n = getNormal(p);
+
+    vec3 lightPos = vec3(2.0 * sin(uTime), 2.0 * cos(uTime * 0.7), 3.0);
+    vec3 lDir = normalize(lightPos - p);
+    vec3 lightColor = vec3(1.0, 0.78, 0.55);
+
+    float shadow = softShadow(p + n * 0.02, lDir);
+    float diff = max(dot(n, lDir), 0.0) * shadow;
+    float dist = length(lightPos - p);
+    float attenuation = 6.0 / (1.0 + 0.15 * dist * dist);
+
+    vec3 ambient = vec3(0.14, 0.06, 0.18);
+    col = ambient + lightColor * diff * attenuation;
+
+    vec3 hv = normalize(lDir - rd);
+    float spec = pow(max(dot(n, hv), 0.0), 90.0);
+    float spec2 = pow(max(dot(n, hv), 0.0), 24.0);
+    col += vec3(1.0, 0.95, 0.85) * (spec * 1.2 + spec2 * 0.25) * attenuation * (0.4 + 0.6 * shadow);
+
+    float fres = pow(1.0 - max(dot(n, -rd), 0.0), 3.0);
+
+    vec3 lightPos2 = vec3(-2.0 * cos(uTime * 0.8), -1.5 * sin(uTime), 2.5);
+    vec3 lDir2 = normalize(lightPos2 - p);
+    float diff2 = max(dot(n, lDir2), 0.0);
+    float dist2 = length(lightPos2 - p);
+    float att2 = 5.0 / (1.0 + 0.15 * dist2 * dist2);
+    col += vec3(0.35, 0.55, 1.0) * diff2 * att2 * 0.7;
+
+    // iridescent fresnel tint
+    vec3 irid = palette(0.15 * fres + 0.1 * sin(uTime * 0.3) + 0.5);
+    col += irid * fres * 0.45;
+
+    // cool rim
+    col += vec3(0.55, 0.3, 0.85) * pow(fres, 2.0) * 0.6;
+  } else {
+    vec2 q = uv;
+    q.y += 0.15;
+    float g = length(q);
+
+    vec3 deep = vec3(0.06, 0.015, 0.10);
+    vec3 mid = vec3(0.22, 0.07, 0.28);
+    vec3 glowC = vec3(0.45, 0.18, 0.55);
+    col = mix(mid, deep, clamp(g, 0.0, 1.0));
+    col += glowC * exp(-g * g * 3.0) * 0.5;
+
+    // subtle animated hue drift in the glow
+    float pulse = 0.5 + 0.5 * sin(uTime * 0.5);
+    col += vec3(0.25, 0.08, 0.35) * exp(-g * g * 2.0) * pulse * 0.35;
+
+    // faint grain to avoid banding
+    float grain = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
+    col += (grain - 0.5) * 0.012;
+  }
+
+  // blend surface into fogged background color for depth cohesion
+  vec2 q2 = uv; q2.y += 0.15;
+  vec3 fogCol = mix(vec3(0.18, 0.06, 0.24), vec3(0.05, 0.012, 0.09), clamp(length(q2), 0.0, 1.0));
+  col = mix(col, fogCol, fog * 0.6);
+
+  // vignette
+  float vig = 1.0 - 0.35 * dot(uv, uv);
+  col *= vig;
+
+  // tone + gamma
+  col = col / (1.0 + col * 0.3);
+  col = pow(col, vec3(1.0 / 2.2));
+  gl_FragColor = vec4(col, 1.0);
+}
+`;
+
+const scene = new THREE.Scene();
+const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+const geometry = new THREE.BufferGeometry();
+const vertices = new Float32Array([-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0]);
+geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+geometry.setIndex([0, 1, 2, 0, 2, 3]);
+
+const material = new THREE.ShaderMaterial({
+  vertexShader,
+  fragmentShader,
+  uniforms: {
+    uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+    uTime: { value: 0 }
+  }
+});
+
+const mesh = new THREE.Mesh(geometry, material);
+scene.add(mesh);
+
+const renderer = new THREE.WebGLRenderer({ antialias: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+window.addEventListener('resize', () => {
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  material.uniforms.uResolution.value.set(
+    window.innerWidth * renderer.getPixelRatio(),
+    window.innerHeight * renderer.getPixelRatio()
+  );
+});
+
+const clock = new THREE.Clock();
+
+(function animate() {
+  requestAnimationFrame(animate);
+  material.uniforms.uTime.value = clock.getElapsedTime();
+  renderer.render(scene, camera);
+})();
+</script>
+</body>
+</html>

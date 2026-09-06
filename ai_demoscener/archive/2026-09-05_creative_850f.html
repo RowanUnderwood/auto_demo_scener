@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Synaptic Bloom</title>
+<style>
+* { margin: 0; padding: 0; }
+body { overflow: hidden; background: #000; }
+canvas { display: block; }
+</style>
+</head>
+<body>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const N = 2000;
+const CONNECT_K = 3;
+const WAVE_SPEED = 4.6;
+const WAVE_LIFE = 3.0;
+const DECAY_RATE = 2.4;
+const BURST_N = 5000;
+const BREATH = 1.0;
+
+// Shape parameters for each neuron
+const params = new Float32Array(N * 2);
+for (let i = 0; i < N; i++) {
+    params[i*2] = Math.random();
+    params[i*2+1] = Math.random();
+}
+
+function shapeSphere(u, v) {
+    const theta = u * Math.PI * 2;
+    const phi = Math.acos(2*v - 1);
+    const wobble = 1.0 + 0.06*Math.sin(theta*3.0 + phi*2.0);
+    const r = 5.2 * wobble;
+    return [r*Math.sin(phi)*Math.cos(theta), r*Math.sin(phi)*Math.sin(theta), r*Math.cos(phi)];
+}
+
+function shapeTorus(u, v) {
+    const R = 4.6, r = 1.9;
+    const theta = u * Math.PI * 2;
+    const phi = v * Math.PI * 2;
+    return [(R + r*Math.cos(phi))*Math.cos(theta), r*Math.sin(phi)*1.35, (R + r*Math.cos(phi))*Math.sin(theta)];
+}
+
+function shapeTrefoil(u, v) {
+    const t = u * Math.PI * 2;
+    const spread = 0.85 + v * 0.7;
+    const x = (Math.sin(t) + 2*Math.sin(2*t)) * spread;
+    const y = (Math.cos(t) - 2*Math.cos(2*t)) * spread;
+    const z = -Math.sin(3*t) * spread;
+    return [x * 0.7, z * 0.7, y * 0.7];
+}
+
+function lerp3(a, b, f) {
+    return [a[0]+(b[0]-a[0])*f, a[1]+(b[1]-a[1])*f, a[2]+(b[2]-a[2])*f];
+}
+
+let breatheScale = 1.0;
+function getShapePos(i, time) {
+    const u = params[i*2];
+    const v = params[i*2+1];
+    const cycle = (time * 0.07) % 3.0;
+    const idx = Math.floor(cycle);
+    const f = cycle - idx;
+    const sf = f * f * (3 - 2 * f);
+
+    let p1, p2;
+    if (idx === 0) { p1 = shapeSphere(u, v); p2 = shapeTorus(u, v); }
+    else if (idx === 1) { p1 = shapeTorus(u, v); p2 = shapeTrefoil(u, v); }
+    else { p1 = shapeTrefoil(u, v); p2 = shapeSphere(u, v); }
+
+    const p = lerp3(p1, p2, sf);
+    return [p[0]*breatheScale, p[1]*breatheScale, p[2]*breatheScale];
+}
+
+const positions = new Float32Array(N * 3);
+const activations = new Float32Array(N);
+
+for (let i = 0; i < N; i++) {
+    const p = getShapePos(i, 0);
+    positions[i*3] = p[0];
+    positions[i*3+1] = p[1];
+    positions[i*3+2] = p[2];
+}
+
+// K-nearest connections
+const connections = [];
+const connSet = new Set();
+for (let i = 0; i < N; i++) {
+    const dx = positions[i*3], dy = positions[i*3+1], dz = positions[i*3+2];
+    const dists = [];
+    for (let j = 0; j < N; j++) {
+        if (i === j) continue;
+        const ddx = dx - positions[j*3];
+        const ddy = dy - positions[j*3+1];
+        const ddz = dz - positions[j*3+2];
+        dists.push([ddx*ddx + ddy*ddy + ddz*ddz, j]);
+    }
+    dists.sort((a, b) => a[0] - b[0]);
+    for (let k = 0; k < CONNECT_K; k++) {
+        const j = dists[k][1];
+        const key = Math.min(i, j) * N + Math.max(i, j);
+        if (!connSet.has(key)) {
+            connSet.add(key);
+            connections.push([i, j]);
+        }
+    }
+}
+
+// Waves
+const waves = [];
+let lastWaveTime = 0;
+let nextWaveDelay = 0.6;
+
+function spawnWave(time) {
+    const sources = [];
+    const num = 2 + Math.floor(Math.random() * 3);
+    for (let s = 0; s < num; s++) {
+        sources.push(Math.floor(Math.random() * N));
+    }
+    waves.push({ sources, startTime: time, life: WAVE_LIFE });
+}
+
+// Scene
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(55, window.innerWidth/window.innerHeight, 0.1, 200);
+camera.position.set(0, 2, 14);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setClearColor(0x02010a);
+document.body.appendChild(renderer.domElement);
+
+// Background nebula + vignette plane
+const bgGeo = new THREE.PlaneGeometry(120, 120);
+const bgMat = new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    uniforms: { uTime: { value: 0 } },
+    vertexShader: `
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `,
+    fragmentShader: `
+        uniform float uTime;
+        varying vec2 vUv;
+        float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
+        float noise(vec2 p){
+            vec2 i = floor(p), f = fract(p);
+            vec2 u = f*f*(3.0-2.0*f);
+            return mix(mix(hash(i),hash(i+vec2(1,0)),u.x),
+                       mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),u.x),u.y);
+        }
+        void main() {
+            vec2 p = (vUv - 0.5) * 2.0;
+            float r = length(p);
+            // drifting nebula
+            float n1 = noise(p*1.5 + vec2(uTime*0.03, -uTime*0.02));
+            float n2 = noise(p*3.0 - vec2(uTime*0.05, uTime*0.04));
+            float neb = n1*0.6 + n2*0.4;
+            vec3 cIndigo = vec3(0.10, 0.04, 0.28);
+            vec3 cTeal = vec3(0.02, 0.16, 0.22);
+            vec3 col = mix(cTeal, cIndigo, neb);
+            col *= exp(-r*r*1.4) * 0.9 + 0.04;
+            // center lift
+            col += vec3(0.06,0.03,0.14) * exp(-r*r*3.0) * 0.6;
+            // vignette
+            col *= smoothstep(1.5, 0.35, r);
+            gl_FragColor = vec4(col, 1.0);
+        }
+    `
+});
+const bgMesh = new THREE.Mesh(bgGeo, bgMat);
+bgMesh.position.z = -40;
+scene.add(bgMesh);
+
+// Starfield
+const STAR_N = 900;
+const starPos = new Float32Array(STAR_N * 3);
+const starCol = new Float32Array(STAR_N * 3);
+for (let i = 0; i < STAR_N; i++) {
+    const th = Math.random()*Math.PI*2;
+    const ph = Math.acos(2*Math.random()-1);
+    const rad = 60 + Math.random()*60;
+    starPos[i*3] = rad*Math.sin(ph)*Math.cos(th);
+    starPos[i*3+1] = rad*Math.sin(ph)*Math.sin(th);
+    starPos[i*3+2] = rad*Math.cos(ph);
+    const b = 0.15 + Math.random()*0.4;
+    const tint = Math.random();
+    starCol[i*3] = b*(0.6+tint*0.4);
+    starCol[i*3+1] = b*(0.7+tint*0.2);
+    starCol[i*3+2] = b*(0.9);
+}
+const starGeo = new THREE.BufferGeometry();
+starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+starGeo.setAttribute('color', new THREE.BufferAttribute(starCol, 3));
+const starMat = new THREE.PointsMaterial({
+    size: 0.5, sizeAttenuation: true, vertexColors: true,
+    transparent: true, blending: THREE.AdditiveBlending, depthWrite: false
+});
+scene.add(new THREE.Points(starGeo, starMat));
+
+// Neuron points
+const neuronGeo = new THREE.BufferGeometry();
+neuronGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+neuronGeo.setAttribute('aAct', new THREE.BufferAttribute(activations, 1));
+
+const neuronMat = new THREE.ShaderMaterial({
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    vertexShader: `
+        attribute float aAct;
+        varying float vAct;
+        void main() {
+            vAct = aAct;
+            vec4 mv = modelViewMatrix * vec4(position, 1.0);
+            float sz = (3.0 + aAct * 11.0) * (15.0 / -mv.z);
+            gl_PointSize = max(sz, 1.0);
+            gl_Position = projectionMatrix * mv;
+        }
+    `,
+    fragmentShader: `
+        varying float vAct;
+        void main() {
+            vec2 d = gl_PointCoord - 0.5;
+            float r = length(d);
+            if (r > 0.5) discard;
+            float core = exp(-r*r*22.0);
+            float halo = exp(-r*r*6.0);
+
+            vec3 cRest = vec3(0.20, 0.07, 0.55);
+            vec3 cMid  = vec3(0.10, 0.90, 1.00);
+            vec3 cPeak = vec3(1.00, 0.92, 0.60);
+
+            vec3 col;
+            if (vAct < 0.5) col = mix(cRest, cMid, vAct * 2.0);
+            else col = mix(cMid, cPeak, (vAct - 0.5) * 2.0);
+
+            float intensity = 0.35 + vAct * 2.4;
+            vec3 outc = col * (core*1.6 + halo*0.7) * intensity;
+            float alpha = (core*0.9 + halo*0.4) * (0.3 + vAct*0.7);
+            gl_FragColor = vec4(outc, alpha);
+        }
+    `
+});
+const neurons = new THREE.Points(neuronGeo, neuronMat);
+scene.add(neurons);
+
+// Connection lines
+const linePos = new Float32Array(connections.length * 6);
+const lineCol = new Float32Array(connections.length * 6);
+const lineGeo = new THREE.BufferGeometry();
+lineGeo.setAttribute('position', new THREE.BufferAttribute(linePos, 3));
+lineGeo.setAttribute('color', new THREE.BufferAttribute(lineCol, 3));
+
+const lineMat = new THREE.LineBasicMaterial({
+    vertexColors: true,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    opacity: 0.55
+});
+const lines = new THREE.LineSegments(lineGeo, lineMat);
+scene.add(lines);
+
+// Burst particles
+const bPos = new Float32Array(BURST_N * 3);
+const bVel = new Float32Array(BURST_N * 3);
+const bLife = new Float32Array(BURST_N);
+const bCol = new Float32Array(BURST_N * 3);
+let bIdx = 0;
+
+for (let i = 0; i < BURST_N; i++) {
+    bPos[i*3+1] = -999;
+    bLife[i] = 0;
+}
+
+const bGeo = new THREE.BufferGeometry();
+bGeo.setAttribute('position', new THREE.BufferAttribute(bPos, 3));
+bGeo.setAttribute('color', new THREE.BufferAttribute(bCol, 3));
+
+const bMat = new THREE.PointsMaterial({
+    size: 0.09,
+    sizeAttenuation: true,
+    vertexColors: true,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+});
+const bursts = new THREE.Points(bGeo, bMat);
+scene.add(bursts);
+
+function emitBurst(x, y, z, count) {
+    for (let n = 0; n < count; n++) {
+        const i = bIdx % BURST_N;
+        bIdx++;
+        bPos[i*3] = x;
+        bPos[i*3+1] = y;
+        bPos[i*3+2] = z;
+        const spd = 0.6 + Math.random() * 2.2;
+        const th = Math.random() * Math.PI * 2;
+        const ph = Math.acos(2*Math.random() - 1);
+        bVel[i*3] = spd * Math.sin(ph) * Math.cos(th);
+        bVel[i*3+1] = spd * Math.sin(ph) * Math.sin(th);
+        bVel[i*3+2] = spd * Math.cos(ph);
+        bLife[i] = 1.0;
+        bCol[i*3] = 1.0;
+        bCol[i*3+1] = 0.92;
+        bCol[i*3+2] = 0.45;
+    }
+}
+
+// Pointer parallax
+let mouseNX = 0, mouseNY = 0, parX = 0, parY = 0;
+window.addEventListener('pointermove', (e) => {
+    mouseNX = (e.clientX / window.innerWidth) * 2 - 1;
+    mouseNY = (e.clientY / window.innerHeight) * 2 - 1;
+});
+
+// Animation
+let prevTime = performance.now() / 1000;
+
+function animate() {
+    requestAnimationFrame(animate);
+    const now = performance.now() / 1000;
+    const dt = Math.min(now - prevTime, 0.05);
+    prevTime = now;
+
+    breatheScale = 1.0 + 0.05 * Math.sin(now * 0.35) * BREATH;
+
+    // Spawn waves
+    if (now - lastWaveTime > nextWaveDelay) {
+        spawnWave(now);
+        lastWaveTime = now;
+        nextWaveDelay = 0.7 + Math.random() * 1.2;
+    }
+
+    // Wave activation
+    for (let w = waves.length - 1; w >= 0; w--) {
+        const wave = waves[w];
+        const age = now - wave.startTime;
+        if (age > wave.life) { waves.splice(w, 1); continue; }
+        const radius = age * WAVE_SPEED;
+        const width = 2.4;
+
+        for (let s = 0; s < wave.sources.length; s++) {
+            const si = wave.sources[s];
+            const sx = positions[si*3], sy = positions[si*3+1], sz = positions[si*3+2];
+            for (let i = 0; i < N; i++) {
+                const dx = positions[i*3] - sx;
+                const dy = positions[i*3+1] - sy;
+                const dz = positions[i*3+2] - sz;
+                const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+                const diff = Math.abs(dist - radius);
+                if (diff < width) {
+                    const intensity = 1.0 - diff / width;
+                    activations[i] = Math.min(1.0, activations[i] + intensity * 0.55);
+                }
+            }
+        }
+    }
+
+    // Decay
+    const decayFactor = Math.exp(-DECAY_RATE * dt);
+    for (let i = 0; i < N; i++) {
+        activations[i] *= decayFactor;
+        if (activations[i] < 0.005) activations[i] = 0;
+    }
+
+    // Update positions
+    for (let i = 0; i < N; i++) {
+        const p = getShapePos(i, now);
+        const jit = 0.1 * activations[i];
+        positions[i*3] = p[0] + (Math.random()-0.5)*jit;
+        positions[i*3+1] = p[1] + (Math.random()-0.5)*jit;
+        positions[i*3+2] = p[2] + (Math.random()-0.5)*jit;
+    }
+    neuronGeo.attributes.position.needsUpdate = true;
+    neuronGeo.attributes.aAct.needsUpdate = true;
+
+    // Update lines
+    for (let c = 0; c < connections.length; c++) {
+        const [i, j] = connections[c];
+        const ci = c * 6;
+        linePos[ci] = positions[i*3];
+        linePos[ci+1] = positions[i*3+1];
+        linePos[ci+2] = positions[i*3+2];
+        linePos[ci+3] = positions[j*3];
+        linePos[ci+4] = positions[j*3+1];
+        linePos[ci+5] = positions[j*3+2];
+
+        const avg = (activations[i] + activations[j]) * 0.5;
+        const a2 = avg * avg;
+        // deep blue -> cyan -> hot magenta/white
+        const r = 0.04 + avg*0.25 + a2*0.55;
+        const g = 0.05 + avg*0.55 + a2*0.30;
+        const b = 0.20 + avg*0.70 + a2*0.50;
+        lineCol[ci] = r; lineCol[ci+1] = g; lineCol[ci+2] = b;
+        lineCol[ci+3] = r; lineCol[ci+4] = g; lineCol[ci+5] = b;
+    }
+    lineGeo.attributes.position.needsUpdate = true;
+    lineGeo.attributes.color.needsUpdate = true;
+
+    // Bursts
+    for (let i = 0; i < BURST_N; i++) {
+        if (bLife[i] > 0) {
+            bLife[i] -= dt * 1.2;
+            bPos[i*3] += bVel[i*3] * dt;
+            bPos[i*3+1] += bVel[i*3+1] * dt;
+            bPos[i*3+2] += bVel[i*3+2] * dt;
+            const f = Math.max(0, bLife[i]);
+            bCol[i*3] = f;
+            bCol[i*3+1] = f * 0.85;
+            bCol[i*3+2] = f * 0.35;
+            if (bLife[i] <= 0) bPos[i*3+1] = -999;
+        }
+    }
+    if (Math.random() < 0.55) {
+        const idx = Math.floor(Math.random() * N);
+        if (activations[idx] > 0.45) {
+            emitBurst(positions[idx*3], positions[idx*3+1], positions[idx*3+2], 10);
+        }
+    }
+    bGeo.attributes.position.needsUpdate = true;
+    bGeo.attributes.color.needsUpdate = true;
+
+    // Camera orbit + parallax
+    parX += (mouseNX * 1.6 - parX) * 0.04;
+    parY += (-mouseNY * 1.2 - parY) * 0.04;
+    const camA = now * 0.12;
+    const rad = 12.5;
+    camera.position.x = Math.sin(camA) * rad + parX;
+    camera.position.z = Math.cos(camA) * rad + parX * 0.3;
+    camera.position.y = 2 + Math.sin(now * 0.08) * 3 + parY;
+    camera.lookAt(0, 0, 0);
+
+    bgMat.uniforms.uTime.value = now;
+    renderer.render(scene, camera);
+}
+
+animate();
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>
