@@ -87,6 +87,32 @@ def wait_for_recording(timeout: float) -> dict | None:
         return _rec_result
 
 
+# ── Diagnostics ─────────────────────────────────────────────────────────────────
+
+def format_diagnostics(diag: dict) -> str:
+    """Render the display page's structured audition evidence as compact text for the
+    repair prompt (bounded, since it shares the input budget with the HTML)."""
+    lines = []
+    for e in (diag.get("errors") or [])[:3]:
+        lines.append(f"- error [{e.get('category', 'js')}]: {str(e.get('error', ''))[:1200]}")
+    for c in (diag.get("console") or [])[:3]:
+        lines.append(f"- console.{c.get('level', 'log')}: {str(c.get('text', ''))[:200]}")
+    metrics = []
+    if diag.get("render_fps") is not None:
+        metrics.append(f"frames with draw calls: {diag['render_fps']}/s")
+    if diag.get("heartbeat_fps") is not None:
+        metrics.append(f"browser frame rate: {diag['heartbeat_fps']}/s")
+    if diag.get("visible_cells") is not None and diag.get("grid_cells"):
+        metrics.append(f"lit sample cells: {diag['visible_cells']}/{diag['grid_cells']}")
+    if diag.get("frozen_seconds"):
+        metrics.append(f"unchanged output for {diag['frozen_seconds']}s")
+    if diag.get("context_lost"):
+        metrics.append("WebGL context was lost")
+    if metrics:
+        lines.append("- " + "; ".join(metrics))
+    return "\n".join(lines)
+
+
 # ── HTML manipulation ──────────────────────────────────────────────────────────
 
 PROBE_JS = r"""

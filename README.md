@@ -72,6 +72,7 @@ Edit settings at `http://localhost:8080/config` while the server is running. All
 | Improve demo via video check | off | **Ninfer only** — records ~30s at 2fps *while the demo plays normally* (no added time for this part), then sends the video + HTML to Qwen for a visual-improvement pass. The display switches to the coding view ("UPDATING BASED ON VIDEO…") while Qwen works, then re-validates and re-displays the result before archiving if it passes. Adds time only when an improvement is actually produced (LLM round-trip + a second display); requires `ffmpeg` |
 | Demo runtime | 60 s | How long each demo runs before the next cycle |
 | Mode weights | stock 2 / creative 1 / update 1 | Probability of each generation sub-mode |
+| Generation strategy | Classic | **Classic**: the model writes the whole file; failures get whole-file repairs. **Iterative**: the first draft is written the same way, then the app runs it and, if it fails (or runs but looks frozen, dark or noisy in the console), the model fixes it with small targeted edits — each change is run in the kiosk browser before the next round. Good first drafts cost no extra time. Budgets (turns, tool calls, deadline) are set under the strategy selector; if the budget runs out, the latest version that passed is used |
 | Palette | Amber CRT | Display colour scheme (7 built-in options) |
 | Max repair attempts | 2 | How many times to ask the LLM to fix a broken demo |
 | Show title card | on | Brief overlay at the start of each demo with title, description, and model byline |

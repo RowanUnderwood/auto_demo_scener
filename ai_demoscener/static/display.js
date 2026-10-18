@@ -135,6 +135,7 @@ function handleMsg(msg) {
     case 'config_push':    applyConfig(msg.config); break;
     case 'model_selected': modelInfo.textContent = `[${msg.model}]`; break;
     case 'record_video':   relayRecordCommand(msg); break;
+    case 'source':         showSourceUpdate(msg); break;
   }
 }
 
@@ -210,6 +211,15 @@ function handleState(msg) {
       modelInfo.textContent = msg.model ? `[${msg.model}]` : '';
       setStatus('UPDATING BASED ON VIDEO…');
       startSpinner();
+      break;
+
+    case 'ITERATE':
+      // Iterative strategy: edits/checks on the draft already in the editor — never reset it
+      hideIdle();
+      showMockOS();
+      hideDemoFrame();
+      setStatus(msg.text || 'ITERATING…');
+      if (msg.busy) startSpinner(); else stopSpinner();
       break;
 
     case 'VALIDATE':
@@ -415,27 +425,56 @@ setInterval(processTick, TICK_MS);
 function resetEditor() {
   rawCode = '';
   displayQueue = [];
+  changedLines = null;
   renderEditor();
+}
+
+// Iterative strategy: an edit replaces the whole source at once; the changed lines are
+// marked in the gutter and scrolled into view instead of re-typing the file.
+let changedLines = null;   // [first, last] (1-based) or null
+
+function showSourceUpdate(msg) {
+  stopSpinner();
+  displayQueue = [];
+  rawCode = msg.html || '';
+  changedLines = Array.isArray(msg.lines) ? msg.lines : null;
+  renderEditor();
+  if (msg.summary) setStatus(`REV ${msg.rev}: ${msg.summary}`.toUpperCase());
 }
 
 function renderEditor() {
   const lines = rawCode.split('\n');
   const lineCount = lines.length;
 
-  // Line numbers
-  const nums = [];
-  for (let i = 1; i <= lineCount; i++) nums.push(i);
-  lineNumbers.textContent = nums.join('\n');
+  // Line numbers (changed lines from the latest edit are highlighted)
+  if (changedLines) {
+    const [a, b] = changedLines;
+    const out = [];
+    for (let i = 1; i <= lineCount; i++) {
+      out.push(i >= a && i <= b ? `<span class="ln-changed">${i}</span>` : String(i));
+    }
+    lineNumbers.innerHTML = out.join('\n');
+  } else {
+    const nums = [];
+    for (let i = 1; i <= lineCount; i++) nums.push(i);
+    lineNumbers.textContent = nums.join('\n');
+  }
 
   // Syntax-highlighted code
   editorCode.innerHTML = highlight(rawCode);
 
   // Position info
   const lastLine = lines[lineCount - 1];
-  posInfo.textContent = `Ln ${lineCount} Col ${lastLine.length + 1}`;
+  posInfo.textContent = changedLines ? `Ln ${changedLines[0]}` : `Ln ${lineCount} Col ${lastLine.length + 1}`;
 
-  // Auto-scroll
-  editorContent.scrollTop = editorContent.scrollHeight;
+  // Scroll: follow the typing, or bring the latest edit into view
+  if (changedLines) {
+    const lineHeight = editorContent.scrollHeight / Math.max(1, lineCount);
+    editorContent.scrollTop = Math.max(0, (changedLines[0] - 4) * lineHeight);
+  } else {
+    editorContent.scrollTop = editorContent.scrollHeight;
+  }
+  lineNumbers.scrollTop = editorContent.scrollTop;
 }
 
 // ── Syntax highlighting ───────────────────────────────────────────────────────

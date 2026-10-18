@@ -45,6 +45,25 @@
           <span class="range-val" id="wStockV">2</span>
         </div>
       </div>
+      <div class="field" style="margin-top:0.75rem"><label>Generation strategy</label>
+        <select id="genStrategy" onchange="toggleIterativeFields()">
+          <option value="classic">Classic — full-file repairs</option>
+          <option value="iterative">Iterative — targeted edits, checked after each change</option>
+        </select>
+      </div>
+      <div id="iterativeFields" style="display:none">
+        <div class="field"><label>Interaction</label>
+          <select id="itInteraction">
+            <option value="auto">auto (native tools, JSON fallback)</option>
+            <option value="native_tools">native tools</option>
+            <option value="json_actions">JSON actions</option>
+          </select>
+        </div>
+        <div class="field"><label>Max model turns per demo</label><input type="number" id="itMaxTurns" min="1" max="30"></div>
+        <div class="field"><label>Max tool calls per demo</label><input type="number" id="itMaxToolCalls" min="1" max="100"></div>
+        <div class="field"><label>Session deadline (seconds)</label><input type="number" id="itDeadline" min="60" max="3600"></div>
+        <div class="field"><label>Max requested run length (seconds)</label><input type="number" id="itMaxRun" min="3" max="60"></div>
+      </div>
       <div class="save-row"><button class="btn btn-primary" onclick="saveSection('mode')">Save</button><span class="save-msg" id="modeSaved"></span></div>
     </div>
   </div>
@@ -208,6 +227,7 @@
       <div class="field"><label>Creative prompt</label><textarea id="promptCreative" rows="5"></textarea></div>
       <div class="field"><label>Update prompt</label><textarea id="promptUpdate" rows="5"></textarea></div>
       <div class="field"><label>Repair prompt <small style="color:var(--c-muted)">(use {error})</small></label><textarea id="promptRepair" rows="5"></textarea></div>
+      <div class="field"><label>Iterative prompt <small style="color:var(--c-muted)">(iterative strategy only)</small></label><textarea id="promptIterative" rows="8"></textarea></div>
       <div class="save-row"><button class="btn btn-primary" onclick="saveSection('prompts')">Save</button><span class="save-msg" id="promptsSaved"></span></div>
     </div>
   </div>

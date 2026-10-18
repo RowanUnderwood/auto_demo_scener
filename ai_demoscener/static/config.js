@@ -32,6 +32,13 @@ function populateForm(c) {
   set('wCreative', c.generate_mode_weights?.creative ?? 1, 'wCreativeV');
   set('wUpdate',   c.generate_mode_weights?.update   ?? 1, 'wUpdateV');
   set('wStock',    c.generate_mode_weights?.stock    ?? 2, 'wStockV');
+  setVal('genStrategy',    c.generation_strategy ?? 'classic');
+  setVal('itInteraction',  c.iterative?.interaction ?? 'auto');
+  setVal('itMaxTurns',     c.iterative?.max_turns ?? 6);
+  setVal('itMaxToolCalls', c.iterative?.max_tool_calls ?? 24);
+  setVal('itDeadline',     c.iterative?.session_deadline_seconds ?? 600);
+  setVal('itMaxRun',       c.iterative?.max_run_seconds ?? 15);
+  toggleIterativeFields();
 
   // LLM Provider
   setProvider(c.llm_provider || 'lm_studio', false);
@@ -101,6 +108,7 @@ function populateForm(c) {
   setVal('promptCreative', c.system_prompts?.creative ?? '');
   setVal('promptUpdate',   c.system_prompts?.update   ?? '');
   setVal('promptRepair',   c.system_prompts?.repair   ?? '');
+  setVal('promptIterative', c.system_prompts?.iterative ?? '');
 }
 
 // ── Section save ──────────────────────────────────────────────────────────────
@@ -115,6 +123,13 @@ async function saveSection(section) {
         update:   +getVal('wUpdate'),
         stock:    +getVal('wStock'),
       };
+      cfg.generation_strategy = getVal('genStrategy');
+      cfg.iterative ??= {};
+      cfg.iterative.interaction              = getVal('itInteraction');
+      cfg.iterative.max_turns                = +getVal('itMaxTurns');
+      cfg.iterative.max_tool_calls           = +getVal('itMaxToolCalls');
+      cfg.iterative.session_deadline_seconds = +getVal('itDeadline');
+      cfg.iterative.max_run_seconds          = +getVal('itMaxRun');
       break;
     case 'llmProvider':
       cfg.llm_provider = activeProvider();
@@ -178,6 +193,7 @@ async function saveSection(section) {
       cfg.system_prompts.creative = getVal('promptCreative');
       cfg.system_prompts.update   = getVal('promptUpdate');
       cfg.system_prompts.repair   = getVal('promptRepair');
+      cfg.system_prompts.iterative = getVal('promptIterative');
       break;
   }
 
@@ -201,6 +217,11 @@ function setMode(mode, save = false) {
   document.getElementById('modeGenerate').classList.toggle('active', mode === 'generate');
   document.getElementById('modeReplay').classList.toggle('active',   mode === 'replay');
   if (save) saveSection('mode');
+}
+
+function toggleIterativeFields() {
+  document.getElementById('iterativeFields').style.display =
+    getVal('genStrategy') === 'iterative' ? '' : 'none';
 }
 
 // ── LLM provider UI ───────────────────────────────────────────────────────────

@@ -8,6 +8,17 @@ DEFAULTS: dict = {
     "boot_mode": "generate",
     "lm_fallback_to_replay": True,
     "generate_mode_weights": {"creative": 1, "update": 1, "stock": 2},
+    # "classic": stream a full file, then whole-file repairs. "iterative": stream the first
+    # draft the same way, then fix it with targeted edits checked after every change
+    # (agent_runner.py). Replay mode is unaffected.
+    "generation_strategy": "classic",
+    "iterative": {
+        "interaction": "auto",          # auto | native_tools | json_actions
+        "max_turns": 6,                 # model responses per demo
+        "max_tool_calls": 24,           # executed edits/runs/finishes per demo
+        "session_deadline_seconds": 600,
+        "max_run_seconds": 15,          # cap on a model-requested longer run
+    },
     "llm_provider": "lm_studio",
     "lm_studio": {
         "base_url": "http://192.168.2.192:1234",
@@ -97,6 +108,25 @@ DEFAULTS: dict = {
             "feel are relevant to make it more visually appealing — timing, color, composition, "
             "motion, contrast, or polish — while keeping the core idea and effect intact. "
             "Output ONLY the complete corrected HTML file, no commentary, no markdown fences."
+        ),
+        "iterative": (
+            "You are an expert creative coder fixing and polishing a single-file three.js demo "
+            "that runs full-screen in a kiosk browser. You work in rounds: each round you see the "
+            "brief, a change log, the latest automatic check of the current revision (errors, "
+            "shader logs and render statistics from actually running it) and the current source "
+            "with line numbers. Respond with tool actions only.\n"
+            "Rules:\n"
+            "- Prefer small targeted edit_demo calls. old_text must be copied exactly from the "
+            "current source without the line-number prefixes, and must match only one place.\n"
+            "- Use write_demo (a complete file) only when targeted edits cannot work.\n"
+            "- The app runs the demo automatically after your changes; you will see the result "
+            "next round. Never claim something works without a passing check.\n"
+            "- Call finish_demo once the latest check passed and nothing needs fixing.\n"
+            "- Keep the effect described in the brief. Fix the cause of an error, don't delete "
+            "the feature that raised it.\n"
+            "Environment: three.js r160 is available via the import map as 'three'; the page is a "
+            "sandboxed iframe (no localStorage, no network requests other than CDN imports); the "
+            "canvas should fill the window and animate continuously."
         ),
         "title": (
             "You are a creative naming assistant for demoscene visuals. "

@@ -13,6 +13,7 @@ from datetime import datetime
 from io import StringIO
 from pathlib import Path
 
+import agent_runner
 import archive as archive_mod
 import config as cfg_mod
 import lm_client
@@ -238,12 +239,19 @@ class Orchestrator:
         temp_path = self._save_temp(html)
         brief = self._build_brief(cfg, mode, prompt_data, html)
 
-        # VALIDATE + REPAIR loop
-        max_repairs = cfg["validation"]["max_repair_attempts"]
-        audition_secs = cfg["validation"]["audition_seconds"]
-        html, last_error = self._validate_and_repair(
-            cfg, temp_path, html, model, max_repairs, audition_secs, brief=brief
-        )
+        # VALIDATE + REPAIR (classic) or the iterative edit/check session
+        strategy = cfg.get("generation_strategy", "classic")
+        session_meta = None
+        if strategy == "iterative":
+            html, last_error, session_meta = self._iterative_session(
+                cfg, temp_path, html, model, brief
+            )
+        else:
+            max_repairs = cfg["validation"]["max_repair_attempts"]
+            audition_secs = cfg["validation"]["audition_seconds"]
+            html, last_error = self._validate_and_repair(
+                cfg, temp_path, html, model, max_repairs, audition_secs, brief=brief
+            )
         if html is None:
             kind = (last_error or {}).get("kind")
             if kind:
@@ -298,6 +306,11 @@ class Orchestrator:
         temp_path.unlink(missing_ok=True)
         if display_meta_result:
             archive_mod.update_meta(archive_path.name, display_meta_result, cfg)
+        archive_mod.update_meta(
+            archive_path.name,
+            {"strategy": strategy, **({"session": session_meta} if session_meta else {})},
+            cfg,
+        )
 
         # Record successful run in stats
         if mode == "stock" and isinstance(prompt_data, dict):
@@ -330,21 +343,9 @@ class Orchestrator:
         history: list[str] = []
         for attempt in range(max_repairs + 1):
             self._tx("VALIDATE", attempt=attempt)
-            result = self._audition(temp_path, audition_secs)
-
-            timeouts = 0
-            while result.get("result") == "TIMEOUT":
-                if self._display_count() == 0:
-                    if not self._wait_for_display():
-                        return None, {"kind": None, "msg": "cancelled while waiting for a display"}
-                else:
-                    timeouts += 1
-                    if timeouts > 1:
-                        log.warning("Display did not answer the audition twice; abandoning this demo")
-                        return None, {"kind": None, "msg": "display did not respond to audition"}
-                    log.warning("Audition timed out with a display connected; retrying once")
-                self._tx("VALIDATE", attempt=attempt)
-                result = self._audition(temp_path, audition_secs)
+            result = self._audition_with_retry(temp_path, audition_secs)
+            if result is None:
+                return None, {"kind": None, "msg": "no display could run the audition"}
 
             if result.get("result") == "OK":
                 return html, None
@@ -376,6 +377,117 @@ class Orchestrator:
             temp_path.write_text(html, encoding="utf-8")
 
         return None, last_error
+
+    def _audition_with_retry(self, temp_path: Path, seconds: float) -> dict | None:
+        """_audition() with the infrastructure rules applied: a TIMEOUT never counts as a
+        result. With no display connected, wait for one and re-audition; with a display
+        connected, retry once. Returns the audit result, or None if the audition couldn't be
+        completed (cancelled while waiting, or the display didn't answer twice)."""
+        result = self._audition(temp_path, seconds)
+        timeouts = 0
+        while result.get("result") == "TIMEOUT":
+            if self._display_count() == 0:
+                if not self._wait_for_display():
+                    return None
+            else:
+                timeouts += 1
+                if timeouts > 1:
+                    log.warning("Display did not answer the audition twice; abandoning this demo")
+                    return None
+                log.warning("Audition timed out with a display connected; retrying once")
+            result = self._audition(temp_path, seconds)
+        return result
+
+    # ── Iterative strategy ─────────────────────────────────────────────────────
+
+    def _iterative_session(self, cfg: dict, temp_path: Path, html: str, model: str,
+                           brief: str) -> tuple[str | None, dict | None, dict]:
+        """Runs agent_runner.IterativeSession on the classic-streamed first draft.
+
+        Returns (html, last_error, session_meta) with the same contract as
+        _validate_and_repair() for the first two: html is the revision to display/archive or
+        None, and last_error["kind"] is None when the failure wasn't the demo's fault
+        (cancelled, no display, LLM unreachable) so the caller records nothing in stats.
+        """
+        provider, lm = self._active_provider_cfg(cfg)
+        it = cfg.get("iterative", {})
+        budgets = agent_runner.Budgets(
+            max_turns=int(it.get("max_turns", 6)),
+            max_tool_calls=int(it.get("max_tool_calls", 24)),
+            deadline_seconds=float(it.get("session_deadline_seconds", 600)),
+            run_seconds=float(cfg["validation"]["audition_seconds"]),
+            max_run_seconds=float(it.get("max_run_seconds", 15)),
+        )
+        extra_params = ({"reasoning_effort": lm["thinking_effort"]}
+                        if provider in ("ninfer", "strata") else None)
+
+        def should_abort() -> bool:
+            return self._skip.is_set() or self._stop.is_set()
+
+        def llm(messages, tools):
+            return lm_client.chat_collect(
+                messages=messages,
+                base_url=lm["base_url"],
+                model=model or lm["model"],
+                max_tokens=lm["max_tokens"],
+                temperature=lm["temperature"],
+                timeout=lm["request_timeout_seconds"],
+                extra_params=extra_params,
+                api_key=lm.get("api_key", ""),
+                tools=tools,
+                should_abort=should_abort,
+            )
+
+        def run(source: str, seconds: float):
+            temp_path.write_text(source, encoding="utf-8")
+            return self._audition_with_retry(temp_path, seconds)
+
+        def on_source(source: str, rev: int, lines: tuple[int, int], summary: str) -> None:
+            self._broadcast({"type": "source", "html": source, "rev": rev,
+                             "lines": list(lines), "summary": summary})
+
+        def on_status(text: str) -> None:
+            self._tx("ITERATE", text=text, busy=text.startswith("THINKING"))
+
+        session = agent_runner.IterativeSession(
+            brief=brief,
+            html=html,
+            system_prompt=cfg["system_prompts"].get("iterative", ""),
+            budgets=budgets,
+            interaction=it.get("interaction", "auto"),
+            hooks=agent_runner.SessionHooks(llm=llm, run=run, on_source=on_source,
+                                            on_status=on_status, should_abort=should_abort),
+        )
+        result = session.run()
+        meta = {
+            "outcome": result.outcome,
+            "turns": result.turns,
+            "tool_calls": result.tool_calls,
+            "revisions": result.revisions,
+            "final_revision": result.revision,
+            "interaction": "native_tools" if session.use_tools else "json_actions",
+        }
+        log.info("Iterative session: %s", meta)
+
+        if result.outcome == "llm_error":
+            self._lm_unavailable = True
+        if result.html is None:
+            if result.outcome in ("cancelled", "infra", "llm_error"):
+                return None, {"kind": None, "msg": result.outcome}, meta
+            return None, result.last_error or {"kind": None, "msg": result.outcome}, meta
+        if result.revision != session.last_checked:
+            # Falling back to an earlier passing revision: the display's iframe still holds the
+            # last (failed) one at the same URL, and validation must be tied to the exact source
+            # shown — so run the fallback once more, which also loads it into the iframe.
+            check = run(result.html, budgets.run_seconds)
+            if check is None:
+                return None, {"kind": None, "msg": "no display could re-check the fallback"}, meta
+            if check.get("result") != "OK":
+                log.warning("Fallback revision %s failed its re-check: %s", result.revision, check)
+                return None, {"kind": check.get("result"), "msg": check.get("error", "")}, meta
+        else:
+            temp_path.write_text(result.html, encoding="utf-8")
+        return result.html, None, meta
 
     def _display_phase(self, cfg: dict, html: str, temp_path: Path, effect_slug: str,
                         mode: str, model: str, source_path: Path | None,
@@ -755,7 +867,7 @@ class Orchestrator:
             parts.append(f"Original brief (the fixed demo must still deliver this):\n{brief}")
         if history:
             parts.append("Earlier repair attempts that still failed:\n" + "\n".join(history))
-        diag_text = self._format_diagnostics(diagnostics or {})
+        diag_text = validator.format_diagnostics(diagnostics or {})
         if diag_text:
             parts.append(f"Diagnostics from the failed run:\n{diag_text}")
         parts.append(f"Current HTML:\n{html}")
@@ -788,29 +900,6 @@ class Orchestrator:
                      + concept + " Keep that concept rather than switching to a different effect.")
         return brief[: self._BRIEF_MAX_CHARS]
 
-    @staticmethod
-    def _format_diagnostics(diag: dict) -> str:
-        """Render the display page's structured audition evidence as compact text for the
-        repair prompt (bounded, since it shares the input budget with the HTML)."""
-        lines = []
-        for e in (diag.get("errors") or [])[:3]:
-            lines.append(f"- error [{e.get('category', 'js')}]: {str(e.get('error', ''))[:1200]}")
-        for c in (diag.get("console") or [])[:3]:
-            lines.append(f"- console.{c.get('level', 'log')}: {str(c.get('text', ''))[:200]}")
-        metrics = []
-        if diag.get("render_fps") is not None:
-            metrics.append(f"frames with draw calls: {diag['render_fps']}/s")
-        if diag.get("heartbeat_fps") is not None:
-            metrics.append(f"browser frame rate: {diag['heartbeat_fps']}/s")
-        if diag.get("visible_cells") is not None and diag.get("grid_cells"):
-            metrics.append(f"lit sample cells: {diag['visible_cells']}/{diag['grid_cells']}")
-        if diag.get("frozen_seconds"):
-            metrics.append(f"unchanged output for {diag['frozen_seconds']}s")
-        if diag.get("context_lost"):
-            metrics.append("WebGL context was lost")
-        if metrics:
-            lines.append("- " + "; ".join(metrics))
-        return "\n".join(lines)
 
     # ── Title / description generation ────────────────────────────────────────
 

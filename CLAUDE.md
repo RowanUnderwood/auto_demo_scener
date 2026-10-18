@@ -56,6 +56,10 @@ Orchestrator (daemon thread)
        DISPLAY → VIDEO_IMPROVE → VALIDATE → DISPLAY (improved) ──→ ARCHIVE → IDLE
                                      ↑          ↓
                                   REPAIR ←──────┘
+
+     generation_strategy = "iterative" replaces VALIDATE/REPAIR above with:
+       GENERATE (classic stream = revision 1) → ITERATE (check → model turn → edits → check …)
+                                              → DISPLAY → ARCHIVE → IDLE
 ```
 
 ### Key files
@@ -64,8 +68,11 @@ Orchestrator (daemon thread)
 |---|---|
 | `app.py` | Flask entry point; WebSocket registry; all route wiring |
 | `orchestrator.py` | State machine; LLM calls; title/meta generation; discard logic |
-| `lm_client.py` | OpenAI-compatible client shared by both providers: `list_models()`, `chat()`, `chat_stream()` (the latter two accept multimodal `content` lists unmodified, and an `extra_params` kwarg for provider-specific fields like `reasoning_effort`) |
-| `validator.py` | Probe script injection into demo HTML; fence-stripping; validation sync primitives |
+| `lm_client.py` | OpenAI-compatible client shared by all providers: `list_models()`, `chat()`, `chat_stream()` (the latter two accept multimodal `content` lists unmodified, and an `extra_params` kwarg for provider-specific fields like `reasoning_effort`), and `chat_collect()` — a streamed request collected into `{content, tool_calls, finish_reason, usage, aborted}`, assembling tool-call argument fragments by `index`; raises `LMHTTPError` (with `.status`) on HTTP errors |
+| `validator.py` | Probe script injection into demo HTML; fence-stripping; validation sync primitives; `format_diagnostics()` |
+| `agent_runner.py` | Iterative strategy: `IterativeSession` bounded model/tool loop with injected hooks (LLM, run, display), budgets, stopping rules |
+| `demo_tools.py` | Iterative strategy: `SourceStore` (revisions, exact/whitespace-tolerant unique edits), tool schemas, native/JSON action parsing |
+| `tests/test_iterative.py` | stdlib `unittest` tests for the above (run from `ai_demoscener/`: `python3 -m unittest discover tests`) |
 | `archive.py` | Save/version/list/prune/delete archived demos; `archive_index.json` |
 | `stats.py` | Run/failure/deletion tracking per effect+model; `load()`, `save()`, `record_run()`, `record_failure()`, `record_deletion()` → `prompt_stats.json` |
 | `config.py` | `load()` / `save()` with deep-merge defaults; atomic write |
@@ -142,6 +149,19 @@ In replay mode, `entry_model` from `archive_index.json` is passed directly to `_
 
 A video-check cycle still takes longer than a normal one whenever an improvement is actually found and validated (LLM round-trip + a second full display), but the recording itself adds no time — see the "improve demo via video check" row in `README.md`'s config table.
 
+### Iterative strategy (`generation_strategy: "iterative"`)
+
+Milestone 2 of `auto_demo_scener_iterative_plan.md`. The first draft is still streamed the classic way (typing animation intact); `orchestrator._iterative_session()` then hands it to `agent_runner.IterativeSession` as revision 1.
+
+- **Check first.** Revision 1 is run. If it passes and its diagnostics look clean, the session ends with zero model turns (`first_draft_ok`) — iterative costs nothing extra for good drafts. A passing revision with suspicious diagnostics (output frozen for the whole run, under 10% of sampled cells lit, console warnings, or rendering on under half the browser's frames) earns the model exactly one look; it may fix or `finish_demo`.
+- **Stateless turns.** Every request is rebuilt from session state: system prompt (`system_prompts.iterative`, plus JSON-action format instructions in JSON mode) and one user message with the brief, status/budget, change log, latest check of the current revision (`validator.format_diagnostics`), feedback on the previous response's actions, and the current source with `NNNN| ` line numbers. No transcript grows, so tool results never need threading back into a conversation.
+- **Tools** (`demo_tools.TOOLS`): `edit_demo(old_text, new_text, change_summary)`, `write_demo(html, change_summary)`, `run_demo(seconds?)`, `finish_demo(summary)`. No revision arguments: turns are serial and always act on the current revision. Edits need a unique match (exact, else whitespace-tolerant); a failed edit skips the rest of that response. The app runs the demo after any response that changed the source; `finish_demo` is accepted only if the current revision's latest check passed (a revision changed in the same response is checked first).
+- **Interaction** (`iterative.interaction`): `native_tools`, `json_actions`, or `auto` (native tools; JSON parsed from the content if the model replies in text; switches to JSON actions for the rest of the session if the server answers the `tools` request with a 4xx).
+- **Stopping:** finished; budget (`max_turns`, `max_tool_calls`, `session_deadline_seconds`); `stuck` (same failure 3 checks in a row); `format_error` (two unusable responses in a row — truncated at `length`, no parseable actions); `llm_error`; `cancelled` (skip/stop, polled during streaming too); `infra` (no display could run a check). Anything but cancelled falls back to the latest passing revision; that fallback is re-checked before display (it loads the exact source into the iframe and ties validation to it).
+- **Display:** `ITERATE` state (`text`, `busy`) drives status/spinner without resetting the editor; `{type:"source", html, rev, lines, summary}` replaces the editor content, highlights the changed lines in the gutter and scrolls to them.
+- **Records:** archive entries get `strategy` and, for iterative, `session: {outcome, turns, tool_calls, revisions, final_revision, interaction}`. Stats failures are recorded as for classic (the session's last failed check), so per-effect failure rates currently mix strategies — Milestone 4 adds separate comparative metrics.
+- The Ninfer video-improve pass still runs after an iterative session if enabled (its re-validation uses classic repairs). Milestone 3 replaces it with in-session visual review.
+
 ### Delete / discard
 
 **Replay mode** — the archive file already exists. Pressing `d` + confirming calls `DELETE /api/archive/<filename>`, which deletes the file, updates `archive_index.json`, calls `stats_mod.record_deletion()`, and calls `orc.skip()` to advance to the next demo.
@@ -203,6 +223,8 @@ Key display defaults:
     ...
 }
 ```
+
+Strategy config: `generation_strategy` (`"classic"` default | `"iterative"`) and `iterative: {interaction, max_turns, max_tool_calls, session_deadline_seconds, max_run_seconds}`; the iterative system prompt is `system_prompts.iterative`.
 
 Provider config: `llm_provider` (`"lm_studio"` | `"ninfer"` | `"strata"`) plus a full sibling config dict per provider (`lm_studio` unchanged; `ninfer` adds `thinking_effort`, `video_check_enabled`, `video_max_tokens` on top of the same base_url/model/max_tokens/temperature/request_timeout_seconds/context_ceiling_tokens/surprise_me fields; `strata` adds `api_key` and `thinking_effort`, with no video-improve because Strata can't take video input). All three dicts are always present in `DEFAULTS` regardless of which is active, so switching providers in the config GUI never loses the other provider's settings.
 

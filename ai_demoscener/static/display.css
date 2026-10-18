@@ -285,6 +285,9 @@ body.mac_classic {
   color: var(--fg);
 }
 
+/* Lines touched by the latest iterative edit */
+.ln-changed { background: var(--cursor); color: var(--bg); box-shadow: var(--glow); }
+
 /* Cursor blink */
 #cursor {
   display: inline-block;
