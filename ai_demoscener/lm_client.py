@@ -60,8 +60,12 @@ def chat_stream(
     timeout: int = 180,
     extra_params: dict | None = None,
     api_key: str = "",
+    stats: dict | None = None,
 ):
     """Yield content-delta strings from a streaming chat completion.
+
+    If `stats` is given it is filled in as the stream runs: "finish_reason", and "usage"
+    when the server reports token usage in a chunk (servers that don't, leave it absent).
 
     Raises LengthFinishError if the model hit the token limit.
     Raises LMClientError for network/HTTP failures.
@@ -100,6 +104,8 @@ def chat_stream(
                     chunk = json.loads(data_str)
                 except json.JSONDecodeError:
                     continue
+                if stats is not None and chunk.get("usage"):
+                    stats["usage"] = chunk["usage"]
                 for choice in chunk.get("choices", []):
                     content = choice.get("delta", {}).get("content")
                     if content:
@@ -107,6 +113,8 @@ def chat_stream(
                     fr = choice.get("finish_reason")
                     if fr:
                         finish_reason = fr
+                        if stats is not None:
+                            stats["finish_reason"] = fr
 
             log.debug("LLM stream done: finish_reason=%s", finish_reason)
             if finish_reason == "length":

@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Demoscener — Evaluation</title>
+  <link rel="stylesheet" href="/static/config.css">
+  <style>
+    #wrapper { max-width: 1200px; }
+    table.metrics { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    table.metrics th, table.metrics td { padding: 0.3rem 0.45rem; border-bottom: 1px solid var(--c-border); text-align: right; white-space: nowrap; }
+    table.metrics th:first-child, table.metrics td:first-child { text-align: left; }
+    table.metrics th { color: var(--c-muted); font-weight: 600; }
+    .scroll-x { overflow-x: auto; }
+    .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+    .pair-side { display: flex; flex-direction: column; gap: 0.35rem; }
+    .pair-side iframe, .pair-side .missing { width: 100%; aspect-ratio: 16 / 9; border: 1px solid var(--c-border); background: #000; }
+    .pair-side .missing { display: flex; align-items: center; justify-content: center; color: var(--c-muted); }
+    .rate-row { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-top: 0.6rem; }
+    .chosen { outline: 2px solid var(--c-accent); }
+    .muted { color: var(--c-muted); font-size: 0.8rem; }
+    .notes li { margin-left: 1.2rem; font-size: 0.8rem; color: var(--c-muted); }
+    @media (max-width: 700px) { .pair { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<div id="wrapper">
+  <header>
+    <h1>⚖ AI DEMOSCENER EVALUATION</h1>
+    <div id="liveStatus">
+      <a class="btn btn-sm btn-muted" href="/config" target="_blank">↗ config</a>
+      <a class="btn btn-sm btn-muted" href="/display" target="_blank">↗ display</a>
+    </div>
+  </header>
+
+  <!-- Start -->
+  <div class="section">
+    <div class="section-header" onclick="toggle(this)"><h2>START A PAIRED RUN</h2><span class="arrow">▾</span></div>
+    <div class="section-body full">
+      <p class="muted" style="margin-bottom:0.6rem">
+        Each trial writes <b>one</b> first draft, then runs every arm on that same draft through the display
+        (nothing is archived). The first arm is the baseline the others are compared against. The run uses the
+        currently selected provider and model, and takes over the kiosk until it finishes or is stopped.
+      </p>
+      <div class="field"><label>Name</label><input type="text" id="runName" placeholder="smoke"></div>
+      <div class="field"><label>Arms</label><div id="armChecks"></div></div>
+      <div class="field"><label>Repeats of the trial set</label><input type="number" id="repeats" min="1" max="10" value="1"></div>
+      <div class="field"><label>Trials</label><div id="trialList" class="muted"></div></div>
+      <div class="save-row"><button class="btn btn-primary" id="startBtn" onclick="startRun()">Start run</button><span class="save-msg" id="startMsg"></span></div>
+    </div>
+  </div>
+
+  <!-- Runs -->
+  <div class="section">
+    <div class="section-header" onclick="toggle(this)"><h2>RUNS</h2><span class="arrow">▾</span></div>
+    <div class="section-body full scroll-x"><table class="metrics" id="runsTable"></table></div>
+  </div>
+
+  <!-- Results -->
+  <div class="section">
+    <div class="section-header" onclick="toggle(this)"><h2>RESULTS <span id="resultsRun" class="muted"></span></h2><span class="arrow">▾</span></div>
+    <div class="section-body full">
+      <div id="resultsEmpty" class="muted">Select a run above.</div>
+      <div id="resultsBody" style="display:none">
+        <div class="scroll-x"><table class="metrics" id="armTable"></table></div>
+        <h3 style="margin:0.8rem 0 0.3rem;font-size:0.9rem">Blind preference vs baseline</h3>
+        <div class="scroll-x"><table class="metrics" id="prefTable"></table></div>
+        <ul class="notes" id="runNotes"></ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Blind review -->
+  <div class="section">
+    <div class="section-header" onclick="toggle(this)"><h2>BLIND REVIEW</h2><span class="arrow">▾</span></div>
+    <div class="section-body full">
+      <div id="reviewEmpty" class="muted">Select a run with finished trials.</div>
+      <div id="reviewBody" style="display:none">
+        <div class="rate-row" style="margin:0 0 0.5rem">
+          <button class="btn btn-sm btn-muted" onclick="stepPair(-1)">◀ prev</button>
+          <span id="pairPos"></span>
+          <button class="btn btn-sm btn-muted" onclick="stepPair(1)">next ▶</button>
+          <label class="check-row" style="margin-left:auto"><input type="checkbox" id="onlyUnrated" onchange="loadPairs()"> only unrated</label>
+          <label class="check-row"><input type="checkbox" id="reveal" onchange="loadPairs()"> reveal arms</label>
+        </div>
+        <div><b>Brief:</b> <span id="pairBrief"></span> <span class="muted" id="pairCategory"></span></div>
+        <div class="pair" style="margin-top:0.5rem">
+          <div class="pair-side" id="sideA"></div>
+          <div class="pair-side" id="sideB"></div>
+        </div>
+        <div class="rate-row">
+          <button class="btn" data-choice="A" onclick="rate('A')">A is better</button>
+          <button class="btn" data-choice="B" onclick="rate('B')">B is better</button>
+          <button class="btn btn-muted" data-choice="tie" onclick="rate('tie')">Tie</button>
+          <button class="btn btn-muted" data-choice="both_bad" onclick="rate('both_bad')">Both bad</button>
+          <span class="save-msg" id="rateMsg"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Live -->
+  <div class="section">
+    <div class="section-header" onclick="toggle(this)"><h2>LIVE CYCLES BY STRATEGY</h2><span class="arrow">▾</span></div>
+    <div class="section-body full scroll-x">
+      <p class="muted" style="margin-bottom:0.4rem">Normal generate-mode cycles (not paired — drafts differ, so compare with care).</p>
+      <table class="metrics" id="liveTable"></table>
+    </div>
+  </div>
+</div>
+<script src="/static/eval.js"></script>
+</body>
+</html>

@@ -609,7 +609,8 @@ window.addEventListener('message', (ev) => {
   } else if (msg.type === 'probe_heartbeat') {
     auditHeartbeats.push({ fps: msg.fps, renderFps: msg.renderFps ?? null, draws: msg.draws,
                             hasDrawn: msg.hasDrawn, brightPixels: msg.brightPixels ?? null,
-                            gridCells: msg.gridCells ?? null, changed: msg.changed ?? null });
+                            gridCells: msg.gridCells ?? null, changed: msg.changed ?? null,
+                            anyLit: msg.anyLit ?? null });
   }
 });
 
@@ -666,7 +667,9 @@ function concludeAudition() {
       error  = `Average FPS ${avgFps.toFixed(1)} below minimum ${minFps}`;
     } else {
       const pixelData = auditHeartbeats.filter(h => h.brightPixels !== null);
-      if (pixelData.length >= blankSec && pixelData.every(h => h.brightPixels === 0)) {
+      // Blank only if no grid sample was lit AND the full-frame check (when the probe ran
+      // one) found no lit pixel either — sparse scenes can fall between grid samples.
+      if (pixelData.length >= blankSec && pixelData.every(h => h.brightPixels === 0 && h.anyLit !== true)) {
         result = 'BLANK';
         error  = 'WebGL active but no visible content detected';
       } else {

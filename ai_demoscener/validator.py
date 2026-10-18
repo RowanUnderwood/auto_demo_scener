@@ -220,6 +220,19 @@ PROBE_JS = r"""
     return {bright:bright,sig:sig};
   }
 
+  /* When every grid sample is dark, a sparse scene (a small sun on black) can still be
+     missed, so read the whole frame once and report whether ANY pixel is lit. Limited to
+     the first 20 s after load — the audition window — to keep a full-frame read off the
+     kiosk's frame budget during long displays of genuinely dark demos. */
+  function anyPixelLit(gl){
+    var w=gl.drawingBufferWidth,h=gl.drawingBufferHeight;
+    if(!w||!h)return false;
+    var buf=new Uint8Array(w*h*4);
+    gl.readPixels(0,0,w,h,gl.RGBA,gl.UNSIGNED_BYTE,buf);
+    for(var i=0;i<buf.length;i+=4){ if(0.299*buf[i]+0.587*buf[i+1]+0.114*buf[i+2]>8)return true; }
+    return false;
+  }
+
   function tick(ts){
     _frameCount++;
     /* A tick counts as a rendered frame only if the demo issued draw calls since the last
@@ -232,8 +245,15 @@ PROBE_JS = r"""
       for(var _i=0;_i<_glCtxs.length;_i++){
         try{ var g=sampleGrid(_glCtxs[_i]); bright=Math.max(bright,g.bright); sig+=g.sig; }catch(e){}
       }
-      var hasGl=_glCtxs.length>0;
-      send({type:'probe_heartbeat',
+      var hasGl=_glCtxs.length>0, anyLit=null;
+      if(hasGl){
+        if(bright>0)anyLit=true;
+        else if(ts<20000){
+          anyLit=false;
+          for(var _j=0;_j<_glCtxs.length&&!anyLit;_j++){ try{ anyLit=anyPixelLit(_glCtxs[_j]); }catch(e){} }
+        }
+      }
+      send({type:'probe_heartbeat',anyLit:anyLit,
             fps:_frameCount/(elapsed/1000),
             renderFps:_renderFrames/(elapsed/1000),
             draws:_drawCount,hasDrawn:_hasDrawn,

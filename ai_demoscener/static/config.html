@@ -18,6 +18,7 @@
       <button class="btn btn-sm" id="skipBtn" onclick="skip()">⏭ SKIP</button>
       <button class="btn btn-sm btn-danger" id="shutdownBtn" onclick="shutdown()">⏹ SHUTDOWN</button>
       <a class="btn btn-sm btn-muted" href="/display" target="_blank">↗ display</a>
+      <a class="btn btn-sm btn-muted" href="/eval" target="_blank">↗ eval</a>
     </div>
   </header>
 
@@ -25,6 +26,9 @@
   <div class="section">
     <div class="section-header" onclick="toggle(this)"><h2>MODE</h2><span class="arrow">▾</span></div>
     <div class="section-body full">
+      <div id="evalNotice" style="display:none;margin-bottom:0.6rem;color:var(--c-warn)">
+        An evaluation run is in progress — the mode is managed from the <a href="/eval" target="_blank">eval page</a> until it finishes or is stopped.
+      </div>
       <div class="mode-toggle">
         <div class="mode-btn" id="modeGenerate" onclick="setMode('generate', true)">GENERATE</div>
         <div class="mode-btn" id="modeReplay"   onclick="setMode('replay', true)">REPLAY</div>

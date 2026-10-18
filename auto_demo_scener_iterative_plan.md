@@ -388,3 +388,30 @@ Implemented as `iterative.visual_review` (off by default). Once a revision passe
 Verified: end to end through the kiosk display with a scripted vision model. Frames were captured from the hidden iframe and delivered as image parts; the critique led to a polish edit and the before/after compare picked the polish. In another cycle a polish that failed its runtime check fell back to the reviewed revision. Not verified: a real vision model. The Strata server on the LAN was started without its vision encoder and rejects images with HTTP 400, which correctly disables the review. Its `/v1/models` reports `input_modalities`, which could be used to skip the attempt up front.
 
 Follow-up: the classic Ninfer "improve demo via video check" pass (`ninfer.video_check_enabled`) was removed, so visual review is the only visual-improvement path. It is available only with the iterative strategy, and the old pass's settings no longer appear in the config page. Video input is restricted to Ninfer in the config page.
+
+## Milestone 4 status (2026-10-18)
+
+Implemented: comparable per-cycle metrics (`metrics.py`; live cycles → `session_metrics.jsonl`, kept apart from `prompt_stats.json`), paired evaluation runs (`evaluation.py`, `boot_mode: "evaluate"`, `/eval` page), and blind A/B review with per-side brief checks. **Pairing decision:** each trial writes one shared first draft and runs every arm on it. That isolates what each strategy does with a draft from draft-to-draft randomness, and drafts both arms accept unchanged count as identical (auto-ties). Arms: `classic`, `classic_matched` (classic with `max_repair_attempts` = iterative `max_turns`), `iterative`, `iterative_visual`.
+
+### First smoke run: `eval/20261018-082246-smoke-ninfer`
+
+Ninfer `qwen3.8-27b` (thinking effort low, native tools, image input), six trials (Plasma, Solar System, Boids Flocking, Auto-Play Tetris, creative, update), four arms, one repeat. Display: headless Chromium with software rendering (SwiftShader, 960×540), so `min_fps` was 0 and frame rates were not judged. Ninfer reports no token usage, so output size is in characters.
+
+| Arm | Final pass | Changed draft | Median s | Responses | Tool calls | Vision calls | Output chars |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| classic | 6/6 | 1/6 | 5.0 | 0.2 | 0 | 0 | 2,619 |
+| classic_matched | 6/6 | 1/6 | 5.0 | 0.2 | 0 | 0 | 2,619 |
+| iterative | 6/6 | 2/6 | 5.0 | 0.7 | 1.3 | 0 | 1,528 |
+| iterative_visual | 6/6 | 6/6 | 93.8 | 2.7 | 12.3 | 4.0 | 11,432 |
+
+Findings:
+
+1. **Drafts were mostly fine.** 5/6 shared drafts passed their first check. The one that failed (update mode, a missing variable) was fixed by every arm: classic with one whole-file repair (45.6 s, including the editor typing animation), iterative with two targeted turns (20.8 s).
+2. **The matched budget never mattered.** Classic never used up its two repairs, so `classic_matched` was identical to `classic` in all six trials. It only differs when repairs run out. Leave it out of routine runs unless drafts fail more often.
+3. **Without visual review, iterative equalled classic on 4/6 trials** (zero turns). On Solar System it acted on a passing draft because only 1 of 64 sampled cells was lit. It edited blind, broke the scene (BLANK), then repaired it. **Tuned:** "mostly dark" and "slow render" now reach only the visual critique, not the text-only extra look.
+4. **The visibility check was flaky for sparse scenes.** The identical Solar System draft scored 1/64 lit (OK) on three runs and 0/64 (BLANK) on the fourth. **Tuned:** when the grid is all dark, the probe reads the full frame once (first 20 s only) and BLANK requires no lit pixel at all. A browser check confirmed a 3-pixel dot on black now passes and a black scene is still BLANK.
+5. **Visual review changed every demo and costs about 100 s per demo.** The critiques were concrete and grounded (stretched aspect ratio on Plasma, overexposed highlights, framing), and the edits applied cleanly. But the same model judging its own polish chose "after" in 11 of 12 compares, so **the compare is not an independent quality gate**. Whether visual polish is actually better needs the blind human review (8 rateable pairs are waiting at `/eval`) or a different judge model. With `max_polish_rounds: 2` (the current config) each demo takes two rounds; 1 halves the cost.
+
+Limitations: n = 6 with one repeat, one model, software rendering (frame rate not judged, render timings not representative of the kiosk), no human preference ratings yet, and no token counts.
+
+Recommendations (defaults unchanged until the blind review and a larger run support them): keep `classic` as the default. `iterative` without visual review is a low-risk alternative: it matched classic on every trial, fixed the one failure faster with less output, and after the tuning above it no longer edits passing demos on dark/slow signals alone. Treat `iterative_visual` as experimental until blind ratings show the polish is preferred, and prefer `max_polish_rounds: 1`. Next: rate the 8 pairs, then run the plan's 20+ paired trials with repeats on the real kiosk display.

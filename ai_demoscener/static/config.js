@@ -126,7 +126,9 @@ async function saveSection(section) {
 
   switch (section) {
     case 'mode':
-      cfg.boot_mode = document.querySelector('.mode-btn.active')?.id === 'modeReplay' ? 'replay' : 'generate';
+      // An evaluation run owns the boot mode until it ends (it restores the previous one)
+      cfg.boot_mode = currentCfg.boot_mode === 'evaluate' ? 'evaluate'
+        : document.querySelector('.mode-btn.active')?.id === 'modeReplay' ? 'replay' : 'generate';
       cfg.generate_mode_weights = {
         creative: +getVal('wCreative'),
         update:   +getVal('wUpdate'),
@@ -232,6 +234,7 @@ async function saveSection(section) {
 function setMode(mode, save = false) {
   document.getElementById('modeGenerate').classList.toggle('active', mode === 'generate');
   document.getElementById('modeReplay').classList.toggle('active',   mode === 'replay');
+  document.getElementById('evalNotice').style.display = mode === 'evaluate' ? '' : 'none';
   if (save) saveSection('mode');
 }
 

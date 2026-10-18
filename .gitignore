@@ -24,3 +24,6 @@ ai_demoscener/static/three/
 ai_demoscener/temp/
 
 # Archive — add back to .gitignore if the collection grows too large for the repo
+
+# Evaluation: pointer to the run in progress (results under eval/<run>/ are kept)
+ai_demoscener/eval/active.json

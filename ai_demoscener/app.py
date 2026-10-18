@@ -10,7 +10,9 @@ from flask import Flask, Response, jsonify, request, send_from_directory
 from flask_sock import Sock
 
 import config as cfg_mod
+import evaluation
 import lm_client
+import metrics
 import logging_setup
 import validator
 from orchestrator import Orchestrator
@@ -125,6 +127,11 @@ def config_page():
     return send_from_directory(STATIC, "config.html")
 
 
+@app.route("/eval")
+def eval_page():
+    return send_from_directory(STATIC, "eval.html")
+
+
 # ── Demo file serving (with probe injection) ───────────────────────────────────
 def _three_importmap() -> dict | None:
     three_js = STATIC / "three" / "three.module.js"
@@ -230,6 +237,123 @@ def api_upload_recording():
     resp = jsonify({"ok": True})
     resp.headers["Access-Control-Allow-Origin"] = "*"
     return resp
+
+
+# ── Evaluation (milestone 4) ───────────────────────────────────────────────────
+_EVAL_FILE_RE = __import__("re").compile(r"^t\d{2,3}_[a-z_]+\.html$")
+
+
+def _eval_error(e: Exception, status: int = 400):
+    return jsonify({"ok": False, "error": str(e)}), status
+
+
+@app.route("/api/eval/runs")
+def api_eval_runs():
+    return jsonify({"runs": evaluation.list_runs(), "arms": list(evaluation.ARM_PRESETS),
+                    "default_arms": evaluation.DEFAULT_ARMS, "smoke": evaluation.SMOKE_TRIALS})
+
+
+@app.route("/api/eval/start", methods=["POST"])
+def api_eval_start():
+    active = evaluation.active_run()
+    if active and active["status"] in ("pending", "running"):
+        return _eval_error(Exception(f"run {active['run_id']} is still in progress"), 409)
+    body = request.get_json(force=True) or {}
+    cfg = cfg_mod.load()
+    try:
+        plan = evaluation.create_run(cfg, cfg.get("llm_provider", "lm_studio"), name=body.get("name", ""),
+                                     arms=body.get("arms"), repeats=body.get("repeats", 1))
+    except evaluation.EvalError as e:
+        return _eval_error(e)
+    if cfg.get("boot_mode") != "evaluate":
+        cfg["boot_mode"] = "evaluate"
+        cfg_mod.save(cfg)
+        broadcast({"type": "config_push", "config": cfg})
+    orc.skip()   # cut the current cycle short so the run starts now
+    log.info("Evaluation run %s started (%d trials, arms %s)", plan["run_id"], len(plan["trials"]),
+             [a["name"] for a in plan["arms"]])
+    return jsonify({"ok": True, "run_id": plan["run_id"]})
+
+
+@app.route("/api/eval/<run_id>/stop", methods=["POST"])
+def api_eval_stop(run_id):
+    try:
+        plan = evaluation.load_plan(run_id)
+    except evaluation.EvalError as e:
+        return _eval_error(e)
+    if not plan:
+        return _eval_error(Exception("no such run"), 404)
+    plan["status"] = "stopped"
+    evaluation.save_plan(plan)
+    orc.skip()   # the orchestrator sees the stopped run and restores the boot mode
+    return jsonify({"ok": True})
+
+
+@app.route("/api/eval/<run_id>/resume", methods=["POST"])
+def api_eval_resume(run_id):
+    active = evaluation.active_run()
+    if active and active["run_id"] != run_id and active["status"] in ("pending", "running"):
+        return _eval_error(Exception(f"run {active['run_id']} is still in progress"), 409)
+    try:
+        plan = evaluation.load_plan(run_id)
+    except evaluation.EvalError as e:
+        return _eval_error(e)
+    if not plan or plan["next"] >= len(plan["trials"]):
+        return _eval_error(Exception("nothing left to run"), 400)
+    plan["status"] = "running"
+    evaluation.save_plan(plan)
+    evaluation.set_active(run_id)
+    cfg = cfg_mod.load()
+    if cfg.get("boot_mode") != "evaluate":
+        plan["resume_boot_mode"] = cfg.get("boot_mode", "generate")
+        evaluation.save_plan(plan)
+        cfg["boot_mode"] = "evaluate"
+        cfg_mod.save(cfg)
+        broadcast({"type": "config_push", "config": cfg})
+    orc.skip()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/eval/<run_id>/summary")
+def api_eval_summary(run_id):
+    try:
+        return jsonify(evaluation.summary(run_id))
+    except evaluation.EvalError as e:
+        return _eval_error(e, 404)
+
+
+@app.route("/api/eval/<run_id>/pairs")
+def api_eval_pairs(run_id):
+    try:
+        return jsonify({"pairs": evaluation.public_pairs(run_id, reveal=request.args.get("reveal") == "1")})
+    except evaluation.EvalError as e:
+        return _eval_error(e, 404)
+
+
+@app.route("/api/eval/<run_id>/rate", methods=["POST"])
+def api_eval_rate(run_id):
+    body = request.get_json(force=True) or {}
+    try:
+        evaluation.rate(run_id, body.get("key", ""), body.get("choice", ""),
+                        body.get("brief_A"), body.get("brief_B"))
+    except evaluation.EvalError as e:
+        return _eval_error(e)
+    return jsonify({"ok": True})
+
+
+@app.route("/eval/demo/<run_id>/<filename>")
+def serve_eval_demo(run_id, filename):
+    if not _EVAL_FILE_RE.match(filename):
+        return Response("Not found", status=404)
+    try:
+        return _serve_with_probe(evaluation.run_dir(run_id) / filename)
+    except evaluation.EvalError:
+        return Response("Not found", status=404)
+
+
+@app.route("/api/metrics/live")
+def api_metrics_live():
+    return jsonify({"strategies": metrics.summarize(metrics.load(metrics.LIVE_PATH), key="strategy")})
 
 
 # ── API: orchestrator control ──────────────────────────────────────────────────

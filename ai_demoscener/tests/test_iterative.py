@@ -303,6 +303,28 @@ class SessionTests(unittest.TestCase):
 
 
 
+class AttentionTests(unittest.TestCase):
+    SPARSE = {"result": "OK", "diagnostics": {"heartbeats": 5, "frozen_seconds": 0, "visible_cells": 1,
+                                               "grid_cells": 64, "render_fps": 2, "heartbeat_fps": 6}}
+
+    def test_dark_or_slow_signals_do_not_trigger_blind_edits(self):
+        h = Harness([], lambda html: self.SPARSE)
+        r = session(h).run()
+        self.assertEqual((r.outcome, r.turns), ("first_draft_ok", 0))
+
+    def test_console_warnings_still_get_one_look(self):
+        noisy = {"result": "OK", "diagnostics": {"heartbeats": 5, "console": [{"level": "warn", "text": "x"}]}}
+        h = Harness([reply(tool("finish_demo", summary="intended"))], lambda html: noisy)
+        r = session(h).run()
+        self.assertEqual((r.outcome, r.turns), ("finished", 1))
+
+    def test_visual_critique_gets_the_dark_and_slow_hints(self):
+        h = VisualHarness([text({"issues": []})], lambda html: self.SPARSE)
+        vsession(h).run()
+        intro = h.requests[0][0][1]["content"][0]["text"]
+        self.assertIn("only 1 of 64 sampled screen cells were lit", intro)
+        self.assertIn("rendered on only 2 of 6 frames", intro)
+
 # ── Visual review ──────────────────────────────────────────────────────────────
 
 PROMPTS = {"critique": "CRITIQUE", "compare": "COMPARE"}

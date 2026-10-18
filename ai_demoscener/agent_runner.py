@@ -194,7 +194,7 @@ class IterativeSession:
             return False
         self.hooks.on_status(f"REVIEWING FRAMES — REV {rev}")
         intro = (f"BRIEF:\n{self.brief}\n\nCapture of revision {rev}: {cap.get('note', '')}")
-        reasons = self._attention_reasons()
+        reasons = self._attention_reasons(visual_hints=True)
         if reasons:
             intro += "\nAutomatic checks also noticed: " + "; ".join(reasons) + "."
         obj = self._vision_call(self.visual_prompts["critique"],
@@ -434,19 +434,25 @@ class IterativeSession:
     def _passed(self, rev: int | None = None) -> bool:
         return self.checks.get(rev or self.store.current, {}).get("result") == "OK"
 
-    def _attention_reasons(self) -> list[str]:
+    def _attention_reasons(self, visual_hints: bool = False) -> list[str]:
         """Signs that a passing revision may still be broken in ways the pass/fail rules don't
-        catch. They earn the model one look (never a failure by themselves)."""
+        catch. Frozen output and console warnings earn a text-only model one look (never a
+        failure by themselves). "Mostly dark" and "renders on few frames" are only passed
+        to the visual critique (visual_hints=True): without seeing the frames a model can't
+        tell a sparse scene or slow hardware from a bug, and in evaluation it edited
+        working demos blind on those signals."""
         diag = self.checks.get(self.store.current, {}).get("diagnostics") or {}
         reasons = []
         beats = diag.get("heartbeats") or 0
         if beats >= 3 and (diag.get("frozen_seconds") or 0) >= beats - 1:
             reasons.append("the sampled pixels barely changed during the run (frozen or very slow motion)")
+        if diag.get("console"):
+            reasons.append("the browser console reported warnings or errors")
+        if not visual_hints:
+            return reasons
         lit, cells = diag.get("visible_cells"), diag.get("grid_cells")
         if lit is not None and cells and lit / cells < 0.1:
             reasons.append(f"only {lit} of {cells} sampled screen cells were lit (mostly dark or tiny)")
-        if diag.get("console"):
-            reasons.append("the browser console reported warnings or errors")
         rfps, hfps = diag.get("render_fps"), diag.get("heartbeat_fps")
         if rfps is not None and hfps and rfps < 0.5 * hfps:
             reasons.append(f"it rendered on only {rfps} of {hfps} frames per second")

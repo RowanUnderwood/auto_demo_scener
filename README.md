@@ -87,6 +87,12 @@ Edit settings at `http://localhost:8080/config` while the server is running. All
 - **Update** — takes a previous archive file and produces a fresh aesthetic take on it
 - **Replay** — no generation; cycles through the archive
 
+### Evaluating strategies
+
+Open `http://localhost:8080/eval` to compare generation strategies with paired trials. A run takes over the kiosk until it finishes or you stop it, then returns to the previous mode. For each trial (by default six: a shader effect, a 3D scene, a motion-heavy effect, a complex stateful effect, a creative prompt and an archive update), it writes **one** first draft and runs every chosen arm on that same draft: classic, classic with a matched repair budget, iterative, and iterative with visual review. Nothing is archived.
+
+The page shows per-arm results (draft and final pass rates, time, model responses, tool and vision calls, output size, fallbacks, polish kept or rejected) and a **blind review**: the two demos side by side as A and B in a hidden order, so you can pick the better one and tick whether each satisfies the brief. Identical outputs are counted as ties automatically. Normal generate cycles also record metrics per strategy (`session_metrics.jsonl`), shown at the bottom of the page.
+
 ### LLM providers
 
 - **LM Studio** — the default; any OpenAI-compatible model it serves works.

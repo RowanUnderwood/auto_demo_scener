@@ -1,4 +1,5 @@
 import base64
+import copy
 import csv
 import hashlib
 import logging
@@ -16,7 +17,9 @@ from pathlib import Path
 import agent_runner
 import archive as archive_mod
 import config as cfg_mod
+import evaluation
 import lm_client
+import metrics
 import stats as stats_mod
 import validator
 
@@ -37,6 +40,8 @@ class Orchestrator:
         self._lm_unavailable = False
         self._last_display_meta: dict | None = None
         self._stock_deck: list[dict] = []
+        # LLM/check accounting for the strategy currently running (see _acct_begin)
+        self._acct: dict = {}
         self._replay_deck: list[Path] = []
         self.state = "IDLE"
         self.current_file: Path | None = None
@@ -95,6 +100,24 @@ class Orchestrator:
         log.info("Display connected — resuming generation")
         return True
 
+    # ── Metrics accounting ─────────────────────────────────────────────────────
+
+    def _acct_begin(self) -> None:
+        self._acct = {"llm_calls": 0, "output_chars": 0, "completion_tokens": 0,
+                      "tokens_known": True, "checks": [], "repairs": 0}
+
+    def _acct_llm(self, output_chars: int, usage: dict | None) -> None:
+        a = self._acct
+        if not a:
+            return
+        a["llm_calls"] += 1
+        a["output_chars"] += output_chars
+        tokens = (usage or {}).get("completion_tokens")
+        if isinstance(tokens, int):
+            a["completion_tokens"] += tokens
+        else:
+            a["tokens_known"] = False
+
     def _active_provider_cfg(self, cfg: dict) -> tuple[str, dict]:
         provider = cfg.get("llm_provider", "lm_studio")
         if provider not in ("lm_studio", "ninfer", "strata"):
@@ -109,6 +132,8 @@ class Orchestrator:
                 cfg = cfg_mod.load()
                 if cfg["boot_mode"] == "replay":
                     self._replay_cycle(cfg)
+                elif cfg["boot_mode"] == "evaluate":
+                    self._eval_cycle(cfg)
                 elif cfg.get("lm_fallback_to_replay", True):
                     self._probe_lm(cfg)
                     if self._lm_unavailable:
@@ -229,7 +254,7 @@ class Orchestrator:
 
         # GENERATE
         self._tx("GENERATE", mode=mode, model=model)
-        html = self._do_generate(cfg, mode, prompt_data, model=model)
+        html, draft_metrics = self._generate_draft(cfg, mode, prompt_data, model)
         if html is None:
             self._tx("DISCARD")
             return
@@ -240,18 +265,17 @@ class Orchestrator:
 
         # VALIDATE + REPAIR (classic) or the iterative edit/check session
         strategy = cfg.get("generation_strategy", "classic")
-        session_meta = None
-        if strategy == "iterative":
-            html, last_error, session_meta = self._iterative_session(
-                cfg, temp_path, html, model, brief
-            )
-        else:
-            max_repairs = cfg["validation"]["max_repair_attempts"]
-            audition_secs = cfg["validation"]["audition_seconds"]
-            html, last_error = self._validate_and_repair(
-                cfg, temp_path, html, model, max_repairs, audition_secs, brief=brief
-            )
+        html, last_error, session_meta, run_metrics = self._run_strategy(
+            cfg, temp_path, html, model, brief
+        )
+        provider, _ = self._active_provider_cfg(cfg)
+        live_row = {
+            "run": "live", "arm": strategy, "mode": mode,
+            "effect": prompt_data.get("effect", mode) if isinstance(prompt_data, dict) else mode,
+            "provider": provider, "model": model, **draft_metrics, **run_metrics,
+        }
         if html is None:
+            metrics.append(metrics.LIVE_PATH, {**live_row, "archived": False})
             kind = (last_error or {}).get("kind")
             if kind:
                 if mode == "stock" and isinstance(prompt_data, dict):
@@ -273,6 +297,7 @@ class Orchestrator:
         html = self._display_phase(cfg, html, temp_path, effect_slug, mode, model)
         if html is None:
             log.info("Generate-mode demo discarded by user before archiving")
+            metrics.append(metrics.LIVE_PATH, {**live_row, "archived": False, "user_discarded": True})
             self._tx("IDLE")
             return
         display_meta_result = self._last_display_meta
@@ -289,12 +314,207 @@ class Orchestrator:
             cfg,
         )
 
+        metrics.append(metrics.LIVE_PATH, {**live_row, "archived": True})
+
         # Record successful run in stats
         if mode == "stock" and isinstance(prompt_data, dict):
             stats_mod.record_run(prompt_data.get("effect", "unknown"), model=model)
         elif mode in ("creative", "update"):
             stats_mod.record_run(mode, model=model)
 
+        self._tx("IDLE")
+
+    def _generate_draft(self, cfg: dict, mode: str, prompt_data: dict, model: str) -> tuple[str | None, dict]:
+        """Stream the first draft; returns (html or None, draft metrics)."""
+        self._acct_begin()
+        t0 = time.time()
+        html = self._do_generate(cfg, mode, prompt_data, model=model)
+        a, self._acct = self._acct, {}
+        return html, {
+            "draft_seconds": round(time.time() - t0, 1),
+            "draft_output_chars": a["output_chars"],
+            "draft_completion_tokens": a["completion_tokens"] if a["tokens_known"] else None,
+        }
+
+    def _run_strategy(self, cfg: dict, temp_path: Path, html: str, model: str,
+                      brief: str) -> tuple[str | None, dict | None, dict | None, dict]:
+        """Run the configured strategy (classic validate/repair or the iterative session) on
+        a draft. Returns (html or None, last_error, session_meta, metrics) — metrics are the
+        comparable per-strategy fields described in metrics.py."""
+        strategy = cfg.get("generation_strategy", "classic")
+        self._acct_begin()
+        t0 = time.time()
+        session_meta = None
+        if strategy == "iterative":
+            out, last_error, session_meta = self._iterative_session(cfg, temp_path, html, model, brief)
+        else:
+            out, last_error = self._validate_and_repair(
+                cfg, temp_path, html, model, cfg["validation"]["max_repair_attempts"],
+                cfg["validation"]["audition_seconds"], brief=brief)
+        a, self._acct = self._acct, {}
+        checks = [c for c in a["checks"] if c]
+        kind = None if out is not None else (last_error or {}).get("kind")
+        if session_meta:
+            outcome = session_meta["outcome"]
+            visual = session_meta.get("visual") or {}
+            decisions = [r.get("decision") for r in visual.get("rounds", [])]
+            final_rev = session_meta.get("final_revision")
+            fallback = bool(out is not None and final_rev and final_rev < session_meta.get("revisions", 0))
+            budget = outcome == "budget"
+            responses = session_meta.get("turns", 0)
+        else:
+            outcome = "passed" if out is not None else ("repairs_exhausted" if kind else
+                                                        (last_error or {}).get("msg") or "failed")
+            decisions, fallback = [], False
+            budget = kind is not None
+            responses = a["repairs"]
+        return out, last_error, session_meta, {
+            "strategy": strategy,
+            "seconds": round(time.time() - t0, 1),
+            "initial_result": checks[0] if checks else None,
+            "final_ok": out is not None,
+            "final_kind": kind,
+            "outcome": outcome,
+            "checks": len(checks),
+            "repairs": a["repairs"],
+            "responses": responses,
+            "tool_calls": (session_meta or {}).get("tool_calls", 0),
+            "vision_calls": (session_meta or {}).get("vision_calls", 0),
+            "llm_calls": a["llm_calls"],
+            "output_chars": a["output_chars"],
+            "completion_tokens": a["completion_tokens"] if a["tokens_known"] else None,
+            "tokens_known": a["tokens_known"] and a["llm_calls"] > 0,
+            "fallback": fallback,
+            "budget_exhausted": budget,
+            "changed_from_draft": out is not None and out != html,
+            "visual_decisions": decisions,
+        }
+
+    # ── Evaluation (boot_mode == "evaluate") ───────────────────────────────────
+
+    def _eval_cycle(self, cfg: dict) -> None:
+        """Run the next trial of the active evaluation run: one shared first draft, then every
+        arm on that same draft, recording metrics and outputs (never archived). When the
+        run is finished or gone, restore the boot mode it started from."""
+        self._skip.clear()
+        self._discard_current.clear()
+        plan = evaluation.active_run()
+        if (plan is None or plan["status"] in ("done", "stopped")
+                or plan["next"] >= len(plan["trials"])):
+            self._finish_eval(plan)
+            return
+        if not self._wait_for_display():
+            return
+        run_id = plan["run_id"]
+        if plan["status"] == "pending":
+            plan["status"] = "running"
+            evaluation.save_plan(plan)
+
+        idx = plan["next"]
+        trial = plan["trials"][idx]
+        base_cfg = copy.deepcopy(cfg)
+        base_cfg["llm_provider"] = plan["provider"]
+        provider, lm = self._active_provider_cfg(base_cfg)
+        model = plan.get("model") or lm["model"]
+        label = f"EVAL {plan['name']} — TRIAL {idx + 1}/{len(plan['trials'])}"
+
+        prompt_data = self._trial_prompt(trial, base_cfg)
+        if prompt_data is None:
+            self._advance_eval(run_id, f"{trial['id']}: skipped — prompt or update source unavailable")
+            return
+
+        self._tx("GENERATE", mode=trial["mode"], model=model)
+        self._push_status(f"{label} — WRITING SHARED DRAFT")
+        html, draft_metrics = self._generate_draft(base_cfg, trial["mode"], prompt_data, model)
+        if self._stop.is_set():
+            return   # resume this trial next time
+        if html is None:
+            if self._lm_unavailable or self._skip.is_set():
+                time.sleep(5)   # provider down or skipped mid-draft: retry the trial
+                return
+            self._advance_eval(run_id, f"{trial['id']}: no draft produced")
+            return
+
+        out_dir = evaluation.run_dir(run_id)
+        (out_dir / f"{trial['id']}_draft.html").write_text(html, encoding="utf-8")
+        brief = self._build_brief(base_cfg, trial["mode"], prompt_data, html)
+        for arm in plan["arms"]:
+            arm_cfg = cfg_mod._deep_merge(base_cfg, arm["overrides"])
+            temp_path = self._save_temp(html)
+            self._push_status(f"{label} — {arm['name'].upper()}")
+            try:
+                out, _err, _meta, run_metrics = self._run_strategy(arm_cfg, temp_path, html, model, brief)
+            finally:
+                temp_path.unlink(missing_ok=True)
+            if self._stop.is_set():
+                return
+            if self._skip.is_set():
+                self._skip.clear()
+                self._advance_eval(run_id, f"{trial['id']}: skipped by user during {arm['name']}")
+                return
+            out_file = out_dir / evaluation.output_name(trial["id"], arm["name"])
+            if out is not None:
+                out_file.write_text(out, encoding="utf-8")
+            else:
+                out_file.unlink(missing_ok=True)
+            evaluation.append_result(run_id, {
+                "trial": trial["id"], "arm": arm["name"], "mode": trial["mode"],
+                "effect": trial["effect"], "category": trial.get("category"),
+                "provider": provider, "model": model, **draft_metrics, **run_metrics,
+                "file": out_file.name if out is not None else None,
+            })
+        self._advance_eval(run_id)
+        self._tx("IDLE")
+
+    def _trial_prompt(self, trial: dict, cfg: dict) -> dict | None:
+        if trial["mode"] == "stock":
+            row = self._csv_row(trial["effect"])
+            return row
+        if trial["mode"] == "update":
+            if not trial.get("source"):
+                return None
+            src = archive_mod._archive_dir(cfg) / trial["source"]
+            return {"effect": "update", "source_path": src} if src.exists() else None
+        return {"effect": "creative"}
+
+    def _csv_row(self, effect: str) -> dict | None:
+        csv_path = BASE / "prompts.csv"
+        try:
+            with open(csv_path, "r", encoding="utf-8", newline="") as f:
+                for row in csv.DictReader(f):
+                    if row.get("Effect") == effect:
+                        return {"effect": effect, "prompt": row.get("Three.js prompt", "")}
+        except OSError:
+            log.exception("Failed to read prompts.csv")
+        return None
+
+    def _advance_eval(self, run_id: str, note: str | None = None) -> None:
+        plan = evaluation.load_plan(run_id)
+        if not plan:
+            return
+        plan["next"] += 1
+        if note:
+            log.warning("Evaluation %s: %s", run_id, note)
+            plan.setdefault("notes", []).append(note)
+        if plan["next"] >= len(plan["trials"]) and plan["status"] == "running":
+            plan["status"] = "done"
+        evaluation.save_plan(plan)
+
+    def _finish_eval(self, plan: dict | None) -> None:
+        """Leave evaluate mode: mark the run done, clear the active pointer and restore the
+        boot mode the run started from."""
+        if plan and plan["status"] not in ("done", "stopped"):
+            plan["status"] = "done"
+            evaluation.save_plan(plan)
+        evaluation.clear_active()
+        disk = cfg_mod.load()
+        resume = (plan or {}).get("resume_boot_mode") or "generate"
+        disk["boot_mode"] = resume if resume != "evaluate" else "generate"
+        cfg_mod.save(disk)
+        self._broadcast({"type": "config_push", "config": disk})
+        log.info("Evaluation finished%s; boot mode back to %s",
+                 f" ({plan['run_id']})" if plan else "", disk["boot_mode"])
+        self._push_status("EVALUATION COMPLETE")
         self._tx("IDLE")
 
     def _validate_and_repair(self, cfg: dict, temp_path: Path, html: str, model: str,
@@ -343,6 +563,8 @@ class Orchestrator:
                 )
 
             self._tx("REPAIR", attempt=attempt + 1, max=max_repairs)
+            if self._acct:
+                self._acct["repairs"] += 1
             html = self._do_repair(cfg, html, error_msg, model=model, brief=brief,
                                    history=history, diagnostics=diagnostics)
             history.append(
@@ -402,7 +624,7 @@ class Orchestrator:
             return self._skip.is_set() or self._stop.is_set()
 
         def llm(messages, tools):
-            return lm_client.chat_collect(
+            r = lm_client.chat_collect(
                 messages=messages,
                 base_url=lm["base_url"],
                 model=model or lm["model"],
@@ -414,6 +636,10 @@ class Orchestrator:
                 tools=tools,
                 should_abort=should_abort,
             )
+            self._acct_llm(len(r.get("content") or "")
+                           + sum(len(tc.get("arguments") or "") for tc in r.get("tool_calls") or []),
+                           r.get("usage"))
+            return r
 
         def run(source: str, seconds: float):
             temp_path.write_text(source, encoding="utf-8")
@@ -772,6 +998,7 @@ class Orchestrator:
         extra_params = ({"reasoning_effort": lm["thinking_effort"]}
                         if provider in ("ninfer", "strata") else None)
         max_tokens = lm["max_tokens"]
+        stream_stats: dict = {}
 
         try:
             for tok in lm_client.chat_stream(
@@ -783,6 +1010,7 @@ class Orchestrator:
                 timeout=lm["request_timeout_seconds"],
                 extra_params=extra_params,
                 api_key=lm.get("api_key", ""),
+                stats=stream_stats,
             ):
                 if self._skip.is_set():
                     log.info("Aborting LLM stream: skip requested")
@@ -800,6 +1028,8 @@ class Orchestrator:
             log.error("%s unreachable: %s", provider, e)
             self._lm_unavailable = True
             return None, None
+        finally:
+            self._acct_llm(sum(len(t) for t in tokens), stream_stats.get("usage"))
 
         # Wait for display to drain the typing queue
         total_chars = sum(len(t) for t in tokens)
@@ -966,6 +1196,8 @@ class Orchestrator:
         if result is None:
             log.warning("Audition %s timed out — no display replied", audition_id)
             return {"result": "TIMEOUT"}
+        if self._acct:
+            self._acct["checks"].append(result.get("result"))
         diag = result.get("diagnostics") or {}
         log.info(
             "Audition %s: %s%s | render_fps=%s heartbeat_fps=%s lit=%s/%s frozen=%ss errors=%d console=%d",
