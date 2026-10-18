@@ -3,7 +3,7 @@
     "crashes": 0,
     "blanks": 3,
     "total": 3,
-    "runs": 27,
+    "runs": 29,
     "deletions": 0,
     "last_fail": "2026-10-18T05:26:40.163106",
     "by_model": {
@@ -17,7 +17,7 @@
         "crashes": 0,
         "blanks": 2,
         "total": 2,
-        "runs": 2
+        "runs": 4
       }
     }
   },
@@ -71,11 +71,11 @@
   },
   "creative": {
     "crashes": 0,
-    "blanks": 2,
-    "total": 2,
-    "runs": 25,
+    "blanks": 3,
+    "total": 3,
+    "runs": 28,
     "deletions": 1,
-    "last_fail": "2026-10-18T05:21:05.366651",
+    "last_fail": "2026-10-18T06:19:20.857927",
     "by_model": {
       "qwen3.8-27b": {
         "crashes": 0,
@@ -85,9 +85,9 @@
       },
       "qwen3.8-flash-next-coder-iq1_m": {
         "crashes": 0,
-        "blanks": 1,
-        "total": 1,
-        "runs": 2,
+        "blanks": 2,
+        "total": 2,
+        "runs": 5,
         "deletions": 1
       }
     }

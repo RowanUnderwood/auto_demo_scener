@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Occluded Drift</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #0a0806; font-family: monospace; }
+        canvas { display: block; }
+        #ui { position: absolute; bottom: 16px; right: 20px; color: rgba(255,240,220,0.3); pointer-events: none; font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; }
+    </style>
+</head>
+<body>
+    <div id="ui">occluded drift // octahedral containment v2</div>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+        const CONFIG = {
+            count: 28,
+            bound: 5.5,
+            gravity: -1.2,
+            drag: 0.008,
+            bounce: 0.72,
+            particleSize: 0.22,
+            trailLength: 12,
+            bloomStrength: 0.9,
+            bloomRadius: 0.5,
+            bloomThreshold: 0.3,
+            colors: [
+                new THREE.Color(0xe8b451),
+                new THREE.Color(0x2dd4a8),
+                new THREE.Color(0xf26b5a),
+                new THREE.Color(0x7c98d4),
+                new THREE.Color(0xc9d6b2)
+            ]
+        };
+
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x0a0806, 0.04);
+
+        const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 500);
+        camera.position.set(12, 6, 12);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.1;
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.autoRotate = true;
+        controls.autoRotateSpeed = 0.3;
+        controls.target.set(0, 0, 0);
+
+        const renderPass = new RenderPass(scene, camera);
+        const bloomPass = new UnrealBloomPass(
+            new THREE.Vector2(window.innerWidth, window.innerHeight),
+            CONFIG.bloomStrength, CONFIG.bloomRadius, CONFIG.bloomThreshold
+        );
+
+        const composer = new EffectComposer(renderer);
+        composer.addPass(renderPass);
+        composer.addPass(bloomPass);
+
+        const ambientLight = new THREE.AmbientLight(0xfff0e0, 0.15);
+        scene.add(ambientLight);
+        const warmLight = new THREE.PointLight(0xf5c78a, 4, 40);
+        warmLight.position.set(3, 8, 3);
+        scene.add(warmLight);
+        const coolLight = new THREE.PointLight(0x6ad0e0, 2, 35);
+        coolLight.position.set(-4, -3, -4);
+        scene.add(coolLight);
+
+        // Octahedral containment
+        const octahedronGeo = new THREE.OctahedronGeometry(CONFIG.bound);
+        const octaMaterial = new THREE.MeshPhysicalMaterial({
+            color: 0x1a1510,
+            transparent: true,
+            opacity: 0.06,
+            roughness: 0.3,
+            side: THREE.DoubleSide
+        });
+        const octaMesh = new THREE.Mesh(octahedronGeo, octaMaterial);
+        scene.add(octaMesh);
+
+        const octaEdgesGeo = new THREE.EdgesGeometry(octahedronGeo);
+        const octaEdgeMat = new THREE.LineBasicMaterial({
+            color: 0xe8b451,
+            transparent: true,
+            opacity: 0.25
+        });
+        const octaEdges = new THREE.LineSegments(octaEdgesGeo, octaEdgeMat);
+        scene.add(octaEdges);
+
+        // Subtle inner wireframe lattice
+        const innerOcta = new THREE.OctahedronGeometry(CONFIG.bound * 0.98);
+        const innerEdgesGeo = new THREE.EdgesGeometry(innerOcta);
+        const innerEdgeMat = new THREE.LineBasicMaterial({
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0.04
+        });
+        const innerEdges = new THREE.LineSegments(innerEdgesGeo, innerEdgeMat);
+        scene.add(innerEdges);
+
+        // Particles
+        const particleGeo = new THREE.IcosahedronGeometry(CONFIG.particleSize, 0);
+        const particles = [];
+        const particleGroup = new THREE.Group();
+        scene.add(particleGroup);
+
+        for (let i = 0; i < CONFIG.count; i++) {
+            const color = CONFIG.colors[i % CONFIG.colors.length];
+            const coreMat = new THREE.MeshStandardMaterial({
+                color: color,
+                emissive: color,
+                emissiveIntensity: 1.5,
+                metalness: 0.2,
+                roughness: 0.3,
+                flatShading: true
+            });
+            const mesh = new THREE.Mesh(particleGeo, coreMat);
+
+            // Random position inside octahedron
+            let px, py, pz;
+            do {
+                px = (Math.random() - 0.5) * CONFIG.bound * 1.6;
+                py = (Math.random() - 0.5) * CONFIG.bound * 1.6;
+                pz = (Math.random() - 0.5) * CONFIG.bound * 1.6;
+            } while (Math.abs(px) + Math.abs(py) + Math.abs(pz) > CONFIG.bound - CONFIG.particleSize);
+
+            mesh.position.set(px, py, pz);
+            mesh.scale.setScalar(0.8 + Math.random() * 0.5);
+
+            const vel = new THREE.Vector3(
+                (Math.random() - 0.5) * 6,
+                (Math.random() - 0.5) * 6,
+                (Math.random() - 0.5) * 6
+            );
+
+            // Trail
+            const trailGeo = new THREE.BufferGeometry();
+            const trailPositions = new Float32Array(CONFIG.trailLength * 3);
+            for (let t = 0; t < CONFIG.trailLength; t++) {
+                trailPositions[t * 3] = px;
+                trailPositions[t * 3 + 1] = py;
+                trailPositions[t * 3 + 2] = pz;
+            }
+            trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
+            const trailMat = new THREE.LineBasicMaterial({
+                color: color,
+                transparent: true,
+                opacity: 0.3
+            });
+            const trailLine = new THREE.Line(trailGeo, trailMat);
+            scene.add(trailLine);
+
+            // Rotation speed for visual variety
+            const rotSpeed = new THREE.Vector3(
+                (Math.random() - 0.5) * 2,
+                (Math.random() - 0.5) * 2,
+                (Math.random() - 0.5) * 2
+            );
+
+            particleGroup.add(mesh);
+            particles.push({ mesh, velocity: vel, color, trailLine, trailGeo, rotSpeed, phase: Math.random() * Math.PI * 2 });
+        }
+
+        // Ground plane reflection hint
+        const groundGeo = new THREE.PlaneGeometry(30, 30);
+        const groundMat = new THREE.MeshStandardMaterial({ color: 0x0c0a08, roughness: 0.9, metalness: 0.3 });
+        const ground = new THREE.Mesh(groundGeo, groundMat);
+        ground.rotation.x = -Math.PI / 2;
+        ground.position.y = -CONFIG.bound * 0.95;
+        scene.add(ground);
+
+        // Slow drift field
+        let time = 0;
+        const clock = new THREE.Clock();
+
+        function updatePhysics(dt) {
+            time += dt;
+            const bound = CONFIG.bound;
+
+            particles.forEach(p => {
+                // Gentle floaty gravity
+                p.velocity.y += CONFIG.gravity * dt;
+
+                // Air drag
+                p.velocity.multiplyScalar(1 - CONFIG.drag);
+
+                // Gentle drift forces
+                const driftStrength = 0.08;
+                p.velocity.x += Math.sin(time * 0.3 + p.phase) * driftStrength * dt * 60;
+                p.velocity.z += Math.cos(time * 0.4 + p.phase * 1.7) * driftStrength * dt * 60;
+
+                p.mesh.position.addScaledVector(p.velocity, dt);
+
+                // Octahedral collision: |x| + |y| + |z| <= bound - radius
+                const r = p.mesh.scale.x * CONFIG.particleSize;
+                const innerBound = bound - r;
+                const pos = p.mesh.position;
+                const sumAbs = Math.abs(pos.x) + Math.abs(pos.y) + Math.abs(pos.z);
+
+                if (sumAbs > innerBound) {
+                    // Push back along normal (sign of each axis)
+                    const nx = Math.sign(pos.x);
+                    const ny = Math.sign(pos.y);
+                    const nz = Math.sign(pos.z);
+
+                    // Reflect velocity component along the normal face
+                    const dot = (p.velocity.x * nx + p.velocity.y * ny + p.velocity.z * nz);
+                    if (dot > 0) {
+                        const factor = (sumAbs - innerBound) / 3;
+                        pos.x -= nx * factor * 1.1;
+                        pos.y -= ny * factor * 1.1;
+                        pos.z -= nz * factor * 1.1;
+                        p.velocity.x -= 2 * dot * nx * CONFIG.bounce;
+                        p.velocity.y -= 2 * dot * ny * CONFIG.bounce;
+                        p.velocity.z -= 2 * dot * nz * CONFIG.bounce;
+                    }
+                }
+
+                // Clamp to octahedron
+                const currentSum = Math.abs(pos.x) + Math.abs(pos.y) + Math.abs(pos.z);
+                if (currentSum > innerBound && innerBound > 0) {
+                    const scale = innerBound / currentSum;
+                    pos.x *= scale;
+                    pos.y *= scale;
+                    pos.z *= scale;
+                }
+
+                // Update trail
+                const posArr = p.trailGeo.attributes.position.array;
+                for (let t = CONFIG.trailLength - 1; t > 0; t--) {
+                    posArr[t * 3] = posArr[(t - 1) * 3];
+                    posArr[t * 3 + 1] = posArr[(t - 1) * 3 + 1];
+                    posArr[t * 3 + 2] = posArr[(t - 1) * 3 + 2];
+                }
+                posArr[0] = pos.x;
+                posArr[1] = pos.y;
+                posArr[2] = pos.z;
+
+                // Visual pulse
+                const speed = p.velocity.length();
+                p.mesh.material.emissiveIntensity = 0.8 + speed * 0.3;
+
+                // Rotate particle for organic feel
+                p.mesh.rotation.x += p.rotSpeed.x * dt;
+                p.mesh.rotation.y += p.rotSpeed.y * dt;
+                p.mesh.rotation.z += p.rotSpeed.z * dt;
+            });
+
+            // Subtle container breathing
+            const breathe = 1 + Math.sin(time * 0.15) * 0.01;
+            octaMesh.scale.setScalar(breathe);
+            octaEdges.scale.setScalar(breathe);
+            octaEdgeMat.opacity = 0.2 + Math.sin(time * 0.5) * 0.08;
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const dt = Math.min(clock.getDelta(), 0.05);
+            updatePhysics(dt);
+            controls.update();
+            composer.render();
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

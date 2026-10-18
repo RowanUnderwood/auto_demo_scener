@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Neural Nebula</title>
+<style>body{margin:0;overflow:hidden;background:#000}canvas{display:block}</style>
+</head>
+<body>
+<script type="importmap">
+{"importmap":{"three":"https://unpkg.com/three@0.165.0/build/three.module.js"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const renderer = new THREE.WebGLRenderer();
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+const camera = new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+const scene = new THREE.Scene();
+
+const vert = `
+varying vec2 vUv;
+void main(){ vUv=uv; gl_Position=vec4(position,1.0); }
+`;
+
+const frag = `
+precision highp float;
+varying vec2 vUv;
+uniform float u_time;
+uniform vec2 u_res;
+
+// --- value noise & fbm ---
+float hash(vec2 p){
+  p=fract(p*vec2(123.4,567.8));
+  p+=dot(p,p+34.56);
+  return fract(p.x*p.y);
+}
+float noise2(vec2 p){
+  vec2 i=floor(p), f=fract(p);
+  float a=hash(i), b=hash(i+vec2(1,0));
+  float c=hash(i+vec2(0,1)), d=hash(i+vec2(1,1));
+  return mix(mix(a,b,f.x),mix(c,d,f.x),f.y);
+}
+float fbm(vec2 p){
+  float v=0.0,a=0.5;
+  for(int i=0;i<4;i++){
+    v+=a*noise2(p);
+    p=p*2.1+vec2(7.3,4.1);
+    a*=0.55;
+  }
+  return v;
+}
+
+void main(){
+  float t=u_time;
+  vec2 uv=vUv;
+  float aspect=u_res.x/u_res.y;
+  vec2 p=(uv-0.5)*vec2(aspect,1.0);
+
+  // breathing zoom
+  float breathe=1.0+0.08*sin(t*0.15);
+  p/=breathe;
+  // gentle orbit of the whole field
+  float ca=cos(t*0.07), sa=sin(t*0.07);
+  p=mat2(ca,-sa,sa,ca)*p;
+
+  // --- nebula background ---
+  float n=fbm(p*2.5+vec2(t*0.02,t*0.015));
+  float n2=fbm(p*4.0+vec2(-t*0.03,t*0.02)+13.7);
+  vec3 deep=vec3(0.02,0.01,0.06);
+  vec3 mid=vec3(0.06,0.02,0.18);
+  vec3 neb=vec3(0.02,0.12,0.14);
+  vec3 col=mix(deep,mid,smoothstep(0.2,0.55,n));
+  col=mix(col,neb,smoothstep(0.45,0.8,n2)*0.45);
+  col+=vec3(0.04,0.0,0.06)*exp(-length(p)*2.5);
+
+  // --- 24 neurons (Voronoi) ---
+  float f1=50.0,f2=50.0;
+  vec2 nA=vec2(0.0),nB=vec2(0.0);
+  int cA=0;
+  for(int i=0;i<24;i++){
+    float fi=float(i);
+    float orbitR=0.12+mod(fi*0.17,0.55);
+    float orbitSpd=0.04+mod(fi*0.09,0.11);
+    float ang=fi*2.4+t*orbitSpd*6.28318*0.3;
+    float cx=cos(fi*1.1+ang)*orbitR;
+    float cy=sin(fi*0.7+ang*1.1)*orbitR;
+    vec2 np=vec2(cx,cy);
+    float d=length(p-np);
+    if(d<f1){
+      f2=f1; nB=nA;
+      f1=d; nA=np; cA=i;
+    } else if(d<f2){
+      f2=d; nB=np;
+    }
+  }
+  float edge=(f2-f1)*0.5;
+
+  // --- neuron pulse: firing cycle ---
+  float pulse=sin(t*1.2+float(cA)*0.71+3.1);
+  float firing=smoothstep(0.55,0.95,pulse);
+  float pulse2=sin(t*0.9+float(cA)*1.13+1.7);
+  float firing2=smoothstep(0.5,0.9,pulse2);
+  float maxF=max(firing,firing2);
+
+  // --- cell interior glow ---
+  float interior=smoothstep(0.35,0.0,f1);
+  float cellGlow=maxF*interior;
+  col+=vec3(0.05,0.7,0.9)*cellGlow*0.7;
+  col+=vec3(0.0,0.3,0.4)*interior*0.25;
+
+  // --- expanding ring on firing ---
+  float ringT=fract(t*1.2+float(cA)*0.71+3.1);
+  float ringR=ringT*0.35;
+  float ring=smoothstep(0.02,0.0,abs(f1-ringR))*smoothstep(0.85,0.6,ringT);
+  col+=vec3(0.2,0.9,1.0)*ring*0.5;
+
+  // --- wire on boundary ---
+  float wire=smoothstep(0.012,0.0,edge);
+  vec3 wireCol=vec3(0.0,0.55,0.75);
+  col+=wireCol*wire*0.8;
+
+  // --- energy packets along wires ---
+  if(edge<0.015){
+    vec2 eDir=normalize(nB-nA);
+    float eLen=length(nB-nA);
+    vec2 eMid=(nA+nB)*0.5;
+    float tt=clamp(dot(p-eMid,eDir)/eLen+0.5,0.0,1.0);
+    float pk=fract(tt*4.0+t*3.0+float(cA)*0.37);
+    float packet=smoothstep(0.0,0.12,pk)*smoothstep(0.35,0.12,pk);
+    col+=vec3(1.0,0.95,0.7)*packet*1.2;
+    // wire pulse intensity near firing nodes
+    float edgeGlow=firing*exp(-edge*80.0)*0.6;
+    col+=vec3(0.3,0.8,1.0)*edgeGlow;
+  }
+
+  // --- node core ---
+  float nodeCore=smoothstep(0.025,0.0,f1);
+  col+=vec3(0.1,0.5,0.7)*nodeCore;
+  col+=vec3(1.0,0.9,0.8)*nodeCore*firing*0.6;
+
+  // --- scanlines ---
+  float scan=0.92+0.08*sin(uv.y*u_res.y*3.14159);
+  col*=scan;
+
+  // --- vignette ---
+  float vig=smoothstep(0.95,0.3,length(p));
+  col*=vig;
+
+  // --- chromatic aberration subtle ---
+  float ab=0.0015*sin(t*0.5);
+  // (faked by tinting edges)
+  col.r*=1.0+ab*length(p)*20.0;
+  col.b*=1.0-ab*length(p)*10.0;
+
+  // gamma
+  col=pow(col,vec3(0.85));
+
+  gl_FragColor=vec4(col,1.0);
+}
+`;
+
+const mat=new THREE.ShaderMaterial({
+  uniforms:{u_time:{value:0},u_res:{value:new THREE.Vector2(window.innerWidth,window.innerHeight)}},
+  vertexShader:vert,
+  fragmentShader:frag
+});
+const quad=new THREE.Mesh(new THREE.PlaneGeometry(2,2),mat);
+scene.add(quad);
+
+const clock=new THREE.Clock();
+const animate=()=>{
+  const t=clock.getElapsedTime();
+  mat.uniforms.u_time.value=t;
+  renderer.render(scene,camera);
+  requestAnimationFrame(animate);
+};
+animate();
+
+window.addEventListener('resize',()=>{
+  const w=window.innerWidth,h=window.innerHeight;
+  renderer.setSize(w,h);
+  mat.uniforms.u_res.value.set(w,h);
+});
+</script>
+</body>
+</html>

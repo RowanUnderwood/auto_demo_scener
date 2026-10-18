@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<title>SILK PENDULUMS</title>
+<style>
+html,body{margin:0;padding:0;background:#000;overflow:hidden;height:100%}
+canvas{display:block}
+#tag{position:fixed;left:16px;bottom:14px;font-family:"Courier New",monospace;font-size:11px;
+color:rgba(190,210,255,0.5);letter-spacing:3px;text-transform:uppercase;pointer-events:none}
+</style>
+<script type="importmap">
+{"imports":{"three":"https://unpkg.com/three@0.157.0/build/three.module.js"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const N = 48;
+const L = 6.0;
+const AMP = 0.54;
+const F = 9;
+const T = 13.0;
+const W = (N - 1) * 0.55;
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x000000, 1);
+renderer.autoClear = false;
+document.body.appendChild(renderer.domElement);
+
+/* ---------- fade / vignette pass (leaves the silk trails behind) ---------- */
+const trailScene = new THREE.Scene();
+const trailCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const trailMat = new THREE.ShaderMaterial({
+  uniforms: { aspect: { value: 1 } },
+  transparent: true,
+  depthWrite: false,
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy,0.0,1.0); }',
+  fragmentShader: [
+    'precision highp float; uniform float aspect; varying vec2 vUv;',
+    'void main(){ vec2 p=(vUv-0.5)*vec2(aspect,1.0); float d=length(p);',
+    ' float a = 0.06 + 0.62*smoothstep(0.28,1.15,d);',
+    ' gl_FragColor = vec4(0.0,0.0,0.0, clamp(a,0.0,1.0)); }'
+  ].join(' ')
+});
+trailScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), trailMat));
+
+/* ---------- main scene ---------- */
+const scene = new THREE.Scene();
+const group = new THREE.Group();
+scene.add(group);
+
+const cam = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.1, 200);
+cam.position.set(0, 0, 33);
+
+// rails
+const railMat = new THREE.MeshBasicMaterial({ color: 0x1c1e2a });
+for (let s = -1; s <= 1; s += 2) {
+  const rail = new THREE.Mesh(new THREE.BoxGeometry(W + 1.2, 0.16, 0.16), railMat);
+  rail.position.set(0, 6 * s, 0);
+  group.add(rail);
+}
+
+// rods (single LineSegments, two vertices per pendulum, two rows)
+const rodGeo = new THREE.BufferGeometry();
+const rodPos = new Float32Array(N * 4 * 3);
+const rodCol = new Float32Array(N * 4 * 3);
+for (let i = 0; i < N; i++) {
+  for (let r = 0; r < 2; r++) {
+    const hue = (i / N * 0.85 + 0.55) % 1;
+    const c = new THREE.Color().setHSL(hue, 0.75, 0.30);
+    for (let e = 0; e < 2; e++) {
+      const k = ((i * 2 + r) * 2 + e) * 3;
+      rodCol[k] = c.r; rodCol[k + 1] = c.g; rodCol[k + 2] = c.b;
+    }
+  }
+}
+rodGeo.setAttribute('position', new THREE.BufferAttribute(rodPos, 3));
+rodGeo.setAttribute('color', new THREE.BufferAttribute(rodCol, 3));
+const rods = new THREE.LineSegments(rodGeo, new THREE.LineBasicMaterial({
+  vertexColors: true, transparent: true, opacity: 0.55,
+  blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false
+}));
+rods.renderOrder = 1;
+group.add(rods);
+
+// bobs
+const bobMesh = new THREE.InstancedMesh(
+  new THREE.SphereGeometry(0.16, 10, 8),
+  new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false }),
+  N * 2
+);
+const _c = new THREE.Color();
+for (let i = 0; i < N; i++) {
+  for (let r = 0; r < 2; r++) {
+    const idx = i * 2 + r;
+    _c.setHSL((i / N * 0.85 + 0.55) % 1, 1.0, 0.62);
+    bobMesh.setColorAt(idx, _c);
+  }
+}
+bobMesh.instanceColor.needsUpdate = true;
+bobMesh.renderOrder = 2;
+group.add(bobMesh);
+
+// silk strands: 5 interpolated polylines between the two bob rows
+const STRANDS = 5;
+const curves = [];
+for (let k = 0; k < STRANDS; k++) {
+  const g = new THREE.BufferGeometry();
+  const p = new Float32Array(N * 3);
+  const c = new Float32Array(N * 3);
+  g.setAttribute('position', new THREE.BufferAttribute(p, 3));
+  g.setAttribute('color', new THREE.BufferAttribute(c, 3));
+  const line = new THREE.Line(g, new THREE.LineBasicMaterial({
+    vertexColors: true, transparent: true, opacity: 0.42,
+    blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false
+  }));
+  line.renderOrder = 3 + k;
+  group.add(line);
+  curves.push(line);
+}
+
+const ax = new Float32Array(N), ay = new Float32Array(N);
+const bx = new Float32Array(N), by = new Float32Array(N);
+const dummy = new THREE.Object3D();
+const col = new THREE.Color();
+
+let frame = 0;
+const clock = new THREE.Clock();
+
+function onResize() {
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w, h);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setScissorTest(false);
+  cam.aspect = w / h; cam.updateProjectionMatrix();
+  trailMat.uniforms.aspect.value = w / h;
+  renderer.clear();
+  frame = 0;
+}
+window.addEventListener('resize', onResize);
+renderer.clear();
+
+function tick() {
+  const t = clock.getElapsedTime();
+
+  if (frame > 0) renderer.render(trailScene, trailCam);
+
+  const inc = 1.0 + 0.22 * Math.sin(t * 0.061);
+  const amp = AMP * (0.82 + 0.2 * Math.sin(t * 0.13));
+  const hueShift = t * 0.021;
+
+  for (let i = 0; i < N; i++) {
+    const x = (i - (N - 1) / 2) * 0.55;
+    const fa = F + i * inc;
+    const fb = F + (N - 1 - i) * inc;
+    const a = amp * Math.sin((fa * 2 * Math.PI * t) / T);
+    const b = amp * Math.sin((fb * 2 * Math.PI * t) / T + Math.PI);
+    ax[i] = x + Math.sin(a) * L; ay[i] = 6 - Math.cos(a) * L;
+    bx[i] = x + Math.sin(b) * L; by[i] = -6 + Math.cos(b) * L;
+  }
+
+  // rods
+  for (let i = 0; i < N; i++) {
+    for (let r = 0; r < 2; r++) {
+      const anchorY = r === 0 ? 6 : -6;
+      const ex = r === 0 ? ax[i] : bx[i];
+      const ey = r === 0 ? ay[i] : by[i];
+      const base = ((i * 2 + r) * 2) * 3;
+      rodPos[base] = (i - (N - 1) / 2) * 0.55; rodPos[base + 1] = anchorY; rodPos[base + 2] = 0;
+      rodPos[base + 3] = ex; rodPos[base + 4] = ey; rodPos[base + 5] = 0;
+    }
+  }
+  rods.geometry.attributes.position.needsUpdate = true;
+
+  // bobs
+  for (let i = 0; i < N; i++) {
+    dummy.position.set(ax[i], ay[i], 0); dummy.updateMatrix();
+    bobMesh.setMatrixAt(i * 2, dummy.matrix);
+    dummy.position.set(bx[i], by[i], 0); dummy.updateMatrix();
+    bobMesh.setMatrixAt(i * 2 + 1, dummy.matrix);
+  }
+  bobMesh.instanceMatrix.needsUpdate = true;
+
+  // silk strands
+  for (let k = 0; k < STRANDS; k++) {
+    const w = k / (STRANDS - 1);
+    const pos = curves[k].geometry.attributes.position.array;
+    const colAttr = curves[k].geometry.attributes.color.array;
+    for (let i = 0; i < N; i++) {
+      const px = ax[i] * (1 - w) + bx[i] * w;
+      const py = ay[i] * (1 - w) + by[i] * w;
+      const j = i * 3;
+      pos[j] = px; pos[j + 1] = py; pos[j + 2] = 0;
+      const h = (i / N * 0.8 + 0.52 + hueShift + w * 0.06) % 1;
+      const light = 0.55 + 0.35 * Math.sin(i * 0.4 + t * 1.7);
+      col.setHSL(h, 0.9, Math.max(0.25, light));
+      colAttr[j] = col.r; colAttr[j + 1] = col.g; colAttr[j + 2] = col.b;
+    }
+    curves[k].geometry.attributes.position.needsUpdate = true;
+    curves[k].geometry.attributes.color.needsUpdate = true;
+  }
+
+  group.rotation.y = Math.sin(t * 0.11) * 0.28;
+  group.rotation.x = Math.sin(t * 0.07) * 0.10;
+  cam.position.set(Math.sin(t * 0.13) * 7.5, Math.sin(t * 0.09) * 4.5, 31 + Math.sin(t * 0.1) * 5);
+  cam.lookAt(0, 0, 0);
+
+  renderer.render(scene, cam);
+  frame++;
+}
+
+function loop() { tick(); window.requestAnimationFrame(loop); }
+window.requestAnimationFrame(loop);
+</script>
+<div id="tag">silk pendulums &mdash; 48 strands / 2 counter-rows &mdash; trails = interference</div>
+</body>
+</html>

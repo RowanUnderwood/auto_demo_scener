@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, height=device-height, initial-scale=1.0">
+<title>Pulse Array — Circular Frequency Visualizer</title>
+<style>
+  html, body { margin: 0; padding: 0; overflow: hidden; background: #04040a; height: 100%; }
+  canvas { display: block; }
+  #hud {
+    position: fixed;
+    top: 18px;
+    left: 20px;
+    font-family: "Courier New", monospace;
+    font-size: 11px;
+    color: rgba(140, 220, 255, 0.8);
+    letter-spacing: 2px;
+    pointer-events: none;
+    text-shadow: 0 0 6px rgba(0, 200, 255, 0.6);
+    line-height: 1.6;
+    animation: flicker 4s steps(2) infinite;
+  }
+  @keyframes flicker { 0%,100% { opacity: 1; } 47% { opacity: 0.85; } 48% { opacity: 1; } }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div id="hud">PULSE ARRAY v2.7<br>96 CHANNELS // RADIAL LAYOUT<br>DRAG TO ORBIT · SCROLL TO ZOOM</div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x04040a, 0.028);
+
+const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 500);
+camera.position.set(0, 9.5, 14.5);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+document.body.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 0.55;
+controls.maxPolarAngle = Math.PI * 0.49;
+controls.minDistance = 6;
+controls.maxDistance = 34;
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.85, 0.55, 0.15);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+
+// ---------- Radial bars ----------
+const COUNT = 96;
+const RADIUS = 4.2;
+const bars = [];
+const geo = new THREE.BoxGeometry(0.16, 0.16, 1);
+geo.translate(0, 0, 0.5);
+
+for (let i = 0; i < COUNT; i++) {
+  const angle = (i / COUNT) * Math.PI * 2;
+  const dir = { x: Math.cos(angle), z: Math.sin(angle) };
+
+  const mat = new THREE.MeshStandardMaterial({
+    color: new THREE.Color().setHSL(i / COUNT, 0.85, 0.55),
+    emissive: new THREE.Color().setHSL(i / COUNT, 0.9, 0.35),
+    emissiveIntensity: 0.9,
+    metalness: 0.3,
+    roughness: 0.25
+  });
+
+  const bar = new THREE.Mesh(geo, mat);
+  bar.position.set(dir.x * RADIUS, 0, dir.z * RADIUS);
+  bar.rotation.y = Math.PI / 2 - angle;
+  scene.add(bar);
+  bars.push({ mesh: bar, mat, angle, i, phase: i * 0.173 });
+
+  // inner tick (inward-facing, dimmer, shorter)
+  const tickMat = new THREE.MeshBasicMaterial({ color: new THREE.Color().setHSL(i / COUNT, 0.7, 0.4), transparent: true, opacity: 0.5 });
+  const tick = new THREE.Mesh(geo, tickMat);
+  tick.position.set(dir.x * (RADIUS - 0.35), 0, dir.z * (RADIUS - 0.35));
+  tick.rotation.y = Math.PI / 2 - angle + Math.PI;
+  scene.add(tick);
+}
+
+// ---------- Core ring + pulsing sphere ----------
+const ring = new THREE.Mesh(
+  new THREE.TorusGeometry(RADIUS - 0.55, 0.05, 8, 128),
+  new THREE.MeshBasicMaterial({ color: 0x88ddff })
+);
+ring.rotation.x = Math.PI / 2;
+scene.add(ring);
+
+const core = new THREE.Mesh(
+  new THREE.IcosahedronGeometry(0.65, 1),
+  new THREE.MeshStandardMaterial({ color: 0x061024, emissive: 0x22aaff, emissiveIntensity: 1.4, wireframe: true })
+);
+scene.add(core);
+
+const pointLight = new THREE.PointLight(0x66ccff, 40, 22, 1.6);
+scene.add(pointLight);
+
+// ---------- Ground grid + disc ----------
+const grid = new THREE.GridHelper(46, 46, 0x123a55, 0x0a2233);
+grid.position.y = -0.36;
+scene.add(grid);
+
+const disc = new THREE.Mesh(
+  new THREE.CircleGeometry(RADIUS - 0.5, 64),
+  new THREE.MeshStandardMaterial({ color: 0x05080f, metalness: 0.85, roughness: 0.35 })
+);
+disc.rotation.x = -Math.PI / 2;
+scene.add(disc);
+
+// ---------- Star field ----------
+const starCount = 700;
+const starPos = new Float32Array(starCount * 3);
+for (let i = 0; i < starCount; i++) {
+  const r = 30 + Math.random() * 60;
+  const a = Math.random() * Math.PI * 2;
+  const y = -8 + Math.random() * 46;
+  starPos[i * 3] = Math.cos(a) * r;
+  starPos[i * 3 + 1] = y;
+  starPos[i * 3 + 2] = Math.sin(a) * r;
+}
+const starGeo = new THREE.BufferGeometry();
+starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+const stars = new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0x5fc8ff, size: 0.14, transparent: true, opacity: 0.7 }));
+scene.add(stars);
+
+scene.add(new THREE.AmbientLight(0x223344, 0.9));
+const key = new THREE.DirectionalLight(0x99bbff, 1.1);
+key.position.set(6, 10, 4);
+scene.add(key);
+
+// ---------- Waveform simulation ----------
+const hash = (n) => { let s = Math.sin(n * 37.19) * 43758.5453; return s - Math.floor(s); };
+
+let t = 0;
+function animate() {
+  requestAnimationFrame(animate);
+  t += 0.016;
+
+  const beat = Math.pow(0.5 + 0.5 * Math.sin(t * Math.PI * 0.62), 3);
+  const hueDrift = t * 0.03;
+
+  for (const b of bars) {
+    const i = b.i;
+    const f1 = Math.abs(Math.sin(t * 1.31 + b.phase));
+    const f2 = Math.abs(Math.cos(t * 2.13 + i * 0.41));
+    const f3 = Math.abs(Math.sin(t * 0.77 + i * 0.11));
+    const n = hash(i * 3.7 + Math.floor(t * 6));
+
+    let len = 0.25 + f1 * f2 * 2.6 + f3 * 1.1 + n * 0.35 + beat * 1.4 * (0.4 + 0.6 * Math.sin(i * 0.55 + t * 0.9));
+    len *= 0.75 + 0.45 * Math.abs(Math.sin(t * 0.24 + i * 0.019));
+
+    b.mesh.scale.z = len;
+
+    const h = (i / COUNT + hueDrift) % 1;
+    b.mat.color.setHSL(h, 0.85, 0.55);
+    b.mat.emissive.setHSL(h, 0.95, 0.32 + 0.2 * (len / 5));
+  }
+
+  core.scale.setScalar(1 + beat * 0.55);
+  core.rotation.y = t * 0.6;
+  pointLight.intensity = 22 + beat * 60;
+  ring.rotation.z = -t * 0.4;
+  stars.rotation.y = t * 0.01;
+
+  controls.update();
+  composer.render();
+}
+animate();
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>

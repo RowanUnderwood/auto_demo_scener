@@ -3535,5 +3535,41 @@
     "model": "qwen3.8-flash-next-coder-iq1_m",
     "title": "Chrome Mercury Spheres",
     "description": "Liquid chrome spheres merge and drift through dark space."
+  },
+  "2026-05-17_audio_reactive_bars_ad57_v2.html": {
+    "created": "2026-10-18T06:14:07.907580",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3.8-flash-next-coder-iq1_m",
+    "title": "Radial Frequency Pulse Array",
+    "description": "Rainbow bars orbit a glowing core in endless cosmic loops."
+  },
+  "2026-10-18_creative_fc0d.html": {
+    "created": "2026-10-18T06:15:34.330911",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen3.8-flash-next-coder-iq1_m",
+    "title": "Neural Nebula Pulse",
+    "description": "Cyan neurons orbit within a dark nebula, pulsing rings and glowing wires."
+  },
+  "2026-05-10_bouncing_balls_af06_v6.html": {
+    "created": "2026-10-18T06:20:26.284927",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3.8-flash-next-coder-iq1_m",
+    "title": "Octahedral Drift Particles",
+    "description": "Glowing shards tumble endlessly within a translucent crystalline cage."
+  },
+  "2026-10-18_creative_cb9e.html": {
+    "created": "2026-10-18T06:22:37.129869",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen3.8-flash-next-coder-iq1_m",
+    "title": "Silk Pendulums On Rails",
+    "description": "Colorful pendulums trace silk threads between two dark rails."
   }
 }
