@@ -1,17 +1,23 @@
 {
   "update": {
     "crashes": 0,
-    "blanks": 1,
-    "total": 1,
-    "runs": 25,
+    "blanks": 3,
+    "total": 3,
+    "runs": 27,
     "deletions": 0,
-    "last_fail": "2026-09-05T15:35:20.270837",
+    "last_fail": "2026-10-18T05:26:40.163106",
     "by_model": {
       "qwen3.8-27b": {
         "crashes": 0,
         "blanks": 1,
         "total": 1,
         "runs": 25
+      },
+      "qwen3.8-flash-next-coder-iq1_m": {
+        "crashes": 0,
+        "blanks": 2,
+        "total": 2,
+        "runs": 2
       }
     }
   },
@@ -65,17 +71,24 @@
   },
   "creative": {
     "crashes": 0,
-    "blanks": 1,
-    "total": 1,
-    "runs": 20,
-    "deletions": 0,
-    "last_fail": "2026-09-05T12:59:18.844510",
+    "blanks": 2,
+    "total": 2,
+    "runs": 25,
+    "deletions": 1,
+    "last_fail": "2026-10-18T05:21:05.366651",
     "by_model": {
       "qwen3.8-27b": {
         "crashes": 0,
         "blanks": 1,
         "total": 1,
         "runs": 20
+      },
+      "qwen3.8-flash-next-coder-iq1_m": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
+        "runs": 2,
+        "deletions": 1
       }
     }
   },
@@ -163,8 +176,8 @@
     "crashes": 0,
     "blanks": 0,
     "total": 0,
-    "runs": 1,
-    "deletions": 0,
+    "runs": 2,
+    "deletions": 1,
     "last_fail": null,
     "by_model": {
       "qwen3.8-27b": {
@@ -172,6 +185,13 @@
         "blanks": 0,
         "total": 0,
         "runs": 1
+      },
+      "qwen3.8-flash-next-coder-iq1_m": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1,
+        "deletions": 1
       }
     }
   },
@@ -195,8 +215,8 @@
     "crashes": 0,
     "blanks": 0,
     "total": 0,
-    "runs": 2,
-    "deletions": 0,
+    "runs": 3,
+    "deletions": 1,
     "last_fail": null,
     "by_model": {
       "qwen3.8-27b": {
@@ -204,6 +224,13 @@
         "blanks": 0,
         "total": 0,
         "runs": 2
+      },
+      "qwen3.8-flash-next-coder-iq1_m": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1,
+        "deletions": 1
       }
     }
   },
@@ -337,11 +364,11 @@
   },
   "Vector Field Streamlines": {
     "crashes": 0,
-    "blanks": 0,
-    "total": 0,
-    "runs": 2,
+    "blanks": 1,
+    "total": 1,
+    "runs": 3,
     "deletions": 0,
-    "last_fail": null,
+    "last_fail": "2026-10-18T05:05:10.399129",
     "by_model": {
       "qwen3.8-27b": {
         "crashes": 0,
@@ -499,7 +526,7 @@
     "crashes": 0,
     "blanks": 1,
     "total": 1,
-    "runs": 1,
+    "runs": 2,
     "deletions": 0,
     "last_fail": "2026-09-05T15:12:58.595624",
     "by_model": {
@@ -507,6 +534,12 @@
         "crashes": 0,
         "blanks": 1,
         "total": 1,
+        "runs": 1
+      },
+      "qwen3.8-flash-next-coder-iq1_m": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
         "runs": 1
       }
     }
@@ -555,6 +588,82 @@
         "crashes": 0,
         "blanks": 0,
         "total": 0,
+        "runs": 1
+      }
+    }
+  },
+  "3D Hilbert Curve": {
+    "crashes": 0,
+    "blanks": 1,
+    "total": 1,
+    "runs": 1,
+    "deletions": 0,
+    "last_fail": "2026-10-18T05:03:50.388467",
+    "by_model": {}
+  },
+  "Auto-Play Flappy Bird": {
+    "crashes": 0,
+    "blanks": 0,
+    "total": 0,
+    "runs": 1,
+    "deletions": 1,
+    "last_fail": null,
+    "by_model": {}
+  },
+  "Demoscene Greetz": {
+    "crashes": 0,
+    "blanks": 0,
+    "total": 0,
+    "runs": 1,
+    "deletions": 1,
+    "last_fail": null,
+    "by_model": {}
+  },
+  "Metaballs": {
+    "crashes": 0,
+    "blanks": 0,
+    "total": 0,
+    "runs": 1,
+    "deletions": 0,
+    "last_fail": null,
+    "by_model": {
+      "qwen3.8-flash-next-coder-iq1_m": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1
+      }
+    }
+  },
+  "Procedural Terrain Flythrough": {
+    "crashes": 0,
+    "blanks": 0,
+    "total": 0,
+    "runs": 1,
+    "deletions": 1,
+    "last_fail": null,
+    "by_model": {
+      "qwen3.8-flash-next-coder-iq1_m": {
+        "crashes": 0,
+        "blanks": 0,
+        "total": 0,
+        "runs": 1,
+        "deletions": 1
+      }
+    }
+  },
+  "Conway Game of Life": {
+    "crashes": 0,
+    "blanks": 1,
+    "total": 1,
+    "runs": 1,
+    "deletions": 0,
+    "last_fail": "2026-10-18T05:25:16.512207",
+    "by_model": {
+      "qwen3.8-flash-next-coder-iq1_m": {
+        "crashes": 0,
+        "blanks": 1,
+        "total": 1,
         "runs": 1
       }
     }

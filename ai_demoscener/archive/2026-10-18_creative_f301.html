@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>*{margin:0;padding:0}</style>
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/addons/"}}</script>
+</head>
+<body>
+<script type="module">
+import * as THREE from 'three';
+import {EffectComposer} from 'three/addons/postprocessing/EffectComposer.js';
+import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
+import {UnrealBloomPass} from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+const renderer = new THREE.WebGLRenderer({antialias:false});
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x010208);
+scene.fog = new THREE.FogExp2(0x010208, 0.012);
+
+const W = window.innerWidth, H = window.innerHeight;
+const camera = new THREE.PerspectiveCamera(70, W/H, 0.1, 200);
+camera.position.set(0, 0, 0);
+camera.lookAt(0, -1, 0);
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(W,H), 1.4, 0.8, 0.1);
+composer.addPass(bloom);
+
+// === VOXEL TERRAIN WALLS ===
+const VOXEL_COUNT = 6000;
+const voxelGeo = new THREE.BoxGeometry(1, 1, 1);
+const voxelMat = new THREE.MeshBasicMaterial({color:0x224466});
+const voxels = new THREE.InstancedMesh(voxelGeo, voxelMat, VOXEL_COUNT);
+const voxelData = new Float32Array(VOXEL_COUNT * 7);
+const dummy = new THREE.Object3D();
+const tmpColor = new THREE.Color();
+
+function spawnVoxel(idx, yCenter) {
+  const side = Math.random() < 0.5 ? -1 : 1;
+  const x = side * (12 + Math.random() * 8);
+  const z = (Math.random() - 0.5) * 40;
+  const y = yCenter + (Math.random() - 0.5) * 6;
+  const i7 = idx * 7;
+  voxelData[i7] = x;
+  voxelData[i7+1] = y;
+  voxelData[i7+2] = z;
+  voxelData[i7+3] = Math.random() * 6.283;
+  voxelData[i7+4] = 0.5 + Math.random() * 2.0;
+  voxelData[i7+5] = Math.random();
+  voxelData[i7+6] = 0.15 + Math.random() * 0.35;
+}
+
+for (let i = 0; i < VOXEL_COUNT; i++) {
+  spawnVoxel(i, -200 + (i / VOXEL_COUNT) * 400);
+}
+voxels.setColorAt(0, new THREE.Color(0x224466));
+
+function updateVoxels(time, camY) {
+  for (let i = 0; i < VOXEL_COUNT; i++) {
+    const i7 = i * 7;
+    const y = voxelData[i7+1];
+    const dy = camY - y;
+    if (dy > 180) {
+      spawnVoxel(i, camY - 200 - Math.random() * 50);
+    }
+    const pulse = Math.sin(time * voxelData[i7+4] + voxelData[i7+3]);
+    const scale = 0.6 + 0.5 * Math.max(0, pulse);
+    dummy.position.set(voxelData[i7], voxelData[i7+1], voxelData[i7+2]);
+    dummy.scale.set(scale, scale * (0.8 + 0.4 * Math.abs(pulse)), scale);
+    dummy.updateMatrix();
+    voxels.setMatrixAt(i, dummy.matrix);
+    
+    const hue = 0.5 + 0.15 * Math.sin(voxelData[i7+5] * 6.283 + time * 0.3);
+    const light = voxelData[i7+6] * (0.4 + 0.6 * Math.max(0, pulse));
+    tmpColor.setHSL(hue, 0.7, light);
+    voxels.setColorAt(i, tmpColor);
+  }
+  voxels.instanceMatrix.needsUpdate = true;
+  voxels.instanceColor.needsUpdate = true;
+}
+
+scene.add(voxels);
+
+// === BIOLUMINESCENT CREATURES (Flocking Particles) ===
+const CREATURE_COUNT = 1500;
+const creatureGeo = new THREE.SphereGeometry(0.15, 4, 4);
+const creatureMat = new THREE.MeshBasicMaterial({color:0x00ffff});
+const creatures = new THREE.InstancedMesh(creatureGeo, creatureMat, CREATURE_COUNT);
+
+const cPos = new Float32Array(CREATURE_COUNT * 3);
+const cVel = new Float32Array(CREATURE_COUNT * 3);
+const cPhase = new Float32Array(CREATURE_COUNT);
+const cSize = new Float32Array(CREATURE_COUNT);
+
+function spawnCreature(idx, camY) {
+  const i3 = idx * 3;
+  cPos[i3] = (Math.random() - 0.5) * 18;
+  cPos[i3+1] = camY - 30 - Math.random() * 160;
+  cPos[i3+2] = (Math.random() - 0.5) * 18;
+  cVel[i3] = (Math.random() - 0.5) * 0.02;
+  cVel[i3+1] = -0.005 + Math.random() * 0.01;
+  cVel[i3+2] = (Math.random() - 0.5) * 0.02;
+  cPhase[idx] = Math.random() * 6.283;
+  cSize[idx] = 0.08 + Math.random() * 0.25;
+}
+
+for (let i = 0; i < CREATURE_COUNT; i++) {
+  spawnCreature(i, -30 - Math.random() * 170);
+}
+
+function updateCreatures(time, camY) {
+  const camPos = camera.position;
+  for (let i = 0; i < CREATURE_COUNT; i++) {
+    const i3 = i * 3;
+    const dy = camY - cPos[i3+1];
+    if (dy > 160) { spawnCreature(i, camY - 40 - Math.random() * 170); }
+    
+    const swarmX = Math.sin(time * 0.3 + i * 0.01) * 5;
+    const swarmZ = Math.cos(time * 0.2 + i * 0.007) * 5;
+    const swarmY = camY - 40 - Math.sin(time * 0.1 + i * 0.003) * 60;
+    
+    cVel[i3] += (swarmX - cPos[i3]) * 0.0001;
+    cVel[i3+1] += (swarmY - cPos[i3+1]) * 0.0001;
+    cVel[i3+2] += (swarmZ - cPos[i3+2]) * 0.0001;
+    
+    const dcx = cPos[i3] - camPos.x;
+    const dcy = cPos[i3+1] - camPos.y;
+    const dcz = cPos[i3+2] - camPos.z;
+    const distSq = dcx*dcx + dcy*dcy + dcz*dcz;
+    if (distSq < 25 && distSq > 0.01) {
+      const f = 0.0003 / Math.sqrt(distSq);
+      cVel[i3] += dcx * f;
+      cVel[i3+1] += dcy * f;
+      cVel[i3+2] += dcz * f;
+    }
+    
+    for (let j = 1; j <= 5; j++) {
+      const k = (i + j) % CREATURE_COUNT;
+      const k3 = k * 3;
+      const sx = cPos[i3] - cPos[k3];
+      const sy = cPos[i3+1] - cPos[k3+1];
+      const sz = cPos[i3+2] - cPos[k3+2];
+      const d2 = sx*sx + sy*sy + sz*sz;
+      if (d2 < 2.0 && d2 > 0.01) {
+        cVel[i3] -= sx * 0.0002;
+        cVel[i3+1] -= sy * 0.0002;
+        cVel[i3+2] -= sz * 0.0002;
+      }
+    }
+    
+    const vmax = 0.04;
+    for (let a = 0; a < 3; a++) cVel[i3+a] = Math.max(-vmax, Math.min(vmax, cVel[i3+a]));
+    
+    cPos[i3] += cVel[i3];
+    cPos[i3+1] += cVel[i3+1];
+    cPos[i3+2] += cVel[i3+2];
+    
+    if (cPos[i3] > 9) cPos[i3] = -9;
+    if (cPos[i3] < -9) cPos[i3] = 9;
+    if (cPos[i3+2] > 9) cPos[i3+2] = -9;
+    if (cPos[i3+2] < -9) cPos[i3+2] = 9;
+    
+    const pulse = Math.sin(time * 3 + cPhase[i]);
+    const s = cSize[i] * (0.7 + 0.3 * pulse);
+    dummy.position.set(cPos[i3], cPos[i3+1], cPos[i3+2]);
+    dummy.scale.set(s, s, s);
+    dummy.updateMatrix();
+    creatures.setMatrixAt(i, dummy.matrix);
+  }
+  creatures.instanceMatrix.needsUpdate = true;
+}
+
+scene.add(creatures);
+
+// === CREATURE GLOW (Points overlay) ===
+const glowGeo = new THREE.BufferGeometry();
+const glowPos = new Float32Array(CREATURE_COUNT * 3);
+const glowCol = new Float32Array(CREATURE_COUNT * 3);
+const glowSize = new Float32Array(CREATURE_COUNT);
+
+for (let i = 0; i < CREATURE_COUNT; i++) {
+  const i3 = i * 3;
+  glowPos[i3] = cPos[i3];
+  glowPos[i3+1] = cPos[i3+1];
+  glowPos[i3+2] = cPos[i3+2];
+  const h = 0.5 + 0.3 * Math.sin(cPhase[i] + 0.5);
+  tmpColor.setHSL(h, 1.0, 0.6);
+  glowCol[i3] = tmpColor.r;
+  glowCol[i3+1] = tmpColor.g;
+  glowCol[i3+2] = tmpColor.b;
+  glowSize[i] = 3.0 + cSize[i] * 8;
+}
+
+glowGeo.setAttribute('position', new THREE.BufferAttribute(glowPos, 3));
+glowGeo.setAttribute('color', new THREE.BufferAttribute(glowCol, 3));
+glowGeo.setAttribute('size', new THREE.BufferAttribute(glowSize, 1));
+
+const glowMat = new THREE.ShaderMaterial({
+  transparent: true,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  vertexShader: `
+    attribute float size;
+    varying vec3 vColor;
+    void main() {
+      vColor = color;
+      vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+      gl_PointSize = size * (100.0 / -mvPos.z);
+      gl_Position = projectionMatrix * mvPos;
+    }
+  `,
+  fragmentShader: `
+    varying vec3 vColor;
+    void main() {
+      vec2 c = gl_PointCoord - 0.5;
+      float d = length(c);
+      float alpha = smoothstep(0.5, 0.0, d);
+      alpha = pow(alpha, 1.5);
+      gl_FragColor = vec4(vColor * 1.5, alpha);
+    }
+  `,
+  vertexColors: true
+});
+
+const glowPoints = new THREE.Points(glowGeo, glowMat);
+scene.add(glowPoints);
+
+function updateGlow(time) {
+  for (let i = 0; i < CREATURE_COUNT; i++) {
+    const i3 = i * 3;
+    glowPos[i3] = cPos[i3];
+    glowPos[i3+1] = cPos[i3+1];
+    glowPos[i3+2] = cPos[i3+2];
+    const pulse = Math.sin(time * 3 + cPhase[i]);
+    const h = 0.5 + 0.25 * Math.sin(cPhase[i] + time * 0.2);
+    const light = 0.5 + 0.2 * pulse;
+    tmpColor.setHSL(h, 0.9, light);
+    glowCol[i3] = tmpColor.r;
+    glowCol[i3+1] = tmpColor.g;
+    glowCol[i3+2] = tmpColor.b;
+    glowSize[i] = (3.0 + cSize[i] * 6) * (0.7 + 0.3 * pulse);
+  }
+  glowGeo.attributes.position.needsUpdate = true;
+  glowGeo.attributes.color.needsUpdate = true;
+  glowGeo.attributes.size.needsUpdate = true;
+}
+
+// === VOLUMETRIC FOG SPRITES ===
+const fogCanvas = document.createElement('canvas');
+fogCanvas.width = 128; fogCanvas.height = 128;
+const fctx = fogCanvas.getContext('2d');
+const grad = fctx.createRadialGradient(64,64,0,64,64,64);
+grad.addColorStop(0, 'rgba(255,255,255,0.3)');
+grad.addColorStop(0.4, 'rgba(255,255,255,0.1)');
+grad.addColorStop(1, 'rgba(255,255,255,0)');
+fctx.fillStyle = grad;
+fctx.fillRect(0,0,128,128);
+const fogTex = new THREE.CanvasTexture(fogCanvas);
+
+const FOG_COUNT = 150;
+const fogSprites = [];
+for (let i = 0; i < FOG_COUNT; i++) {
+  const mat = new THREE.SpriteMaterial({
+    map: fogTex,
+    blending: THREE.AdditiveBlending,
+    transparent: true,
+    opacity: 0.06 + Math.random() * 0.04,
+    color: new THREE.Color().setHSL(0.55 + Math.random() * 0.15, 0.6, 0.3),
+    depthWrite: false
+  });
+  const s = new THREE.Sprite(mat);
+  const scale = 15 + Math.random() * 30;
+  s.scale.set(scale, scale, 1);
+  s.position.set(
+    (Math.random() - 0.5) * 30,
+    -200 + Math.random() * 400,
+    (Math.random() - 0.5) * 30
+  );
+  scene.add(s);
+  fogSprites.push({sprite: s, vy: -0.01 - Math.random() * 0.02, drift: Math.random() * 6.283});
+}
+
+function updateFog(time, camY) {
+  for (const f of fogSprites) {
+    f.sprite.position.y += f.vy * 0.5;
+    f.sprite.position.x += Math.sin(time * 0.2 + f.drift) * 0.005;
+    f.sprite.position.z += Math.cos(time * 0.15 + f.drift) * 0.005;
+    if (camY - f.sprite.position.y > 200) {
+      f.sprite.position.y = camY - 180 - Math.random() * 40;
+      f.sprite.position.x = (Math.random() - 0.5) * 30;
+      f.sprite.position.z = (Math.random() - 0.5) * 30;
+    }
+  }
+}
+
+// === JELLYFISH (larger pulsing sprites) ===
+const jellyCanvas = document.createElement('canvas');
+jellyCanvas.width = 64; jellyCanvas.height = 64;
+const jctx = jellyCanvas.getContext('2d');
+const jgrad = jctx.createRadialGradient(32,32,0,32,32,32);
+jgrad.addColorStop(0, 'rgba(255,255,255,1)');
+jgrad.addColorStop(0.2, 'rgba(200,255,255,0.8)');
+jgrad.addColorStop(0.5, 'rgba(100,200,255,0.3)');
+jgrad.addColorStop(1, 'rgba(0,100,200,0)');
+jctx.fillStyle = jgrad;
+jctx.beginPath();
+jctx.arc(32, 32, 30, 0, 6.283);
+jctx.fill();
+const jellyTex = new THREE.CanvasTexture(jellyCanvas);
+
+const JELLY_COUNT = 40;
+const jellies = [];
+for (let i = 0; i < JELLY_COUNT; i++) {
+  const mat = new THREE.SpriteMaterial({
+    map: jellyTex,
+    blending: THREE.AdditiveBlending,
+    transparent: true,
+    color: new THREE.Color().setHSL(0.5 + Math.random() * 0.3, 0.9, 0.5),
+    depthWrite: false
+  });
+  const s = new THREE.Sprite(mat);
+  s.position.set((Math.random()-0.5)*16, -200+Math.random()*400, (Math.random()-0.5)*16);
+  s.scale.set(1+Math.random()*2, 1+Math.random()*2, 1);
+  scene.add(s);
+  jellies.push({sprite: s, phase: Math.random()*6.283, baseScale: s.scale.x, vy: 0.01+Math.random()*0.02});
+}
+
+function updateJellies(time, camY) {
+  for (const j of jellies) {
+    j.sprite.position.y += j.vy;
+    j.sprite.position.x += Math.sin(time * 0.4 + j.phase) * 0.01;
+    const pulse = 1 + 0.4 * Math.sin(time * 2 + j.phase);
+    j.sprite.scale.set(j.baseScale * pulse, j.baseScale * pulse, 1);
+    if (j.sprite.position.y - camY > 180) {
+      j.sprite.position.y = camY - 150 - Math.random() * 30;
+      j.sprite.position.x = (Math.random()-0.5)*16;
+      j.sprite.position.z = (Math.random()-0.5)*16;
+    }
+  }
+}
+
+// === BUBBLES (tiny rising particles) ===
+const BUBBLE_COUNT = 800;
+const bubbleGeo = new THREE.BufferGeometry();
+const bPos = new Float32Array(BUBBLE_COUNT * 3);
+const bSize = new Float32Array(BUBBLE_COUNT);
+for (let i = 0; i < BUBBLE_COUNT; i++) {
+  bPos[i*3] = (Math.random()-0.5) * 16;
+  bPos[i*3+1] = -200 + Math.random() * 400;
+  bPos[i*3+2] = (Math.random()-0.5) * 16;
+  bSize[i] = 0.5 + Math.random() * 1.5;
+}
+bubbleGeo.setAttribute('position', new THREE.BufferAttribute(bPos, 3));
+bubbleGeo.setAttribute('size', new THREE.BufferAttribute(bSize, 1));
+const bubbleMat = new THREE.ShaderMaterial({
+  transparent: true,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  vertexShader: `
+    attribute float size;
+    varying float vAlpha;
+    void main() {
+      vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+      float dist = -mvPos.z;
+      vAlpha = smoothstep(150.0, 20.0, dist) * 0.5;
+      gl_PointSize = size * (80.0 / dist);
+      gl_Position = projectionMatrix * mvPos;
+    }
+  `,
+  fragmentShader: `
+    varying float vAlpha;
+    void main() {
+      vec2 c = gl_PointCoord - 0.5;
+      float d = length(c);
+      if(d > 0.5) discard;
+      float rim = smoothstep(0.3, 0.5, d) * smoothstep(0.5, 0.48, d);
+      float fill = smoothstep(0.5, 0.0, d) * 0.15;
+      float alpha = (rim * 0.6 + fill) * vAlpha;
+      gl_FragColor = vec4(0.7, 0.9, 1.0, alpha);
+    }
+  `
+});
+const bubbles = new THREE.Points(bubbleGeo, bubbleMat);
+scene.add(bubbles);
+
+function updateBubbles(time, camY) {
+  for (let i = 0; i < BUBBLE_COUNT; i++) {
+    const i3 = i * 3;
+    bPos[i3+1] += 0.03 + Math.sin(time + i) * 0.01;
+    bPos[i3] += Math.sin(time * 0.5 + i * 0.1) * 0.005;
+    if (bPos[i3+1] - camY > 120) {
+      bPos[i3+1] = camY - 120 - Math.random() * 40;
+      bPos[i3] = (Math.random()-0.5) * 16;
+      bPos[i3+2] = (Math.random()-0.5) * 16;
+    }
+  }
+  bubbleGeo.attributes.position.needsUpdate = true;
+}
+
+// === FLOOR (far below - a distant ocean floor plane) ===
+const floorGeo = new THREE.PlaneGeometry(200, 200);
+const floorMat = new THREE.MeshBasicMaterial({color: 0x020410});
+const floor = new THREE.Mesh(floorGeo, floorMat);
+floor.rotation.x = -Math.PI / 2;
+floor.position.y = -220;
+scene.add(floor);
+
+// === ANIMATION LOOP ===
+const clock = new THREE.Clock();
+const camSpeed = 0.08;
+
+function animate() {
+  const time = clock.getElapsedTime();
+  const camY = -time * camSpeed * 10;
+  camera.position.set(0, camY, 0);
+  camera.lookAt(0, camY - 1, 0);
+
+  updateVoxels(time, camY);
+  updateCreatures(time, camY);
+  updateGlow(time);
+  updateFog(time, camY);
+  updateJellies(time, camY);
+  updateBubbles(time, camY);
+
+  composer.render();
+}
+
+animate();
+
+function loop() {
+  requestAnimationFrame(() => {
+    animate();
+    loop();
+  });
+}
+loop();
+</script>
+</body>
+</html>

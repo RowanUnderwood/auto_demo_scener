@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Chrome Mercury Spheres</title>
+<style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000;}</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const vs = `
+void main(){
+  gl_Position = vec4(position.xy, 0.0, 1.0);
+}`;
+
+const fs = `
+precision highp float;
+uniform float uTime;
+uniform vec2 uResolution;
+
+float smin(float a, float b, float k){
+  float h = clamp(0.5 + 0.5*(b-a)/k, 0.0, 1.0);
+  return mix(b, a, h) - k*h*(1.0-h);
+}
+
+float sp(vec3 p, vec3 c, float r){
+  return length(p - c) - r;
+}
+
+float map(vec3 p){
+  float t = uTime;
+  float r = 0.5;
+  vec3 c1 = vec3(sin(t*0.60)*1.10, cos(t*0.80)*0.90,  sin(t*1.00)*0.70);
+  vec3 c2 = vec3(cos(t*0.70+2.0)*1.20, sin(t*0.50+1.0)*0.80, cos(t*0.90+3.0)*0.60);
+  vec3 c3 = vec3(sin(t*0.90+4.0)*0.90, cos(t*0.60+2.5)*1.00, sin(t*0.75+5.0)*0.90);
+  vec3 c4 = vec3(cos(t*0.55+1.5)*1.00, sin(t*1.10+3.5)*0.70, cos(t*0.65+0.5)*1.00);
+  float d = sp(p, c1, r);
+  d = smin(d, sp(p, c2, r), 0.8);
+  d = smin(d, sp(p, c3, r), 0.8);
+  d = smin(d, sp(p, c4, r), 0.8);
+  return d;
+}
+
+vec3 calcNormal(vec3 p){
+  const vec2 e = vec2(0.008, -0.008);
+  return normalize(
+    e.xyy * map(p + e.xyy) +
+    e.yyx * map(p + e.yyx) +
+    e.yxy * map(p + e.yxy) +
+    e.xxx * map(p + e.xxx)
+  );
+}
+
+void main(){
+  vec2 uv = gl_FragCoord.xy / uResolution.xy;
+  float aspect = uResolution.x / uResolution.y;
+
+  vec3 ro = vec3(0.0, 0.0, 4.0);
+  vec3 rd = normalize(vec3((uv - 0.5) * vec2(aspect, 1.0), -1.5));
+
+  float t = 0.0;
+  float d = 0.0;
+  bool hit = false;
+  for(int i = 0; i < 64; i++){
+    vec3 p = ro + rd * t;
+    d = map(p);
+    if(d < 0.001){ hit = true; break; }
+    t += d * 0.9;
+    if(t > 20.0) break;
+  }
+
+  vec3 col;
+
+  if(!hit || t > 20.0){
+    float vig = length(uv - 0.5);
+    col = mix(vec3(0.055, 0.050, 0.075), vec3(0.012, 0.014, 0.022), vig*1.4);
+    col += vec3(0.020, 0.015, 0.035) * (1.0 - vig) * 0.6;
+  } else {
+    vec3 p = ro + rd * t;
+    vec3 n = calcNormal(p);
+
+    vec3 l = normalize(vec3(0.55, 0.75, 0.45));
+    float dif = max(dot(n, l), 0.0);
+
+    vec3 h = normalize(l - rd);
+    float spec = pow(max(dot(n, h), 0.0), 96.0);
+
+    float facing = max(dot(n, -rd), 0.0);
+    float fres = pow(1.0 - facing, 3.0);
+
+    vec3 base = vec3(0.42, 0.47, 0.56);
+
+    vec3 c = base * (0.22 + 0.78 * dif);
+    c += vec3(0.30, 0.33, 0.40) * pow(fres, 1.6) * 0.45;
+    c += vec3(1.0, 1.0, 1.0) * spec * 1.3;
+
+    float darkSide = 1.0 - dif;
+    c += vec3(0.30, 0.18, 0.46) * pow(fres, 2.0) * darkSide * 1.1;
+
+    c += base * 0.10 * pow(max(dot(n, normalize(vec3(0.0,-1.0,0.3))), 0.0), 2.0);
+
+    col = c;
+  }
+
+  col = pow(col, vec3(0.4545));
+  col = mix(col, col * col * 1.4, 0.15);
+
+  gl_FragColor = vec4(col, 1.0);
+}
+`;
+
+const renderer = new THREE.WebGLRenderer();
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+const uniforms = {
+  uTime: { value: 0 },
+  uResolution: { value: new THREE.Vector2(1, 1) }
+};
+
+const material = new THREE.ShaderMaterial({
+  uniforms: uniforms,
+  vertexShader: vs,
+  fragmentShader: fs
+});
+
+const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material);
+scene.add(quad);
+
+function resize(){
+  const dpr = Math.min(window.devicePixelRatio, 2);
+  const w = Math.floor(window.innerWidth * dpr);
+  const h = Math.floor(window.innerHeight * dpr);
+  renderer.setSize(window.innerWidth, window.innerHeight, false);
+  renderer.setPixelRatio(dpr);
+  uniforms.uResolution.value.set(w, h);
+}
+
+window.addEventListener('resize', resize);
+resize();
+
+const start = performance.now();
+
+function tick(){
+  uniforms.uTime.value = (performance.now() - start) * 0.001;
+  renderer.render(scene, camera);
+  requestAnimationFrame(tick);
+}
+tick();
+</script>
+</body>
+</html>

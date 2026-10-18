@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<title>Heighway Dragon — L-System</title>
+<style>
+html,body{margin:0;padding:0;overflow:hidden;background:#000;height:100%;}
+canvas{display:block;}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+</head>
+<body>
+<script>
+// ---- L-system generation ----
+const axiom = 'FX';
+const rules = { X: 'X+YF+', Y: '-FX-Y' };
+const ITER = 14;
+let str = axiom;
+for (let i = 0; i < ITER; i++) {
+  let out = [];
+  for (let j = 0; j < str.length; j++) {
+    const c = str[j];
+    out.push(rules[c] !== undefined ? rules[c] : c);
+  }
+  str = out.join('');
+}
+
+// ---- Turtle interpret ----
+const pts = [];
+let x = 0, y = 0, dir = 0;
+const A = Math.PI / 2;
+pts.push([0, 0]);
+for (let j = 0; j < str.length; j++) {
+  const c = str[j];
+  if (c === 'F') {
+    x += Math.cos(dir);
+    y += Math.sin(dir);
+    pts.push([x, y]);
+  } else if (c === '+') dir += A;
+  else if (c === '-') dir -= A;
+}
+
+// center & scale
+let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+for (const p of pts) {
+  if (p[0] < minX) minX = p[0];
+  if (p[0] > maxX) maxX = p[0];
+  if (p[1] < minY) minY = p[1];
+  if (p[1] > maxY) maxY = p[1];
+}
+const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+const span = Math.max(maxX - minX, maxY - minY);
+const scale = 6.5 / span;
+
+const total = pts.length;
+
+// ---- three.js scene ----
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+renderer.setClearColor(0x000000);
+renderer.setPixelRatio(window.devicePixelRatio);
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
+camera.position.set(0, 0, 10);
+
+function resize() {
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w, h);
+  renderer.domElement.style.width = w + 'px';
+  renderer.domElement.style.height = h + 'px';
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+resize();
+window.addEventListener('resize', resize);
+
+const geo = new THREE.BufferGeometry();
+const positions = new Float32Array(total * 3);
+const colors = new Float32Array(total * 3);
+const col = new THREE.Color();
+
+for (let i = 0; i < total; i++) {
+  positions[i * 3] = (pts[i][0] - cx) * scale;
+  positions[i * 3 + 1] = (pts[i][1] - cy) * scale;
+  positions[i * 3 + 2] = 0;
+  col.setHSL(i / total, 1.0, 0.55);
+  colors[i * 3] = col.r;
+  colors[i * 3 + 1] = col.g;
+  colors[i * 3 + 2] = col.b;
+}
+
+geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+geo.setDrawRange(0, 0);
+
+const mat = new THREE.LineBasicMaterial({
+  vertexColors: true,
+  transparent: true,
+  opacity: 1
+});
+const line = new THREE.Line(geo, mat);
+scene.add(line);
+
+// ---- animation ----
+const DRAW = 10, PAUSE = 1, FADE = 1;
+const cycle = DRAW + PAUSE + FADE;
+let cycleStart = performance.now();
+let rot = 0;
+
+function tick(now) {
+  const t = (now - cycleStart) / 1000;
+  if (t < cycle) {
+    if (t < DRAW) {
+      const p = t / DRAW;
+      geo.drawRange.count = Math.ceil(p * total);
+      mat.opacity = 1;
+    } else if (t < DRAW + PAUSE) {
+      geo.drawRange.count = total;
+      mat.opacity = 1;
+    } else {
+      geo.drawRange.count = total;
+      mat.opacity = 1 - (t - DRAW - PAUSE) / FADE;
+    }
+  } else {
+    cycleStart = now;
+    rot += 0.37 + Math.random() * 0.3;
+    line.rotation.z = rot;
+    geo.drawRange.count = 0;
+    mat.opacity = 1;
+  }
+
+  renderer.render(scene, camera);
+  requestAnimationFrame(tick);
+}
+
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>

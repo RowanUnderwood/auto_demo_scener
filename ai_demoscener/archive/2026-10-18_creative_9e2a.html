@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Crystalline Singularity</title>
+</head>
+<body style="margin:0;overflow:hidden;background:#000">
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script>
+<script type="module">
+import * as THREE from 'three';
+
+const renderer = new THREE.WebGLRenderer({antialias:false});
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.autoClear = false;
+document.body.appendChild(renderer.domElement);
+
+const cam = new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+const quad = new THREE.PlaneGeometry(2,2);
+
+const mat = new THREE.ShaderMaterial({
+uniforms:{uTime:{value:0},uRes:{value:new THREE.Vector2(window.innerWidth,window.innerHeight)}},
+fragmentShader:`
+precision highp float;
+uniform float uTime;
+uniform vec2 uRes;
+
+float hash(float n){return fract(sin(n)*43758.5453123);}
+vec3 palette(float t,vec3 a,vec3 b,vec3 c,vec3 d){return a+b*cos(6.28318*(c*t+d));}
+
+float smin(float a,float b,float k){
+float h=clamp(0.5+0.5*(b-a)/k,0.0,1.0);
+return mix(b,a,h)-k*h*(1.0-h);
+}
+
+float sdSphere(vec3 p,float r){return length(p)-r;}
+float sdCappedCyl(vec3 p,float h,float r){
+vec2 q=vec2(length(p.xz),abs(p.y)-h);
+return min(max(q.x,q.y),0.0)+length(max(q,0.0))-r;
+}
+
+vec3 rotY(vec3 p,float a){float c=cos(a),s=sin(a);return vec3(c*p.x+s*p.z,p.y,-s*p.x+c*p.z);}
+vec3 rotX(vec3 p,float a){float c=cos(a),s=sin(a);return vec3(p.x,c*p.y+s*p.z,-s*p.y+c*p.z);}
+
+vec3 fold6(vec3 p){
+float a=atan(p.z,p.x);
+float sector=3.14159/3.0;
+float fa=mod(a+sector,2.0*sector)-sector;
+float r=length(p.xz);
+return vec3(r*cos(fa),p.y,r*sin(fa));
+}
+
+float crystal(vec3 p){
+vec3 fp=fold6(p);
+float t=uTime*0.15;
+float d=sdSphere(fp,1.2+0.15*sin(uTime*0.3));
+for(int i=0;i<6;i++){
+float fi=float(i);
+float ang=fi*1.0472+t*0.2;
+float len=1.8+0.8*sin(t*0.5+fi*0.7);
+float thick=0.18+0.06*sin(uTime*0.4+fi*1.1);
+vec3 dir=vec3(cos(ang)*0.7,sin(fi*0.5+uTime*0.2)*0.4,sin(ang)*0.7);
+vec3 endp=dir*len;
+vec3 seg=fp-mix(vec3(0.0),endp,0.5);
+float cylLen=length(endp)*0.5;
+vec3 cylDir=normalize(endp);
+vec3 local=seg;
+local=rotY(local,-atan(cylDir.x,cylDir.z));
+local=rotX(local,atan(cylDir.y,length(cylDir.xz)));
+float branch=sdCappedCyl(local,cylLen,thick);
+d=smin(d,branch,0.35);
+float tipD=sdSphere(fp-endp,thick*2.2+0.05*sin(uTime+fi));
+d=smin(d,tipD,0.3);
+}
+return d;
+}
+
+float fbm2(vec2 p){
+float v=0.0;float a=0.5;
+for(int i=0;i<5;i++){
+vec2 ip=floor(p);vec2 fp=fract(p);
+float n=hash(ip.x*127.1+ip.y*311.7);
+float n2=hash((ip.x+1.0)*127.1+ip.y*311.7);
+float n3=hash(ip.x*127.1+(ip.y+1.0)*311.7);
+float n4=hash((ip.x+1.0)*127.1+(ip.y+1.0)*311.7);
+float bil=mix(mix(n,n2,fp.x),mix(n3,n4,fp.x),fp.y);
+v+=a*bil;p*=2.0;a*=0.5;
+}
+return v;
+}
+
+void main(){
+vec2 uv=gl_FragCoord.xy/uRes;
+vec2 p=(uv-0.5)*vec2(uRes.x/uRes.y,1.0);
+
+float r=length(p);
+float pull=0.6/(r*r+0.04);
+vec2 dir=r>0.001?p/r:vec2(0.0);
+vec2 bp=p-dir*pull;
+r=length(bp);
+
+vec3 ro=vec3(0.0,0.0,4.5+0.5*sin(uTime*0.1));
+vec3 rd=normalize(vec3(bp,-1.2));
+float ca=cos(uTime*0.08),sa=sin(uTime*0.08);
+ro=vec3(ca*0.5,0.0,-sa*0.5)*0.8+vec3(0.0,0.3*sin(uTime*0.05),4.5);
+rd=normalize(vec3(bp,-1.2));
+ro=ro*mat3(ca,0,-sa,0,1,0,sa,0,ca);
+
+float t=0.0;float hit=0.0;
+for(int i=0;i<64;i++){
+vec3 pos=ro+rd*t;
+float d=crystal(pos);
+if(d<0.001){hit=1.0;break;}
+t+=d*0.85;
+if(t>20.0)break;
+}
+
+vec3 nml=vec3(0.0,0.0,1.0);
+if(hit>0.5){
+vec3 hp=ro+rd*t;
+float e=0.001;
+nml=normalize(
+vec3(
+crystal(hp+vec3(e,0,0))-crystal(hp-vec3(e,0,0)),
+crystal(hp+vec3(0,e,0))-crystal(hp-vec3(0,e,0)),
+crystal(hp+vec3(0,0,e))-crystal(hp-vec3(0,0,e))
+)
+);
+}
+
+vec3 col;
+if(hit>0.5){
+vec3 hp=ro+rd*t;
+float fres=pow(1.0-dot(nml,-rd),2.5);
+float irid=dot(nml,rd)+fbm2(hp.xz*2.0+uTime*0.1)*0.5+hp.y*0.3;
+vec3 oilSlick=palette(irid*0.3+fres*0.5,
+vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),
+vec3(1.0,1.0,1.0),vec3(0.0,0.33,0.67)+hp.y*0.1+uTime*0.02
+);
+vec3 inner=palette(fbm2(hp.xz*1.5+uTime*0.05)*2.0,
+vec3(0.2,0.0,0.3),vec3(0.3,0.3,0.5),
+vec3(0.8,0.5,1.0),vec3(0.0,0.2,0.5));
+col=mix(inner*0.4,oilSlick,0.5+0.5*fres);
+vec3 lightDir=normalize(vec3(0.5,1.0,0.3));
+float spec=pow(max(dot(nml,normalize(lightDir-rd)),0.0),40.0);
+col+=vec3(1.0,0.9,1.0)*spec*0.8;
+col+=vec3(0.3,0.6,1.2)*pow(1.0-fres,3.0)*0.3;
+col=mix(col,vec3(0.02,0.01,0.05),smoothstep(3.0,12.0,t));
+}else{
+float pl=fbm2(bp*3.0+uTime*0.03);
+float pl2=fbm2(bp*5.0-uTime*0.02);
+vec3 neb=palette(pl+pl2+sin(uTime*0.1)*0.5,
+vec3(0.05,0.0,0.1),vec3(0.3,0.2,0.4),
+vec3(1.0,0.8,0.6),vec3(0.3,0.1,0.6)+pl*0.3);
+float star=0.0;
+for(int i=0;i<3;i++){
+float fi=float(i);
+float h1=hash(fi*7.3+3.1)*100.0;
+float h2=hash(fi*13.7+7.9)*100.0;
+float sx=sin(h1+uTime*0.02)*0.8+cos(h2)*0.3;
+float sy=cos(h1+uTime*0.03)*0.6+sin(h2*1.3)*0.4;
+float sz=cos(h2)*0.5+sin(h1*0.7)*0.3;
+float dist=length(rd-vec3(sx,sy,sz)*0.3);
+star+=pow(0.01/max(dist,0.001),3.0);
+}
+col=neb+vec3(0.8,0.85,1.0)*min(star,1.0)*0.5;
+col+=vec3(0.05,0.02,0.15)*exp(-r*3.0);
+col=mix(col,vec3(0.0),smoothstep(0.0,0.12,r)*smoothstep(0.0,0.05,r));
+col+=vec3(0.4,0.2,0.8)*exp(-r*r*80.0)*0.5;
+}
+
+for(int i=0;i<10;i++){
+float fi=float(i);
+float orb=0.8+0.5*sin(fi*0.9);
+float spd=0.3+0.1*fi;
+vec3 ff=vec3(
+cos(uTime*spd+fi*2.1)*orb,
+sin(uTime*spd*0.7+fi*1.3)*0.6+0.2*sin(fi),
+sin(uTime*spd+fi*2.1)*orb
+);
+vec3 toF=ff-ro;
+float proj=dot(toF,rd);
+if(proj>0.0&&proj<20.0){
+vec3 closest=ro+rd*proj;
+float d2=length(closest-ff);
+float glow=pow(0.04/max(d2,0.0001),1.5);
+vec3 fcol=palette(fi*0.3+uTime*0.05,
+vec3(0.5,0.4,0.3),vec3(0.5,0.4,0.5),
+vec3(1.0,1.0,1.0),vec3(0.0,0.25,0.5));
+float pulse=0.5+0.5*sin(uTime*2.0+fi*1.7);
+col+=fcol*glow*pulse*2.5;
+}
+}
+
+col*=smoothstep(1.4,0.3,r);
+
+gl_FragColor=vec4(col,1.0);
+}
+`,
+vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position,1.0);}`
+});
+
+const trailMat = new THREE.ShaderMaterial({
+uniforms:{uOpacity:{value:0.92}},
+fragmentShader:`void main(){gl_FragColor=vec4(0.0,0.0,0.0,uOpacity);}`,
+vertexShader:`void main(){gl_Position=vec4(position,1.0);}`
+});
+
+const trailMesh = new THREE.Mesh(new THREE.PlaneGeometry(2,2), trailMat);
+const mainMesh = new THREE.Mesh(quad, mat);
+
+const trailScene = new THREE.Scene();
+trailScene.add(trailMesh);
+
+const mainScene = new THREE.Scene();
+mainScene.add(mainMesh);
+
+renderer.setClearColor(0x000000);
+
+function go(){
+mat.uniforms.uTime.value = performance.now()/1000;
+mat.uniforms.uRes.value.set(window.innerWidth, window.innerHeight);
+renderer.render(trailScene, cam);
+renderer.render(mainScene, cam);
+requestAnimationFrame(go);
+}
+
+window.addEventListener('resize',()=>{
+renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+go();
+</script>
+</body>
+</html>

@@ -3493,5 +3493,47 @@
     "model": "qwen3.8-27b",
     "title": "Prismatic Gravity Chamber",
     "description": "Chromatic spheres tumble endlessly within a wireframe void."
+  },
+  "2026-10-18_creative_9e2a.html": {
+    "created": "2026-10-18T05:06:44.071919",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "title": "Crystalline Singularity",
+    "description": "Faceted crystal branches drift through violet nebulae with orbiting light sparks."
+  },
+  "2026-10-18_creative_f301.html": {
+    "created": "2026-10-18T05:08:45.002015",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "title": "Bioluminescent Abyssal Swarm",
+    "description": "Glowing creatures drift through pulsating voxel canyon walls."
+  },
+  "2026-10-18_creative_981f.html": {
+    "created": "2026-10-18T05:13:04.919309",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "title": "Iridescent Gravitational Lattice",
+    "description": "Prismatic spheres pulse while rays bend through infinite void."
+  },
+  "2026-10-18_dragon_curve_794b.html": {
+    "created": "2026-10-18T05:18:16.738264",
+    "mode": "stock",
+    "effect": "Dragon Curve",
+    "passed_validation": true,
+    "model": "qwen3.8-flash-next-coder-iq1_m",
+    "title": "Rainbow Dragon Fractal",
+    "description": "A rainbow-hued dragon unfolds endlessly through recursive geometric folds."
+  },
+  "2026-10-18_metaballs_d4df.html": {
+    "created": "2026-10-18T05:19:15.174006",
+    "mode": "stock",
+    "effect": "Metaballs",
+    "passed_validation": true,
+    "model": "qwen3.8-flash-next-coder-iq1_m",
+    "title": "Chrome Mercury Spheres",
+    "description": "Liquid chrome spheres merge and drift through dark space."
   }
 }

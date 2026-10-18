@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>*{margin:0;padding:0;overflow:hidden}html,body{width:100%;height:100%}</style></head>
+<body><script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script>
+<script type="module">
+import * as THREE from 'three';
+
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.setClearColor(0x000000);
+document.body.appendChild(renderer.domElement);
+
+const sceneBG = new THREE.Scene();
+const camBG = new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+const quadGeo = new THREE.PlaneGeometry(2,2);
+const quadMat = new THREE.ShaderMaterial({
+  uniforms:{u_time:{value:0},u_aspect:{value:window.innerWidth/window.innerHeight}},
+  vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position,1.0);}`,
+  fragmentShader:`
+uniform float u_time;uniform float u_aspect;varying vec2 vUv;
+float h21(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+float n2(vec2 p){vec2 i=floor(p),f=fract(p);float a=h21(i),b=h21(i+vec2(1,0)),c=h21(i+vec2(0,1)),d=h21(i+vec2(1,1));return mix(mix(a,b,f.x),mix(c,d,f.x),f.y);}
+float smin(float a,float b,float k){float h=clamp(0.5+0.5*(b-a)/k,0.0,1.0);return mix(b,a,h)-k*h*(1.0-h);}
+float lattice(vec3 p){
+  vec3 q=p+0.13*sin(p.yzx*2.7+u_time*0.45);
+  vec3 cell=floor(q/1.3+0.5)*1.3;
+  vec3 loc=q-cell;
+  float ph=sin(cell.x*1.7)+sin(cell.y*0.9)+sin(cell.z*1.3);
+  float rad=0.36+0.09*sin(u_time*2.0+ph*3.0);
+  return length(loc)-rad;
+}
+void main(){
+  vec2 uv=vUv;
+  vec2 p=(uv-0.5)*vec2(u_aspect,1.0);
+  float rp=length(p);
+  float pull=0.22/(rp*rp+0.07);
+  vec2 pW=p-normalize(p+1e-5)*pull*0.45;
+  vec3 ro=vec3(0,0,4.2);
+  vec3 rd=normalize(vec3(pW,-1.5));
+  float t=0.0;bool hit=false;vec3 pos;
+  for(int i=0;i<64;i++){
+    pos=ro+rd*t;
+    float d=lattice(pos);
+    if(d<0.001){hit=true;break;}
+    t+=max(d*0.85,0.01);
+    if(t>20.0)break;
+  }
+  vec3 col;
+  if(hit){
+    float e=0.0015;
+    vec3 n=normalize(vec3(
+      lattice(pos+vec3(e,0,0))-lattice(pos-vec3(e,0,0)),
+      lattice(pos+vec3(0,e,0))-lattice(pos-vec3(0,0,e)),
+      lattice(pos+vec3(0,0,e))-lattice(pos-vec3(0,0,e))
+    ));
+    float facing=max(dot(n,-rd),0.0);
+    float fres=pow(1.0-facing,2.5);
+    float film=facing*4.0+fres*3.0+u_time*0.12;
+    vec3 irid=vec3(0.5)+vec3(0.5)*cos(6.283*(vec3(0.0,0.35,0.7)*0.22+film));
+    vec3 ld=normalize(vec3(0.4,0.7,0.8));
+    float diff=max(dot(n,ld),0.0);
+    float spec=pow(max(dot(reflect(-ld,n),-rd),0.0),40.0);
+    col=irid*(0.35+0.65*diff)+vec3(1.0)*spec*0.6+fres*irid*0.4;
+    col+=pow(diff,8.0)*vec3(0.9,0.95,1.0)*0.3;
+  }else{
+    float pl=sin(rd.x*7.0+u_time*0.4)+sin(rd.y*5.5+u_time*0.6)+sin(rd.z*4.5+u_time*0.35);
+    col=vec3(0.5)+vec3(0.5)*cos(6.283*(vec3(0.0,0.28,0.55)*0.14+pl*0.35+u_time*0.07));
+    col*=0.55;
+    vec3 sf=floor(rd*60.0+30.0);
+    float st=step(0.985,h21(sf.xy+sf.yz))*smoothstep(0.65,0.25,rp);
+    col+=vec3(0.7,0.85,1.0)*st*0.45;
+  }
+  col*=1.0-smoothstep(0.45,1.3,rp)*0.55;
+  gl_FragColor=vec4(col,1.0);
+}`
+});
+sceneBG.add(new THREE.Mesh(quadGeo,quadMat));
+
+const scene3D=new THREE.Scene();
+const cam3D=new THREE.PerspectiveCamera(70,window.innerWidth/window.innerHeight,0.1,120);
+cam3D.position.set(0,0,12);
+
+const N=4000;
+const pGeo=new THREE.BufferGeometry();
+const pPos=new Float32Array(N*3);
+const pOrb=new Float32Array(N*3);
+const pSpd=new Float32Array(N);
+for(let i=0;i<N;i++){
+  const a=Math.random()*6.28318;
+  const r2=Math.sqrt(Math.random())*7;
+  const z=(Math.random()-0.5)*10;
+  pPos[i*3]=Math.cos(a)*r2;
+  pPos[i*3+1]=Math.sin(a)*r2;
+  pPos[i*3+2]=z;
+  pOrb[i*3]=a;
+  pOrb[i*3+1]=r2;
+  pOrb[i*3+2]=z;
+  pSpd[i]=0.15+Math.random()*0.6;
+}
+pGeo.setAttribute('position',new THREE.BufferAttribute(pPos,3));
+const pMat=new THREE.PointsMaterial({color:0x55aaff,size:0.05,sizeAttenuation:true,blending:THREE.AdditiveBlending,transparent:true,opacity:0.65});
+const pts=new THREE.Points(pGeo,pMat);
+scene3D.add(pts);
+
+const sc=new THREE.CanvasTexture((function(){const c=document.createElement('canvas');c.width=2048;c.height=56;const x=c.getContext('2d');x.font='30px monospace';x.fillStyle='#ffee44';x.textBaseline='middle';const t='WARP-LATTICE BLOOM *** GRAVITATIONAL TREATMENT OF THE PULSING INFINITE LATTICE *** THIN-FILM CHROMATICS BEND ACROSS EVERY SURFACE *** THE VOID BENDS RAYS INTO PRISMATIC DANCE *** GREETZ TO EVERYONE WHO BUILDS DEMOS AT 3AM ON AN EMPTY DESKTOP *** *** STAY TUNED ***';x.fillText(t,0,28);x.fillText(t,1100,28);return c;})());
+
+const sPlane=new THREE.Mesh(
+  new THREE.PlaneGeometry(16,0.7,300,2),
+  new THREE.ShaderMaterial({
+    uniforms:{u_time:{value:0},u_tex:{value:sc}},
+    vertexShader:`varying vec2 vUv;uniform float u_time;void main(){vUv=uv;vec3 p=position;p.y+=sin(p.x*2.0+u_time*3.0)*0.03+sin(p.x*5.0+u_time*1.5)*0.015;gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.0);}`,
+    fragmentShader:`varying vec2 vUv;uniform float u_time;uniform sampler2D u_tex;void main(){vec2 uv=vUv;uv.x=fract(uv.x+u_time*0.04);vec4 t=texture2D(u_tex,uv);float edge=smoothstep(0.0,0.15,vUv.y)*smoothstep(1.0,0.85,vUv.y);gl_FragColor=vec4(t.rgb*edge,1.0);}`
+  })
+);
+sPlane.position.set(0,-3.5,-6);
+scene3D.add(sPlane);
+
+renderer.render(sceneBG,camBG);
+
+let T=0;
+const tick=()=>{
+  T+=1/60;
+  quadMat.uniforms.u_time.value=T;
+  renderer.render(sceneBG,camBG);
+  renderer.autoClear=false;
+  renderer.render(scene3D,cam3D);
+  renderer.autoClear=true;
+  const posAttr=pGeo.attributes.position.array;
+  for(let i=0;i<N;i++){
+    pOrb[i*3]+=pSpd[i]*0.016;
+    const a=pOrb[i*3],r=pOrb[i*3+1],z=pOrb[i*3+2];
+    posAttr[i*3]=Math.cos(a)*r;
+    posAttr[i*3+1]=Math.sin(a)*r;
+    posAttr[i*3+2]=z+Math.sin(a*2.0+T*0.5)*0.5;
+  }
+  pGeo.attributes.position.needsUpdate=true;
+  cam3D.position.x=Math.sin(T*0.3)*2;
+  cam3D.position.y=Math.cos(T*0.25)*1.5;
+  cam3D.position.z=12+Math.sin(T*0.4)*3;
+  cam3D.lookAt(0,0,-2);
+  sPlane.material.uniforms.u_time.value=T;
+};
+
+(function loop(){tick();requestAnimationFrame(loop);})();
+</script>
+</body></html>
