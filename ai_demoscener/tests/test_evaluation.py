@@ -57,6 +57,7 @@ class _TempEval(unittest.TestCase):
             mock.patch.object(evaluation, "_ACTIVE", root / "eval" / "active.json"),
             mock.patch.object(config, "CONFIG_PATH", root / "config.json"),
             mock.patch.object(evaluation.archive_mod, "pick_for_update", lambda cfg, n: Path("src_demo.html")),
+            mock.patch.object(orchestrator.lm_client, "list_models", lambda *a, **k: ["m"]),
         ]
         for p in self.patches:
             p.start()
@@ -174,6 +175,29 @@ class EvalCycleTests(_TempEval):
         o._eval_cycle(self.cfg)   # run finished → leave evaluate mode
         self.assertIsNone(evaluation.active_run())
         self.assertEqual(config.load()["boot_mode"], "generate")
+
+    def test_unreachable_provider_waits_without_drafting(self):
+        config.save(self.cfg)
+        plan = evaluation.create_run(self.cfg, "ninfer", arms=["classic", "iterative"],
+                                     trials=[{"mode": "stock", "effect": "Plasma"}])
+        self.cfg["llm_provider"] = "strata"   # user switched provider after starting the run
+        o = StubOrchestrator({"classic": "", "iterative": ""})
+        o.EVAL_RETRY_SECONDS = 0
+
+        def down(*a, **k):
+            raise orchestrator.lm_client.LMClientError("connection reset")
+        with mock.patch.object(orchestrator.lm_client, "list_models", down):
+            o._eval_cycle(self.cfg)
+        p = evaluation.load_plan(plan["run_id"])
+        self.assertEqual((o.drafts, p["next"]), (0, 0))
+        self.assertIn("ninfer unreachable", p["waiting"]["reason"])
+        self.assertIn("pinned to ninfer", p["waiting"]["reason"])
+        self.assertEqual(evaluation.list_runs()[0]["waiting"]["reason"], p["waiting"]["reason"])
+
+        o._eval_cycle(self.cfg)   # provider back: waiting cleared, trial runs
+        p = evaluation.load_plan(plan["run_id"])
+        self.assertNotIn("waiting", p)
+        self.assertEqual((o.drafts, p["next"]), (1, 1))
 
     def test_stopped_run_restores_mode(self):
         self.cfg["boot_mode"] = "replay"

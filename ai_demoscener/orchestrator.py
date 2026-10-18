@@ -423,15 +423,32 @@ class Orchestrator:
             self._advance_eval(run_id, f"{trial['id']}: skipped — prompt or update source unavailable")
             return
 
+        # Don't hammer an unreachable provider with full draft requests: check cheaply first,
+        # and show the run as waiting (on the display and /eval) until it answers again.
+        try:
+            lm_client.list_models(lm["base_url"], timeout=5, api_key=lm.get("api_key", ""))
+        except lm_client.LMClientError as e:
+            # Runs are pinned to their provider/model so arms stay comparable; switching the
+            # app's provider doesn't move an existing run — say so, it's the likely cause.
+            pinned = "" if cfg.get("llm_provider") == provider else (
+                f" — this run is pinned to {provider} / {model}; the app is now set to "
+                f"{cfg.get('llm_provider')}, so start a new run to use that")
+            self._eval_wait(run_id, f"{provider} unreachable{pinned}", str(e))
+            return
+        self._eval_wait(run_id, None)
+        self._lm_unavailable = False
+
         self._tx("GENERATE", mode=trial["mode"], model=model)
         self._push_status(f"{label} — WRITING SHARED DRAFT")
         html, draft_metrics = self._generate_draft(base_cfg, trial["mode"], prompt_data, model)
         if self._stop.is_set():
             return   # resume this trial next time
         if html is None:
-            if self._lm_unavailable or self._skip.is_set():
-                time.sleep(5)   # provider down or skipped mid-draft: retry the trial
+            if self._lm_unavailable:
+                self._eval_wait(run_id, f"{provider} failed mid-draft", "")
                 return
+            if self._skip.is_set():
+                return   # skipped mid-draft: retry the trial
             self._advance_eval(run_id, f"{trial['id']}: no draft produced")
             return
 
@@ -465,6 +482,31 @@ class Orchestrator:
             })
         self._advance_eval(run_id)
         self._tx("IDLE")
+
+    EVAL_RETRY_SECONDS = 15
+
+    def _eval_wait(self, run_id: str, reason: str | None, detail: str = "") -> None:
+        """Record (or, with reason=None, clear) why the run can't make progress, and when
+        waiting, pause before the next retry. The plan's "waiting" field is shown on /eval."""
+        plan = evaluation.load_plan(run_id)
+        if not plan:
+            return
+        if reason is None:
+            if plan.get("waiting"):
+                log.info("Evaluation %s: %s again — continuing", run_id, plan["waiting"]["reason"])
+                plan.pop("waiting")
+                evaluation.save_plan(plan)
+            return
+        if not plan.get("waiting") or plan["waiting"]["reason"] != reason:
+            log.warning("Evaluation %s paused: %s (%s); retrying every %ds",
+                        run_id, reason, detail, self.EVAL_RETRY_SECONDS)
+            plan["waiting"] = {"reason": reason, "since": datetime.now().isoformat(timespec="seconds")}
+            evaluation.save_plan(plan)
+        self._push_status(f"EVAL PAUSED — {reason.upper()} — RETRYING")
+        for _ in range(self.EVAL_RETRY_SECONDS):
+            if self._stop.is_set() or self._skip.is_set():
+                break
+            time.sleep(1)
 
     def _trial_prompt(self, trial: dict, cfg: dict) -> dict | None:
         if trial["mode"] == "stock":

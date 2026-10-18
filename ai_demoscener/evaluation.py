@@ -158,7 +158,8 @@ def list_runs() -> list[dict]:
     for d in sorted(EVAL_DIR.iterdir(), reverse=True):
         if d.is_dir() and (d / "plan.json").exists():
             p = json.loads((d / "plan.json").read_text(encoding="utf-8"))
-            runs.append({k: p.get(k) for k in ("run_id", "name", "created", "provider", "model", "status", "next")}
+            runs.append({k: p.get(k) for k in ("run_id", "name", "created", "provider", "model", "status", "next",
+                                               "waiting")}
                         | {"trials": len(p["trials"]), "arms": [a["name"] for a in p["arms"]],
                            "active": p["run_id"] == active})
     return runs
@@ -290,7 +291,7 @@ def summary(run_id: str) -> dict:
     done = {r["trial"] for r in rows}
     return {
         "plan": {k: plan.get(k) for k in ("run_id", "name", "created", "provider", "model",
-                                          "status", "next", "notes")}
+                                          "status", "next", "notes", "waiting")}
                 | {"trials": len(plan["trials"]), "trials_done": len(done), "arms": arm_names},
         "arms": per_arm,
         "preference": prefs,

@@ -52,13 +52,19 @@ async function loadRuns() {
       <td>${esc(r.name)}<div class="muted">${esc(r.run_id)}</div></td>
       <td>${esc(r.provider)} / ${esc(r.model)}</td>
       <td>${esc(r.arms.join(' vs '))}</td>
-      <td>${esc(r.status)}${r.active ? ' ●' : ''}</td>
+      <td>${esc(r.status)}${r.active ? ' ●' : ''}${waitingNote(r)}</td>
       <td>${Math.min(r.next, r.trials)}/${r.trials}</td>
       <td>${actions.join(' ')}</td></tr>`;
   });
   document.getElementById('runsTable').innerHTML =
     '<tr><th>Run</th><th>Provider / model</th><th>Arms</th><th>Status</th><th>Trials</th><th></th></tr>' +
     (rows.join('') || '<tr><td colspan="6" class="muted">No runs yet.</td></tr>');
+}
+
+function waitingNote(plan) {
+  if (!plan.waiting || !['pending', 'running'].includes(plan.status)) return '';
+  const since = (plan.waiting.since || '').split('T')[1] || '';
+  return `<div style="color:var(--c-warn)">waiting: ${esc(plan.waiting.reason)}${since ? ' since ' + esc(since) : ''}</div>`;
 }
 
 async function startRun() {
@@ -100,7 +106,8 @@ async function loadSummary() {
   document.getElementById('resultsEmpty').style.display = 'none';
   document.getElementById('resultsBody').style.display = '';
   document.getElementById('resultsRun').textContent =
-    `— ${s.plan.name} (${s.plan.trials_done}/${s.plan.trials} trials, ${s.plan.status})`;
+    `— ${s.plan.name} (${s.plan.trials_done}/${s.plan.trials} trials, ${s.plan.status}` +
+    (s.plan.waiting && ['pending', 'running'].includes(s.plan.status) ? ` — waiting: ${s.plan.waiting.reason}` : '') + ')';
   const cols = [
     ['n', 'n'], ['initial_pass_pct', 'draft pass %'], ['final_pass_pct', 'final pass %'],
     ['changed_from_draft_pct', 'changed %'], ['median_seconds', 'median s'], ['mean_responses', 'responses'],
