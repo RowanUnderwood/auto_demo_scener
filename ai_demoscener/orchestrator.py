@@ -3,6 +3,7 @@ import csv
 import hashlib
 import logging
 import random
+import re
 import shutil
 import subprocess
 import threading
@@ -23,8 +24,11 @@ BASE = Path(__file__).parent
 
 
 class Orchestrator:
-    def __init__(self, broadcast_fn):
+    def __init__(self, broadcast_fn, display_count_fn=None):
         self._broadcast = broadcast_fn
+        # Number of connected display pages (the only clients that can run auditions).
+        # None means "unknown" and is treated as always connected.
+        self._display_count = display_count_fn or (lambda: 1)
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
         self._skip = threading.Event()
@@ -72,6 +76,24 @@ class Orchestrator:
 
     def _push_status(self, text: str) -> None:
         self._broadcast({"type": "status", "text": text})
+
+    def _wait_for_display(self) -> bool:
+        """Block until at least one display page is connected. Returns False if a stop or
+        skip arrives first. Without a display nothing can validate a demo, so generating one
+        would only waste an LLM call (and archiving it unvalidated isn't an option)."""
+        if self._display_count() > 0:
+            return True
+        log.info("No display connected — pausing generation until one connects")
+        self._push_status("WAITING FOR DISPLAY")
+        while self._display_count() == 0:
+            if self._stop.is_set():
+                return False
+            if self._skip.is_set():
+                self._skip.clear()
+                return False
+            time.sleep(1)
+        log.info("Display connected — resuming generation")
+        return True
 
     def _active_provider_cfg(self, cfg: dict) -> tuple[str, dict]:
         provider = cfg.get("llm_provider", "lm_studio")
@@ -181,6 +203,9 @@ class Orchestrator:
         self._skip.clear()
         self._discard_current.clear()
 
+        if not self._wait_for_display():
+            return
+
         # PICK MODE
         self._tx("PICK_MODE")
         mode, prompt_data = self._pick_mode(cfg)
@@ -211,12 +236,13 @@ class Orchestrator:
 
         # Save to temp for audition
         temp_path = self._save_temp(html)
+        brief = self._build_brief(cfg, mode, prompt_data, html)
 
         # VALIDATE + REPAIR loop
         max_repairs = cfg["validation"]["max_repair_attempts"]
         audition_secs = cfg["validation"]["audition_seconds"]
         html, last_error = self._validate_and_repair(
-            cfg, temp_path, html, model, max_repairs, audition_secs
+            cfg, temp_path, html, model, max_repairs, audition_secs, brief=brief
         )
         if html is None:
             kind = (last_error or {}).get("kind")
@@ -255,7 +281,8 @@ class Orchestrator:
         # above (may re-display an improved version if it validates successfully)
         if raw_video_path is not None:
             html2 = self._video_improve_from_recording(
-                cfg, html, raw_video_path, temp_path, model, effect_slug, mode, source_path
+                cfg, html, raw_video_path, temp_path, model, effect_slug, mode, source_path,
+                brief=brief,
             )
             if html2 is None:
                 log.info("Generate-mode demo discarded by user before archiving (video-improve re-display)")
@@ -281,7 +308,8 @@ class Orchestrator:
         self._tx("IDLE")
 
     def _validate_and_repair(self, cfg: dict, temp_path: Path, html: str, model: str,
-                              max_repairs: int, audition_secs: float) -> tuple[str | None, dict | None]:
+                              max_repairs: int, audition_secs: float,
+                              brief: str = "") -> tuple[str | None, dict | None]:
         """Runs the audition→repair cycle against temp_path/html.
 
         Returns (final_html, None) on success, or (None, last_error) if repairs were
@@ -289,11 +317,34 @@ class Orchestrator:
         DISCARD, and does not delete temp_path on failure — the caller decides what
         exhaustion means in its context (e.g. a first-generation failure discards the whole
         cycle, but a failed video-improve pass just falls back to the original demo).
+
+        An audition TIMEOUT is an infrastructure problem, not a demo failure: it never
+        triggers a repair. With no display connected it waits for one and re-auditions; with
+        a display connected it retries once, then gives up with kind=None (so the caller
+        discards without recording a failure in stats).
+
+        `brief` (the original request, see _build_brief) and the history of failed attempts
+        are carried into every repair request so repairs stay faithful to what was asked for.
         """
         last_error: dict = {"kind": None, "msg": None}
+        history: list[str] = []
         for attempt in range(max_repairs + 1):
             self._tx("VALIDATE", attempt=attempt)
             result = self._audition(temp_path, audition_secs)
+
+            timeouts = 0
+            while result.get("result") == "TIMEOUT":
+                if self._display_count() == 0:
+                    if not self._wait_for_display():
+                        return None, {"kind": None, "msg": "cancelled while waiting for a display"}
+                else:
+                    timeouts += 1
+                    if timeouts > 1:
+                        log.warning("Display did not answer the audition twice; abandoning this demo")
+                        return None, {"kind": None, "msg": "display did not respond to audition"}
+                    log.warning("Audition timed out with a display connected; retrying once")
+                self._tx("VALIDATE", attempt=attempt)
+                result = self._audition(temp_path, audition_secs)
 
             if result.get("result") == "OK":
                 return html, None
@@ -302,6 +353,7 @@ class Orchestrator:
                 "kind": result.get("result", "CRASHED"),
                 "msg": result.get("error", ""),
             }
+            diagnostics = result.get("diagnostics") or {}
 
             if attempt >= max_repairs:
                 log.info("Max repairs reached")
@@ -314,7 +366,11 @@ class Orchestrator:
                 )
 
             self._tx("REPAIR", attempt=attempt + 1, max=max_repairs)
-            html = self._do_repair(cfg, html, error_msg, model=model)
+            html = self._do_repair(cfg, html, error_msg, model=model, brief=brief,
+                                   history=history, diagnostics=diagnostics)
+            history.append(
+                f"Attempt {attempt + 1}: {last_error['kind']} — {error_msg.splitlines()[0][:200]}"
+            )
             if html is None:
                 return None, {"kind": None, "msg": "repair call failed"}
             temp_path.write_text(html, encoding="utf-8")
@@ -403,7 +459,7 @@ class Orchestrator:
 
     def _video_improve_from_recording(self, cfg: dict, html: str, raw_path: Path, temp_path: Path,
                                        model: str, effect_slug: str, mode: str,
-                                       source_path: Path | None) -> str | None:
+                                       source_path: Path | None, brief: str = "") -> str | None:
         """Given a video already recorded during the first display, transcodes it, asks Qwen
         for a visual improvement, validates the result, and re-displays it live on success.
 
@@ -428,7 +484,7 @@ class Orchestrator:
             audition_secs = cfg["validation"]["audition_seconds"]
             temp_path.write_text(improved, encoding="utf-8")
             final_html, err = self._validate_and_repair(
-                cfg, temp_path, improved, model, max_repairs, audition_secs
+                cfg, temp_path, improved, model, max_repairs, audition_secs, brief=brief
             )
             if final_html is None:
                 log.warning("Video-improved HTML failed validation (%s); archiving original instead", err)
@@ -447,7 +503,7 @@ class Orchestrator:
 
     def _record_video(self, seconds: float, fps: int) -> Path | None:
         record_id = uuid.uuid4().hex[:8]
-        validator.start_recording()
+        validator.start_recording(record_id)
         self._broadcast({
             "type": "record_video",
             "seconds": seconds,
@@ -691,14 +747,70 @@ class Orchestrator:
             log.warning("Generation had error: %s", err)
         return html
 
-    def _do_repair(self, cfg: dict, html: str, error: str, model: str = "") -> str | None:
+    def _do_repair(self, cfg: dict, html: str, error: str, model: str = "", brief: str = "",
+                   history: list[str] | None = None, diagnostics: dict | None = None) -> str | None:
         repair_prompt = cfg["system_prompts"]["repair"].format(error=error)
+        parts = []
+        if brief:
+            parts.append(f"Original brief (the fixed demo must still deliver this):\n{brief}")
+        if history:
+            parts.append("Earlier repair attempts that still failed:\n" + "\n".join(history))
+        diag_text = self._format_diagnostics(diagnostics or {})
+        if diag_text:
+            parts.append(f"Diagnostics from the failed run:\n{diag_text}")
+        parts.append(f"Current HTML:\n{html}")
         messages = [
             {"role": "system", "content": repair_prompt},
-            {"role": "user", "content": html},
+            {"role": "user", "content": "\n\n".join(parts)},
         ]
         repaired, _ = self._stream(cfg, messages, model=model)
         return repaired
+
+    _BRIEF_MAX_CHARS = 2000
+
+    def _build_brief(self, cfg: dict, mode: str, prompt_data: dict | None, html: str) -> str:
+        """A compact statement of what this cycle was asked to produce, carried into every
+        repair so a fix can't quietly drift into a different effect. Never includes the full
+        source of an update-mode original (it would eat the repair's context budget)."""
+        data = prompt_data if isinstance(prompt_data, dict) else {}
+        if mode == "stock":
+            brief = f"Effect: {data.get('effect', 'unknown')}\n{data.get('prompt', '')}"
+        elif mode == "update":
+            src = data.get("source_path")
+            name = Path(src).name if src else "an archived demo"
+            title = archive_mod.get_meta(name, cfg).get("title", "") if src else ""
+            brief = (f"A fresh take (new aesthetic and parameters, same core idea) on the "
+                     f"existing demo {name}" + (f" (\"{title}\")" if title else "") + ".")
+        else:
+            m = re.search(r"<title[^>]*>([^<]{1,120})</title>", html, re.IGNORECASE)
+            concept = f" Its working title is \"{m.group(1).strip()}\"." if m else ""
+            brief = ("An original demoscene effect invented by the model (creative mode)."
+                     + concept + " Keep that concept rather than switching to a different effect.")
+        return brief[: self._BRIEF_MAX_CHARS]
+
+    @staticmethod
+    def _format_diagnostics(diag: dict) -> str:
+        """Render the display page's structured audition evidence as compact text for the
+        repair prompt (bounded, since it shares the input budget with the HTML)."""
+        lines = []
+        for e in (diag.get("errors") or [])[:3]:
+            lines.append(f"- error [{e.get('category', 'js')}]: {str(e.get('error', ''))[:1200]}")
+        for c in (diag.get("console") or [])[:3]:
+            lines.append(f"- console.{c.get('level', 'log')}: {str(c.get('text', ''))[:200]}")
+        metrics = []
+        if diag.get("render_fps") is not None:
+            metrics.append(f"frames with draw calls: {diag['render_fps']}/s")
+        if diag.get("heartbeat_fps") is not None:
+            metrics.append(f"browser frame rate: {diag['heartbeat_fps']}/s")
+        if diag.get("visible_cells") is not None and diag.get("grid_cells"):
+            metrics.append(f"lit sample cells: {diag['visible_cells']}/{diag['grid_cells']}")
+        if diag.get("frozen_seconds"):
+            metrics.append(f"unchanged output for {diag['frozen_seconds']}s")
+        if diag.get("context_lost"):
+            metrics.append("WebGL context was lost")
+        if metrics:
+            lines.append("- " + "; ".join(metrics))
+        return "\n".join(lines)
 
     # ── Title / description generation ────────────────────────────────────────
 
@@ -787,14 +899,30 @@ class Orchestrator:
         return path
 
     def _audition(self, path: Path, seconds: float) -> dict:
-        validator.start_validation()
+        """Ask the display page to run temp file `path` for `seconds`. Returns the display's
+        audit_result, or {"result": "TIMEOUT"} if no display answered (an infrastructure
+        problem, never treated as a pass)."""
+        audition_id = uuid.uuid4().hex[:8]
+        validator.start_validation(audition_id)
         self._broadcast({
             "type": "audition",
-            "url": f"/temp/{path.name}",
+            # The probe reads ?aid= and stamps it on every message, so the display page can
+            # ignore messages from a previous iframe load.
+            "url": f"/temp/{path.name}?aid={audition_id}",
             "seconds": seconds,
+            "audition_id": audition_id,
         })
         result = validator.wait_for_result(timeout=seconds + 15)
         if result is None:
-            log.warning("Audition timed out — treating as OK")
-            return {"result": "OK"}
+            log.warning("Audition %s timed out — no display replied", audition_id)
+            return {"result": "TIMEOUT"}
+        diag = result.get("diagnostics") or {}
+        log.info(
+            "Audition %s: %s%s | render_fps=%s heartbeat_fps=%s lit=%s/%s frozen=%ss errors=%d console=%d",
+            audition_id, result.get("result"),
+            f" ({result.get('error')})" if result.get("error") else "",
+            diag.get("render_fps"), diag.get("heartbeat_fps"),
+            diag.get("visible_cells"), diag.get("grid_cells"), diag.get("frozen_seconds"),
+            len(diag.get("errors") or []), len(diag.get("console") or []),
+        )
         return result

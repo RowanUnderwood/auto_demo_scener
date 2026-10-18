@@ -84,10 +84,15 @@ let currentDisplayMeta = null;      // meta from the active DISPLAY message
 
 // Audition tracking
 let auditActive = false;
-let auditErrors = [];
+let auditId = null;        // ID of the audition in progress; echoed back in audit_result
+let auditErrors = [];      // [{category, error}]
+let auditConsole = [];     // [{level, text}] — evidence only, not failures
 let auditHeartbeats = [];
 let auditTimer = null;
+let auditGraceTimer = null;
 let auditSeconds = 0;
+const AUDIT_ERROR_GRACE_MS = 750;  // keep listening briefly after the first error for follow-ons
+let lastRecordId = null;
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────
 let ws;
@@ -99,6 +104,9 @@ function connectWS() {
 
   ws.onopen = () => {
     wsRetryDelay = 1000;
+    // Register as a display so the orchestrator knows something can run auditions
+    // (the config page shares /ws but never sends this).
+    sendWS({ type: 'hello', role: 'display' });
     console.log('[display] WS connected');
   };
 
@@ -123,7 +131,7 @@ function handleMsg(msg) {
     case 'state':          handleState(msg);  break;
     case 'token':          queueToken(msg.token); break;
     case 'status':         setStatus(msg.text); break;
-    case 'audition':       startAudition(msg.url, msg.seconds); break;
+    case 'audition':       startAudition(msg.url, msg.seconds, msg.audition_id); break;
     case 'config_push':    applyConfig(msg.config); break;
     case 'model_selected': modelInfo.textContent = `[${msg.model}]`; break;
     case 'record_video':   relayRecordCommand(msg); break;
@@ -136,6 +144,7 @@ function handleMsg(msg) {
 function relayRecordCommand(msg) {
   console.log('[display] record_video received from server:', msg,
     'demoFrame.contentWindow present:', !!(demoFrame && demoFrame.contentWindow));
+  lastRecordId = msg.record_id;
   if (demoFrame && demoFrame.contentWindow) {
     demoFrame.contentWindow.postMessage(
       { type: 'start_recording', seconds: msg.seconds, fps: msg.fps, record_id: msg.record_id },
@@ -218,8 +227,9 @@ function handleState(msg) {
       stopSpinner();
       const msgUrl = msg.url || '';
       const isNewDemo = msgUrl !== _currentDisplayUrl;
-      // Load iframe if not already loaded by audition
-      if (msgUrl && demoFrame.src !== location.origin + msgUrl) {
+      // Load iframe if not already loaded by audition (the audition URL carries an ?aid=
+      // query, so compare paths only — otherwise the demo would restart when it goes live)
+      if (msgUrl && demoFrame.src.split('?')[0] !== location.origin + msgUrl) {
         demoFrame.src = msgUrl;
       }
       const urlFile = msgUrl.split('/').pop();
@@ -496,13 +506,16 @@ function highlight(code) {
 }
 
 // ── Audition (iframe validation) ──────────────────────────────────────────────
-function startAudition(url, seconds) {
+function startAudition(url, seconds, id) {
+  auditId = id ?? null;
   auditErrors = [];
+  auditConsole = [];
   auditHeartbeats = [];
   auditActive = true;
   auditSeconds = seconds;
 
   if (auditTimer) clearTimeout(auditTimer);
+  if (auditGraceTimer) { clearTimeout(auditGraceTimer); auditGraceTimer = null; }
   demoFrame.src = url;
   setStatus('AUDITING…');
 
@@ -513,20 +526,57 @@ window.addEventListener('message', (ev) => {
   if (!auditActive) return;
   const msg = ev.data;
   if (!msg || typeof msg.type !== 'string') return;
+  // Ignore messages from a previous iframe load (different or missing audition ID)
+  if (auditId && msg.aid !== auditId) return;
 
   if (msg.type === 'probe_error') {
-    auditErrors.push(msg.error || 'unknown error');
-    // Fail fast on first error
-    if (auditTimer) { clearTimeout(auditTimer); auditTimer = null; }
-    concludeAudition();
+    auditErrors.push({ category: msg.category || 'js', error: msg.error || 'unknown error' });
+    // Fail fast, but give follow-on errors (e.g. the shader log after a link failure) a
+    // moment to arrive so the repair request sees the whole picture.
+    if (!auditGraceTimer) {
+      if (auditTimer) { clearTimeout(auditTimer); auditTimer = null; }
+      auditGraceTimer = setTimeout(() => { auditGraceTimer = null; concludeAudition(); },
+                                   AUDIT_ERROR_GRACE_MS);
+    }
+  } else if (msg.type === 'probe_console') {
+    auditConsole.push({ level: msg.level, text: msg.text });
   } else if (msg.type === 'probe_heartbeat') {
-    auditHeartbeats.push({ fps: msg.fps, draws: msg.draws, hasDrawn: msg.hasDrawn,
-                            brightPixels: msg.brightPixels ?? null });
+    auditHeartbeats.push({ fps: msg.fps, renderFps: msg.renderFps ?? null, draws: msg.draws,
+                            hasDrawn: msg.hasDrawn, brightPixels: msg.brightPixels ?? null,
+                            gridCells: msg.gridCells ?? null, changed: msg.changed ?? null });
   }
 });
 
+function auditDiagnostics() {
+  const hb = auditHeartbeats;
+  const avg = (key) => {
+    const v = hb.map(h => h[key]).filter(x => typeof x === 'number');
+    return v.length ? +(v.reduce((a, b) => a + b, 0) / v.length).toFixed(1) : null;
+  };
+  // Longest run of consecutive heartbeats whose sampled pixels didn't change (≈ seconds)
+  let frozen = 0, run = 0;
+  for (const h of hb) {
+    if (h.changed === false) { run++; frozen = Math.max(frozen, run); } else run = 0;
+  }
+  const lit = hb.map(h => h.brightPixels).filter(x => x !== null);
+  return {
+    errors:         auditErrors,
+    console:        auditConsole,
+    heartbeats:     hb.length,
+    heartbeat_fps:  avg('fps'),
+    render_fps:     avg('renderFps'),
+    draws_per_sec:  avg('draws'),
+    visible_cells:  lit.length ? Math.max(...lit) : null,
+    grid_cells:     hb.find(h => h.gridCells)?.gridCells ?? null,
+    frozen_seconds: frozen,
+    context_lost:   auditErrors.some(e => e.category === 'context_lost'),
+  };
+}
+
 function concludeAudition() {
+  if (!auditActive) return;
   auditActive = false;
+  if (auditTimer) { clearTimeout(auditTimer); auditTimer = null; }
   const minFps   = cfg?.validation?.min_fps ?? 5;
   const blankSec = cfg?.validation?.blank_detection_seconds ?? 4;
 
@@ -534,7 +584,7 @@ function concludeAudition() {
 
   if (auditErrors.length > 0) {
     result = 'CRASHED';
-    error  = auditErrors[0];
+    error  = auditErrors[0].error;
   } else if (auditHeartbeats.length === 0) {
     // No heartbeat at all within audition window
     result = 'BLANK';
@@ -560,7 +610,8 @@ function concludeAudition() {
   }
 
   console.log('[display] audit result:', result, error || '');
-  sendWS({ type: 'audit_result', result, error: error || null });
+  sendWS({ type: 'audit_result', audition_id: auditId, result, error: error || null,
+           diagnostics: auditDiagnostics() });
 }
 
 // ── Fake CPU/MEM gauges ───────────────────────────────────────────────────────
@@ -647,7 +698,8 @@ document.addEventListener('keydown', (e) => handleKey(e.key));
 // Also relays video-recording failures so the orchestrator can fail fast instead of timing out.
 window.addEventListener('message', (ev) => {
   if (ev.data?.type === 'probe_keydown') handleKey(ev.data.key);
-  else if (ev.data?.type === 'probe_record_error') sendWS({ type: 'record_error', error: ev.data.error });
+  else if (ev.data?.type === 'probe_record_error')
+    sendWS({ type: 'record_error', record_id: ev.data.record_id || lastRecordId, error: ev.data.error });
 });
 
 // Refocus parent after each iframe load so the parent keydown listener also works

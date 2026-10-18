@@ -54,6 +54,8 @@ python app.py --launch
 
 No GPU required on the host machine — the LLM provider handles inference, the browser handles WebGL rendering.
 
+Generate mode needs the display page (`/display`) open somewhere: every demo is validated in that browser before it's shown or archived. With no display connected, generation pauses (logged as *No display connected — pausing generation*) and resumes as soon as one connects; replay mode doesn't need it.
+
 ---
 
 ## Configuration

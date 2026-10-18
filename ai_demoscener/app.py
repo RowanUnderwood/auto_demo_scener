@@ -28,6 +28,10 @@ sock = Sock(app)
 
 # ── WebSocket registry ─────────────────────────────────────────────────────────
 _ws_clients: set = set()
+# Subset of _ws_clients that announced themselves as a display page ({type:"hello",
+# role:"display"}). The config page also connects to /ws but can't run auditions, so only
+# these count when the orchestrator checks whether anything can validate a demo.
+_display_clients: set = set()
 _ws_lock = threading.Lock()
 
 
@@ -44,9 +48,15 @@ def broadcast(msg: dict) -> None:
     if dead:
         with _ws_lock:
             _ws_clients.difference_update(dead)
+            _display_clients.difference_update(dead)
 
 
-orc = Orchestrator(broadcast_fn=broadcast)
+def display_count() -> int:
+    with _ws_lock:
+        return len(_display_clients)
+
+
+orc = Orchestrator(broadcast_fn=broadcast, display_count_fn=display_count)
 
 # ── Title card batch generation state ─────────────────────────────────────────
 _tc_lock    = threading.Lock()
@@ -80,15 +90,25 @@ def ws_handler(ws):
                 msg = json.loads(raw)
             except json.JSONDecodeError:
                 continue
-            if msg.get("type") == "audit_result":
+            if msg.get("type") == "hello" and msg.get("role") == "display":
+                with _ws_lock:
+                    _display_clients.add(ws)
+                log.info("Display connected (%d active)", display_count())
+            elif msg.get("type") == "audit_result":
                 validator.receive_result(msg)
             elif msg.get("type") == "record_error":
-                validator.receive_recording({"status": "error", "error": msg.get("error")})
+                validator.receive_recording(
+                    str(msg.get("record_id") or ""), {"status": "error", "error": msg.get("error")}
+                )
     except Exception:
         pass
     finally:
         with _ws_lock:
             _ws_clients.discard(ws)
+            was_display = ws in _display_clients
+            _display_clients.discard(ws)
+        if was_display:
+            log.info("Display disconnected (%d active)", display_count())
 
 
 # ── HTML pages ─────────────────────────────────────────────────────────────────
@@ -116,6 +136,15 @@ def _three_importmap() -> dict | None:
         "https://unpkg.com/three/build/three.module.js": local,
         "https://cdn.skypack.dev/three": local,
     }
+
+
+@app.after_request
+def _cors_for_vendored_three(resp):
+    # Demos run in a sandboxed iframe (opaque "null" origin), so their module imports of the
+    # vendored three.js are cross-origin requests and are blocked without this header.
+    if request.path.startswith("/static/three/"):
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+    return resp
 
 
 def _serve_with_probe(path: Path) -> Response:
@@ -183,13 +212,19 @@ def api_upload_recording():
         resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
         return resp
 
-    record_id = request.args.get("record_id", "x")
+    record_id = request.args.get("record_id", "")
+    # Only the recording the orchestrator is currently waiting for is accepted; this also
+    # keeps the (otherwise client-controlled) record_id safe to use in a filename.
+    if not validator.is_pending_recording(record_id):
+        resp = jsonify({"ok": False, "error": "no such pending recording"})
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        return resp, 409
     data = request.get_data()
     if not data:
         return jsonify({"ok": False, "error": "empty body"}), 400
     dest = TEMP_DIR / f"recording_{record_id}.webm"
     dest.write_bytes(data)
-    validator.receive_recording({"status": "uploaded", "path": str(dest)})
+    validator.receive_recording(record_id, {"status": "uploaded", "path": str(dest)})
     resp = jsonify({"ok": True})
     resp.headers["Access-Control-Allow-Origin"] = "*"
     return resp

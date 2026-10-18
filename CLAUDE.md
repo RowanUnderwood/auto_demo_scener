@@ -76,17 +76,21 @@ Orchestrator (daemon thread)
 
 ### Validation flow (the tricky part)
 
-1. Orchestrator saves generated HTML to `temp/`, broadcasts `{type:"audition", url, seconds}` to display page
-2. Display page loads the URL in a hidden iframe (iframe is always full-viewport; mock-OS overlay covers it)
-3. Flask serves `/temp/<f>` by injecting `validator.PROBE_JS` into `<head>` — probe patches WebGL draw calls, catches errors, heartbeats via `postMessage`
-4. Display page collects postMessages for `audition_seconds`, then sends `{type:"audit_result", result:"OK"/"CRASHED"/"BLANK", error}` back over WebSocket
-5. `validator.receive_result()` unblocks the orchestrator's `wait_for_result()` call
+0. Display pages register by sending `{type:"hello", role:"display"}` on WebSocket connect (`app.py` keeps `_display_clients`; the config page shares `/ws` but never registers). With no display registered, `_generate_cycle` pauses in `_wait_for_display()` before spending an LLM call (status `WAITING FOR DISPLAY`), since nothing could validate the result.
+1. Orchestrator saves generated HTML to `temp/`, broadcasts `{type:"audition", url:"/temp/<f>?aid=<id>", seconds, audition_id}` to display pages
+2. Display page loads the URL in a hidden iframe (iframe is always full-viewport; mock-OS overlay covers it). The later `DISPLAY` state compares paths without the query string, so the audited iframe keeps running rather than reloading.
+3. Flask serves `/temp/<f>` by injecting `validator.PROBE_JS` into `<head>`. The probe patches WebGL draw calls, reports every error (bounded: `window.onerror` with stack, `unhandledrejection`, `webglcontextlost`, and `console.error` lines from three.js containing `THREE.WebGLProgram`/`Shader Error`, which is how three.js reports shader compile failures — it doesn't throw), relays other `console.error`/`warn` as evidence, and heartbeats via `postMessage`. Every message carries the `aid` read from `location.search`; the display page ignores messages from an earlier iframe load. Error locations are rewritten to the demo's own line numbers (`inject_probe()` substitutes the number of lines it injected for `__PROBE_LINE_OFFSET__`).
+4. Display page collects postMessages for `audition_seconds` (on the first error it waits a further 750 ms for follow-on errors, then concludes), then sends `{type:"audit_result", audition_id, result:"OK"/"CRASHED"/"BLANK", error, diagnostics}` back over WebSocket. `diagnostics` = `{errors[{category,error}], console[], heartbeats, heartbeat_fps, render_fps, draws_per_sec, visible_cells, grid_cells, frozen_seconds, context_lost}`. `heartbeat_fps` is the browser's rAF rate; `render_fps` counts only frames in which the demo issued draw calls. Visibility samples an 8×8 grid; `frozen_seconds` is the longest run of heartbeats with an unchanged sample signature (evidence only — never a failure by itself).
+5. `validator.receive_result()` unblocks the orchestrator's `wait_for_result()` call — but only for a result whose `audition_id` matches the pending one (first match wins; late replies and duplicates from a second display tab are ignored). Recordings use the same pattern keyed by `record_id`, and `/api/upload_recording` rejects uploads for any record ID that isn't pending.
+6. No reply within `audition_seconds + 15` → `{"result":"TIMEOUT"}`, which is an infrastructure problem, never a pass and never a repair trigger: `_validate_and_repair()` waits for a display if none is connected, otherwise retries once and then gives up with `kind=None` (DISCARD with no error overlay, nothing archived, nothing recorded in stats).
+
+**Repairs keep the brief.** `_build_brief()` produces a compact statement of the cycle's request (stock: effect name + CSV prompt; creative: the first draft's `<title>` as the concept; update: the source filename/title, never its full source). `_do_repair()` keeps the user-editable `repair` system prompt (`{error}` placeholder) and sends a user message of: original brief → earlier failed attempts → `_format_diagnostics()` text → current HTML. The video-improve re-validation passes the same brief.
 
 The probe also relays `keydown` events from inside the iframe to the parent via `postMessage({type:"probe_keydown", key})`. This is necessary because the iframe steals focus from the parent document when a WebGL demo loads, which would otherwise block keyboard shortcuts.
 
 ### Importmap override (CDN → local)
 
-`app.py:_three_importmap()` builds a dict mapping common CDN URLs for three.js to `/static/three/three.module.js`. `validator.inject_probe()` merges this into any existing importmap in the AI's HTML, or injects a new `<script type="importmap">` tag. This means AI-generated code with CDN imports works offline.
+`app.py:_three_importmap()` builds a dict mapping common CDN URLs for three.js to `/static/three/three.module.js`. `validator.inject_probe()` merges this into any existing importmap in the AI's HTML, or injects a new `<script type="importmap">` tag. Caveats: the demo's own entries win the merge, and import maps don't chain, so a demo that maps `"three"` to a CDN URL (most of the archive) still loads three.js from the CDN — the local copy is used for bare `'three'` imports without their own mapping. Because the demo iframe is sandboxed (opaque `null` origin), module imports of the local copy are cross-origin; `app.py:_cors_for_vendored_three` adds `Access-Control-Allow-Origin: *` to `/static/three/` responses so they aren't blocked.
 
 ### Display page layers
 

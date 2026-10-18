@@ -6,56 +6,84 @@ import threading
 log = logging.getLogger(__name__)
 
 # ── Validation synchronisation ─────────────────────────────────────────────────
+# Each audition / recording carries an ID. Only a reply carrying the pending ID completes
+# the wait, so a late reply from a previous audition, or a duplicate from a second display
+# tab, can't satisfy the wrong request (the first matching reply wins).
 _event = threading.Event()
 _result: dict | None = None
+_pending_id: str | None = None
 _lock = threading.Lock()
 
 
-def start_validation() -> None:
-    global _result
+def start_validation(audition_id: str) -> None:
+    global _result, _pending_id
     with _lock:
         _result = None
+        _pending_id = audition_id
     _event.clear()
 
 
 def receive_result(result: dict) -> None:
-    global _result
+    global _result, _pending_id
     with _lock:
+        if _pending_id is None or result.get("audition_id") != _pending_id:
+            log.debug("Ignoring stale/unexpected audit_result %s (pending %s)",
+                      result.get("audition_id"), _pending_id)
+            return
         _result = result
+        _pending_id = None
     _event.set()
     log.debug("Validation result received: %s", result.get("result"))
 
 
 def wait_for_result(timeout: float) -> dict | None:
+    global _pending_id
     _event.wait(timeout=timeout)
     with _lock:
+        if _result is None:
+            _pending_id = None  # timed out — a reply arriving now is stale
         return _result
 
 
 # ── Video-recording synchronisation ─────────────────────────────────────────────
 _rec_event = threading.Event()
 _rec_result: dict | None = None
+_rec_pending_id: str | None = None
 _rec_lock = threading.Lock()
 
 
-def start_recording() -> None:
-    global _rec_result
+def start_recording(record_id: str) -> None:
+    global _rec_result, _rec_pending_id
     with _rec_lock:
         _rec_result = None
+        _rec_pending_id = record_id
     _rec_event.clear()
 
 
-def receive_recording(result: dict) -> None:
-    global _rec_result
+def is_pending_recording(record_id: str) -> bool:
     with _rec_lock:
+        return _rec_pending_id is not None and record_id == _rec_pending_id
+
+
+def receive_recording(record_id: str, result: dict) -> None:
+    global _rec_result, _rec_pending_id
+    with _rec_lock:
+        if _rec_pending_id is None or record_id != _rec_pending_id:
+            log.debug("Ignoring stale/unexpected recording result %s (pending %s)",
+                      record_id, _rec_pending_id)
+            return
         _rec_result = result
+        _rec_pending_id = None
     _rec_event.set()
     log.debug("Recording result received: %s", result.get("status"))
 
 
 def wait_for_recording(timeout: float) -> dict | None:
+    global _rec_pending_id
     _rec_event.wait(timeout=timeout)
     with _rec_lock:
+        if _rec_result is None:
+            _rec_pending_id = None
         return _rec_result
 
 
@@ -63,18 +91,62 @@ def wait_for_recording(timeout: float) -> dict | None:
 
 PROBE_JS = r"""
 (function(){
-  var _drawCount=0, _frameCount=0, _lastFpsTs=performance.now();
-  var _hasDrawn=false, _errorSent=false, _glCtxs=[];
+  /* Audition ID passed in by the orchestrator as ?aid=…; stamped on every message so the
+     display page can ignore messages from a previous iframe load. Null outside auditions. */
+  var _aid=null;
+  try{ _aid=new URLSearchParams(location.search).get('aid'); }catch(e){}
 
-  function send(msg){ try{ window.parent.postMessage(msg,'*'); }catch(e){} }
+  var _drawCount=0, _drawsAtLastTick=0, _frameCount=0, _renderFrames=0, _lastFpsTs=performance.now();
+  var _hasDrawn=false, _glCtxs=[], _lastSig=null, _errCount=0, _conCount=0;
+  var MAX_MSGS=10, MAX_LEN=2000;
+
+  /* Number of lines inject_probe() added above the demo's own code; subtracted from line
+     numbers in error locations so they match the source the model wrote. Also drops the
+     ?aid= query from those URLs. */
+  var LINE_OFFSET=__PROBE_LINE_OFFSET__;
+  function fixLines(text){
+    return String(text).replace(/(https?:\/\/[^\s()?#]+\.html)(\?[^\s:()#]*)?:(\d+)(:\d+)?/g,
+      function(m,url,q,line,col){ return url+':'+Math.max(1,(+line)-LINE_OFFSET)+(col||''); });
+  }
+  function clip(s){ s=fixLines(s); return s.length>MAX_LEN ? s.slice(0,MAX_LEN)+'…' : s; }
+  function send(msg){ msg.aid=_aid; try{ window.parent.postMessage(msg,'*'); }catch(e){} }
+  /* Every error is reported (bounded), not just the first — the display page collects
+     follow-on errors briefly before concluding the audition. */
+  function sendError(category,text){
+    if(_errCount>=MAX_MSGS)return; _errCount++;
+    send({type:'probe_error',category:category,error:clip(text)});
+  }
 
   window.onerror=function(msg,src,line,col,err){
-    if(_errorSent)return; _errorSent=true;
-    send({type:'probe_error',error:String(msg)+' @ '+src+':'+line});
+    var text=String(msg)+' @ '+src+':'+line+(col?':'+col:'');
+    if(err&&err.stack)text+='\n'+err.stack;
+    sendError('js',text);
   };
   window.addEventListener('unhandledrejection',function(e){
-    if(_errorSent)return; _errorSent=true;
-    send({type:'probe_error',error:String(e.reason||'Unhandled rejection')});
+    var r=e.reason;
+    sendError('promise',(r&&r.stack)?r.stack:String(r||'Unhandled rejection'));
+  });
+
+  /* three.js reports shader compile/link failures via console.error rather than throwing,
+     so wrap console.error/warn: shader errors count as crashes, the rest is evidence. */
+  ['error','warn'].forEach(function(level){
+    var orig=console[level];
+    console[level]=function(){
+      try{
+        var text=Array.prototype.map.call(arguments,function(a){
+          return (a instanceof Error) ? (a.stack||String(a)) : String(a);
+        }).join(' ');
+        if(text.indexOf('[probe]')!==0){
+          if(level==='error'&&/THREE\.WebGLProgram|Shader Error|Program Info Log/i.test(text)){
+            sendError('shader',text);
+          }else if(_conCount<MAX_MSGS){
+            _conCount++;
+            send({type:'probe_console',level:level,text:clip(text)});
+          }
+        }
+      }catch(e){}
+      return orig.apply(console,arguments);
+    };
   });
 
   function patchCtx(ctx){
@@ -91,32 +163,52 @@ PROBE_JS = r"""
     var c=_origGetCtx.call(this,t,o);
     if((t==='webgl'||t==='webgl2'||t==='experimental-webgl')&&c){
       patchCtx(c);
-      _glCtxs.push(c);
+      if(_glCtxs.indexOf(c)<0){
+        _glCtxs.push(c);
+        this.addEventListener('webglcontextlost',function(){ sendError('context_lost','WebGL context lost'); });
+      }
     }
     return c;
   };
 
-  function sampleBright(gl){
+  /* 8x8 grid: count of visibly lit cells, plus a coarse luma signature for detecting
+     frozen output between heartbeats. */
+  var GRID=8;
+  function sampleGrid(gl){
     var w=gl.drawingBufferWidth,h=gl.drawingBufferHeight;
-    if(!w||!h)return 0;
-    var bright=0,px=new Uint8Array(4);
-    for(var xi=0;xi<4;xi++)for(var yi=0;yi<4;yi++){
-      gl.readPixels(Math.floor((xi+0.5)/4*w),Math.floor((yi+0.5)/4*h),1,1,gl.RGBA,gl.UNSIGNED_BYTE,px);
-      if(0.299*px[0]+0.587*px[1]+0.114*px[2]>8)bright++;
+    if(!w||!h)return {bright:0,sig:''};
+    var bright=0,sig='',px=new Uint8Array(4);
+    for(var xi=0;xi<GRID;xi++)for(var yi=0;yi<GRID;yi++){
+      gl.readPixels(Math.floor((xi+0.5)/GRID*w),Math.floor((yi+0.5)/GRID*h),1,1,gl.RGBA,gl.UNSIGNED_BYTE,px);
+      var luma=0.299*px[0]+0.587*px[1]+0.114*px[2];
+      if(luma>8)bright++;
+      sig+=String.fromCharCode(65+(luma>>4));
     }
-    return bright;
+    return {bright:bright,sig:sig};
   }
 
   function tick(ts){
     _frameCount++;
+    /* A tick counts as a rendered frame only if the demo issued draw calls since the last
+       tick — distinct from the heartbeat (rAF) rate, which runs regardless. */
+    if(_drawCount!==_drawsAtLastTick){ _renderFrames++; _drawsAtLastTick=_drawCount; }
     requestAnimationFrame(tick);
     var elapsed=ts-_lastFpsTs;
     if(elapsed>=1000){
-      var bright=0;
-      for(var _i=0;_i<_glCtxs.length;_i++){try{bright=Math.max(bright,sampleBright(_glCtxs[_i]));}catch(e){}}
-      send({type:'probe_heartbeat',fps:_frameCount/(elapsed/1000),draws:_drawCount,hasDrawn:_hasDrawn,
-            brightPixels:_glCtxs.length>0?bright:null});
-      _frameCount=0; _drawCount=0; _lastFpsTs=ts;
+      var bright=0,sig='';
+      for(var _i=0;_i<_glCtxs.length;_i++){
+        try{ var g=sampleGrid(_glCtxs[_i]); bright=Math.max(bright,g.bright); sig+=g.sig; }catch(e){}
+      }
+      var hasGl=_glCtxs.length>0;
+      send({type:'probe_heartbeat',
+            fps:_frameCount/(elapsed/1000),
+            renderFps:_renderFrames/(elapsed/1000),
+            draws:_drawCount,hasDrawn:_hasDrawn,
+            brightPixels:hasGl?bright:null,
+            gridCells:GRID*GRID*Math.max(1,_glCtxs.length),
+            changed:(hasGl&&_lastSig!==null)?sig!==_lastSig:null});
+      if(hasGl)_lastSig=sig;
+      _frameCount=0; _renderFrames=0; _drawCount=0; _drawsAtLastTick=0; _lastFpsTs=ts;
     }
   }
   requestAnimationFrame(tick);
@@ -141,9 +233,9 @@ PROBE_JS = r"""
     try{
       var canvas=null;
       for(var i=_glCtxs.length-1;i>=0;i--){ if(_glCtxs[i].canvas){ canvas=_glCtxs[i].canvas; break; } }
-      if(!canvas){ console.warn('[probe] no canvas found among',_glCtxs.length,'stashed contexts'); send({type:'probe_record_error',error:'no canvas found'}); return; }
-      if(!canvas.captureStream){ console.warn('[probe] canvas.captureStream unsupported'); send({type:'probe_record_error',error:'canvas.captureStream unsupported in this browser'}); return; }
-      if(!window.MediaRecorder){ console.warn('[probe] MediaRecorder unsupported'); send({type:'probe_record_error',error:'MediaRecorder unsupported in this browser'}); return; }
+      if(!canvas){ console.warn('[probe] no canvas found among',_glCtxs.length,'stashed contexts'); send({type:'probe_record_error',record_id:m.record_id,error:'no canvas found'}); return; }
+      if(!canvas.captureStream){ console.warn('[probe] canvas.captureStream unsupported'); send({type:'probe_record_error',record_id:m.record_id,error:'canvas.captureStream unsupported in this browser'}); return; }
+      if(!window.MediaRecorder){ console.warn('[probe] MediaRecorder unsupported'); send({type:'probe_record_error',record_id:m.record_id,error:'MediaRecorder unsupported in this browser'}); return; }
       var stream=canvas.captureStream(m.fps||2);
       console.log('[probe] captureStream ok, tracks:',stream.getTracks().length);
       /* Try the widest reasonable set of containers/codecs — whatever we end up with,
@@ -158,7 +250,7 @@ PROBE_JS = r"""
       }
       if(!mimeType){
         console.warn('[probe] no supported mimeType among',candidates);
-        send({type:'probe_record_error',
+        send({type:'probe_record_error',record_id:m.record_id,
               error:'no supported MediaRecorder mimeType (tried: '+candidates.join(', ')+')'});
         return;
       }
@@ -171,14 +263,14 @@ PROBE_JS = r"""
         var blob=new Blob(_recordedChunks,{type:mimeType||'video/webm'});
         fetch('/api/upload_recording?record_id='+encodeURIComponent(m.record_id||''),{method:'POST',body:blob})
           .then(function(){ console.log('[probe] upload complete'); send({type:'probe_record_done',record_id:m.record_id}); })
-          .catch(function(e){ console.error('[probe] upload failed',e); send({type:'probe_record_error',error:String(e)}); });
+          .catch(function(e){ console.error('[probe] upload failed',e); send({type:'probe_record_error',record_id:m.record_id,error:String(e)}); });
       };
       _mediaRecorder.start();
       console.log('[probe] recorder started, state:',_mediaRecorder.state,'will stop in',(m.seconds||30),'s');
       setTimeout(function(){
         if(_mediaRecorder&&_mediaRecorder.state!=='inactive')_mediaRecorder.stop();
       },(m.seconds||30)*1000);
-    }catch(e){ console.error('[probe] recording setup threw',e); send({type:'probe_record_error',error:String(e)}); }
+    }catch(e){ console.error('[probe] recording setup threw',e); send({type:'probe_record_error',record_id:m.record_id,error:String(e)}); }
   });
 
   send({type:'probe_ready'});
@@ -186,10 +278,12 @@ PROBE_JS = r"""
 """
 
 _PROBE_SCRIPT_TAG = f"<script>{PROBE_JS}</script>\n"
+_LINE_OFFSET_PLACEHOLDER = "__PROBE_LINE_OFFSET__"
 
 
 def inject_probe(html: str, extra_imports: dict | None = None) -> str:
     """Inject probe script (and optional importmap) into the HTML <head>."""
+    original_lines = html.count("\n")
 
     # --- importmap handling ---
     if extra_imports:
@@ -220,7 +314,11 @@ def inject_probe(html: str, extra_imports: dict | None = None) -> str:
         pos = head_m.end()
     else:
         pos = 0
-    return html[:pos] + _PROBE_SCRIPT_TAG + html[pos:]
+    out = html[:pos] + _PROBE_SCRIPT_TAG + html[pos:]
+    # Everything injected sits in <head>, above the demo's scripts, so this one offset maps
+    # served line numbers back to the original source.
+    offset = out.count("\n") - original_lines
+    return out.replace(_LINE_OFFSET_PLACEHOLDER, str(offset), 1)
 
 
 def strip_fences(text: str) -> str:
