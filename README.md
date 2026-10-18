@@ -50,7 +50,7 @@ python app.py --launch
 - Python 3.10+
 - An LLM provider: [LM Studio](https://lmstudio.ai/) (default), [Ninfer](https://github.com/Neroued/ninfer) or [Strata](https://github.com/niko1221/strata) — any of them running on the local network with a model loaded
 - A modern browser with WebGL support (Chromium recommended for kiosk use)
-- **Only if using Ninfer's "improve demo via video check" feature:** `ffmpeg` on PATH (`sudo apt install ffmpeg` on Debian/Ubuntu) — used to transcode the browser's screen capture into the H.264 MP4 format the vision model expects. Not needed for anything else; the app runs fine without it as long as that checkbox is off.
+- **Only if using iterative visual review with video input (Ninfer):** `ffmpeg` on PATH (`sudo apt install ffmpeg` on Debian/Ubuntu) — used to transcode the browser's screen capture into the H.264 MP4 format the vision model expects. Not needed for anything else.
 
 No GPU required on the host machine — the LLM provider handles inference, the browser handles WebGL rendering.
 
@@ -69,10 +69,10 @@ Edit settings at `http://localhost:8080/config` while the server is running. All
 | API key | — | **Strata only** — the `--api-key` the Strata server was started with; sent as `Authorization: Bearer`. Leave blank if the server has no key |
 | Model | — | Which model to use; or enable **Surprise Me** for random selection each cycle |
 | Thinking effort | low | **Ninfer / Strata** — `none`/`low`/`medium`/`xhigh` (Ninfer) or `none`/`low`/`medium`/`high` (Strata), passed as `reasoning_effort` on every generation/repair call |
-| Improve demo via video check | off | **Ninfer only** — records ~30s at 2fps *while the demo plays normally* (no added time for this part), then sends the video + HTML to Qwen for a visual-improvement pass. The display switches to the coding view ("UPDATING BASED ON VIDEO…") while Qwen works, then re-validates and re-displays the result before archiving if it passes. Adds time only when an improvement is actually produced (LLM round-trip + a second display); requires `ffmpeg` |
 | Demo runtime | 60 s | How long each demo runs before the next cycle |
 | Mode weights | stock 2 / creative 1 / update 1 | Probability of each generation sub-mode |
 | Generation strategy | Classic | **Classic**: the model writes the whole file; failures get whole-file repairs. **Iterative**: the first draft is written the same way, then the app runs it and, if it fails (or runs but looks frozen, dark or noisy in the console), the model fixes it with small targeted edits — each change is run in the kiosk browser before the next round. Good first drafts cost no extra time. Budgets (turns, tool calls, deadline) are set under the strategy selector; if the budget runs out, the latest version that passed is used |
+| Visual review | off | **Iterative only.** Once a version passes, the app captures a few frames of it running and asks the model for at most three concrete visual problems; the model polishes them with edits, then the before and after captures are compared and the earlier version is kept unless the polish is clearly better. Needs a model that accepts images. Video input is available only with Ninfer (the option is disabled for LM Studio and Strata). If the server rejects images — e.g. Strata set up without "vision" — it is skipped for that demo |
 | Palette | Amber CRT | Display colour scheme (7 built-in options) |
 | Max repair attempts | 2 | How many times to ask the LLM to fix a broken demo |
 | Show title card | on | Brief overlay at the start of each demo with title, description, and model byline |
@@ -90,8 +90,8 @@ Edit settings at `http://localhost:8080/config` while the server is running. All
 ### LLM providers
 
 - **LM Studio** — the default; any OpenAI-compatible model it serves works.
-- **Ninfer** — a GPU-hosted OpenAI-compatible server for Qwen models ([github.com/Neroued/ninfer](https://github.com/Neroued/ninfer); requires an RTX 5090, so it runs on a separate machine from the orchestrator like LM Studio does). Selecting it unlocks the **thinking effort** dropdown and the **video-improve** checkbox above. Video-improve is scoped to generate mode only (stock/creative/update) — it doesn't touch replay mode or already-archived demos.
-- **Strata** — runs Qwen3.8-Flash-Next on a consumer GPU with an OpenAI-compatible API ([github.com/niko1221/strata](https://github.com/niko1221/strata)). To reach it from this machine, start it on the other PC with `--host 0.0.0.0 --api-key <secret>`, then enter `http://<that-pc>:8080` (a trailing `/v1` is fine too) and the same key in the config GUI. Selecting it unlocks the **API key** field and the **thinking effort** dropdown. Video-improve stays Ninfer-only, since Strata accepts images but not video.
+- **Ninfer** — a GPU-hosted OpenAI-compatible server for Qwen models ([github.com/Neroued/ninfer](https://github.com/Neroued/ninfer); requires an RTX 5090, so it runs on a separate machine from the orchestrator like LM Studio does). Selecting it unlocks the **thinking effort** dropdown, and it is the only provider that can use **video** input for iterative visual review.
+- **Strata** — runs Qwen3.8-Flash-Next on a consumer GPU with an OpenAI-compatible API ([github.com/niko1221/strata](https://github.com/niko1221/strata)). To reach it from this machine, start it on the other PC with `--host 0.0.0.0 --api-key <secret>`, then enter `http://<that-pc>:8080` (a trailing `/v1` is fine too) and the same key in the config GUI. Selecting it unlocks the **API key** field and the **thinking effort** dropdown. Visual review can use frames with it if Strata was set up with "vision"; video input stays Ninfer-only.
 
 ---
 

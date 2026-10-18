@@ -170,7 +170,11 @@ def chat_collect(
             stream=True,
             timeout=timeout,
         ) as resp:
-            resp.raise_for_status()
+            if resp.status_code >= 400:
+                # Read the body while the stream is still open — servers explain rejections
+                # there (e.g. "started without the vision encoder"), and it's gone afterwards.
+                raise LMHTTPError(resp.status_code,
+                                  f"HTTP error {resp.status_code}: {resp.text[:300] or resp.reason}")
             for raw_line in resp.iter_lines():
                 if should_abort is not None and should_abort():
                     result["aborted"] = True
@@ -211,13 +215,6 @@ def chat_collect(
         raise LMClientError(f"Request timed out after {timeout}s") from e
     except requests.exceptions.ConnectionError as e:
         raise LMClientError(f"Connection error: {e}") from e
-    except requests.exceptions.HTTPError as e:
-        body = ""
-        try:
-            body = e.response.text[:300]
-        except Exception:
-            pass
-        raise LMHTTPError(e.response.status_code, f"HTTP error {e.response.status_code}: {body or e}") from e
 
     result["content"] = "".join(content)
     result["tool_calls"] = [calls[i] for i in sorted(calls)]

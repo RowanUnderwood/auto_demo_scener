@@ -136,10 +136,11 @@ function handleMsg(msg) {
     case 'model_selected': modelInfo.textContent = `[${msg.model}]`; break;
     case 'record_video':   relayRecordCommand(msg); break;
     case 'source':         showSourceUpdate(msg); break;
+    case 'capture_frames': startCapture(msg); break;
   }
 }
 
-// Relay a video-improve recording command into the iframe. The iframe is sandboxed
+// Relay a visual-review recording command into the iframe. The iframe is sandboxed
 // (allow-scripts only, no allow-same-origin) so postMessage is the only way in — the probe
 // injected into the demo listens for this and does the actual canvas.captureStream() work.
 function relayRecordCommand(msg) {
@@ -156,6 +157,44 @@ function relayRecordCommand(msg) {
     console.warn('[display] cannot relay start_recording — no demoFrame.contentWindow');
   }
 }
+
+// Visual review: ask the probe inside the (still running) demo iframe for a few frames and
+// send them back over the WebSocket. Like recordings, postMessage is the only way in or out
+// of the sandboxed iframe.
+let capture = null;   // {id, frames, timer}
+
+function startCapture(msg) {
+  if (capture?.timer) clearTimeout(capture.timer);
+  capture = { id: msg.capture_id, frames: [], timer: null };
+  const finish = (extra) => {
+    if (!capture || capture.id !== msg.capture_id) return;
+    clearTimeout(capture.timer);
+    sendWS({ type: 'capture_result', capture_id: capture.id, frames: capture.frames, ...extra });
+    capture = null;
+  };
+  capture.finish = finish;
+  // Safety net in case the probe never answers (e.g. the demo navigated away)
+  capture.timer = setTimeout(() => finish({ error: 'capture timed out in the display page' }),
+                             (msg.count || 4) * (msg.interval_ms || 1500) + 5000);
+  if (demoFrame && demoFrame.contentWindow) {
+    demoFrame.contentWindow.postMessage({ type: 'capture_frames', capture_id: msg.capture_id,
+      count: msg.count, interval_ms: msg.interval_ms, max_px: msg.max_px }, '*');
+  } else {
+    finish({ error: 'no demo iframe' });
+  }
+}
+
+window.addEventListener('message', (ev) => {
+  const m = ev.data;
+  if (!capture || !m || m.capture_id !== capture.id) return;
+  if (m.type === 'probe_frame') {
+    capture.frames.push({ t: m.t, width: m.width, height: m.height, data: m.data });
+  } else if (m.type === 'probe_capture_done') {
+    capture.finish({ canvases: m.canvases });
+  } else if (m.type === 'probe_capture_error') {
+    capture.finish({ error: m.error });
+  }
+});
 
 function applyConfig(c) {
   cfg = c;
@@ -198,18 +237,6 @@ function handleState(msg) {
       modeChip.textContent = (msg.mode || '').toUpperCase();
       modelInfo.textContent = msg.model ? `[${msg.model}]` : '';
       setStatus('WRITING…');
-      startSpinner();
-      break;
-
-    case 'VIDEO_IMPROVE':
-      hideIdle();
-      showMockOS();
-      hideDemoFrame();
-      resetEditor();
-      resetTitleCard();
-      modeChip.textContent = 'VIDEO';
-      modelInfo.textContent = msg.model ? `[${msg.model}]` : '';
-      setStatus('UPDATING BASED ON VIDEO…');
       startSpinner();
       break;
 

@@ -31,6 +31,7 @@ class Budgets:
     deadline_seconds: float = 600   # wall clock for the whole session
     run_seconds: float = 5          # ordinary check length
     max_run_seconds: float = 15     # cap for a run_demo(seconds=…) request
+    max_polish_rounds: int = 1      # visual critique → polish → compare cycles
 
 
 @dataclass
@@ -40,6 +41,10 @@ class SessionHooks:
     on_source: callable    # (html, revision, (first_line, last_line), summary) -> None
     on_status: callable    # (text) -> None
     should_abort: callable # () -> bool
+    # () -> {"parts": [content parts for a multimodal message], "note": str} capturing the
+    # revision currently running in the display, or None if no capture could be made.
+    # Leave as None to disable visual review.
+    capture: callable = None
 
 
 @dataclass
@@ -52,6 +57,8 @@ class SessionResult:
     tool_calls: int = 0
     last_error: dict | None = None   # {"kind", "msg"} of the latest failed check
     trace: list[str] = field(default_factory=list)
+    vision_calls: int = 0
+    visual: dict | None = None       # critique / compare record when visual review ran
 
 
 class IterativeSession:
@@ -59,7 +66,7 @@ class IterativeSession:
     STUCK_REPEATS = 3         # identical failures in a row with nothing new learned
 
     def __init__(self, brief: str, html: str, system_prompt: str, budgets: Budgets,
-                 interaction: str, hooks: SessionHooks):
+                 interaction: str, hooks: SessionHooks, visual_prompts: dict | None = None):
         self.brief = brief
         self.store = demo_tools.SourceStore(html)
         self.system_prompt = system_prompt
@@ -79,7 +86,20 @@ class IterativeSession:
         self.attention_used = False
         self.failure_streak: list[str] = []
         self.last_checked: int | None = None   # revision the browser ran most recently
+        self.finish_requested = False          # model called finish_demo this turn
         self.started = time.time()
+        # Visual review (needs a capture hook and the critique/compare prompts)
+        self.visual_prompts = visual_prompts or {}
+        self.visual_enabled = bool(hooks.capture and self.visual_prompts.get("critique")
+                                   and self.visual_prompts.get("compare"))
+        self.phase = "repair"                  # "repair" | "polish"
+        self.polish_rounds_left = budgets.max_polish_rounds
+        self.baseline_rev: int | None = None   # passing revision the polish started from
+        self.baseline_capture: dict | None = None
+        self.issues: list[dict] = []           # critique being applied in the polish phase
+        self.selected_rev: int | None = None   # revision chosen by the before/after compare
+        self.vision_calls = 0
+        self.visual: dict = {"enabled": self.visual_enabled, "rounds": []}
 
     # ── Public ────────────────────────────────────────────────────────────────
 
@@ -94,24 +114,23 @@ class IterativeSession:
     def _loop(self) -> str:
         if not self._check(self.budgets.run_seconds):
             return self._interrupted()
-        if self._passed() and not self._attention_reasons():
+        if self._passed() and not self._attention_reasons() and not self.visual_enabled:
             self._log("revision 1 passed with clean diagnostics; no iteration needed")
             return "first_draft_ok"
 
         while True:
             if self.hooks.should_abort():
                 return "cancelled"
-            if self.turns >= self.budgets.max_turns:
-                return "budget"
-            if self.tool_calls >= self.budgets.max_tool_calls:
-                return "budget"
-            if time.time() - self.started > self.budgets.deadline_seconds:
-                self._log("session deadline reached")
-                return "budget"
+            # A passing revision is handled before the budget check: a before/after compare
+            # needs no model turn, so a polish that passes on the last turn still gets judged.
             if self._passed():
-                if self.attention_used or not self._attention_reasons():
-                    return "finished"
-                self.attention_used = True
+                done = self._on_passing()
+                if done:
+                    return done
+            if not self._budget_left():
+                if time.time() - self.started > self.budgets.deadline_seconds:
+                    self._log("session deadline reached")
+                return "budget"
 
             actions, stop = self._ask_model()
             if stop:
@@ -127,10 +146,162 @@ class IterativeSession:
             if self._stuck():
                 return "stuck"
 
+    def _on_passing(self) -> str | None:
+        """The current revision passed its runtime check. Returns an outcome to stop the
+        session, or None if the model gets another turn (attention look or polish)."""
+        if self.visual_enabled:
+            if self.phase == "repair":
+                # Only start a review if there are turns left to act on its findings
+                if self.polish_rounds_left > 0 and self._budget_left() and self._start_visual_review():
+                    return None
+                return "finished"
+            if self.store.current == self.baseline_rev:
+                if self.finish_requested:
+                    self._log("model kept the reviewed revision unchanged")
+                    self._record_round(decision="kept (model made no changes)")
+                    self.selected_rev = self.baseline_rev
+                    self.phase = "repair"
+                    return "finished"
+                return None   # polish edits still to come
+            self._compare_polish()
+            if self.polish_rounds_left > 0 and self.visual_enabled:
+                return self._on_passing()
+            return "finished"
+        if self.finish_requested or self.attention_used or not self._attention_reasons():
+            return "finished"
+        self.attention_used = True
+        return None
+
+    def _budget_left(self) -> bool:
+        return (self.turns < self.budgets.max_turns
+                and self.tool_calls < self.budgets.max_tool_calls
+                and time.time() - self.started <= self.budgets.deadline_seconds)
+
+    # ── Visual review ─────────────────────────────────────────────────────────
+
+    def _start_visual_review(self) -> bool:
+        """Capture the current (passing) revision and ask for a critique. True if there are
+        issues to polish (switches to the polish phase), False to finish as is."""
+        rev = self.store.current
+        if self.last_checked != rev and not self._check(self.budgets.run_seconds):
+            return False   # the capture must show this exact revision
+        if not self._passed():
+            return False
+        self.hooks.on_status(f"INSPECTING VISUALS — REV {rev}")
+        cap = self.hooks.capture()
+        if not cap:
+            self._disable_visual("no capture of the running demo was possible")
+            return False
+        self.hooks.on_status(f"REVIEWING FRAMES — REV {rev}")
+        intro = (f"BRIEF:\n{self.brief}\n\nCapture of revision {rev}: {cap.get('note', '')}")
+        reasons = self._attention_reasons()
+        if reasons:
+            intro += "\nAutomatic checks also noticed: " + "; ".join(reasons) + "."
+        obj = self._vision_call(self.visual_prompts["critique"],
+                                [{"type": "text", "text": intro}, *cap["parts"]])
+        if obj is None:
+            return False
+        issues = []
+        for it in (obj.get("issues") or [])[:3]:
+            if isinstance(it, dict) and (it.get("problem") or it.get("change")):
+                issues.append({k: str(it.get(k) or "")[:300] for k in ("problem", "evidence", "change")})
+        self.polish_rounds_left -= 1
+        if not issues:
+            self._log(f"visual review of revision {rev}: no issues")
+            self.visual["rounds"].append({"baseline_revision": rev, "issues": [],
+                                          "decision": "kept (no issues found)"})
+            self.selected_rev = rev
+            return False
+        self._log(f"visual review of revision {rev}: {len(issues)} issue(s) — "
+                  + "; ".join(i["problem"][:80] for i in issues))
+        self.phase = "polish"
+        self.baseline_rev = rev
+        self.baseline_capture = cap
+        self.issues = issues
+        self.selected_rev = None
+        self.history.append(f"visual review of rev {rev}: {len(issues)} issue(s) to polish")
+        return True
+
+    def _compare_polish(self) -> None:
+        """The polished revision passed its runtime check: capture it and compare with the
+        baseline. Keeps the baseline unless the model clearly prefers the polished one."""
+        rev, base = self.store.current, self.baseline_rev
+        decision, compare = "before", None
+        if self.last_checked != rev and not self._check(self.budgets.run_seconds):
+            cap = None
+        else:
+            self.hooks.on_status(f"INSPECTING POLISHED REV {rev}")
+            cap = self.hooks.capture()
+        if not cap:
+            reason = "no capture of the polished revision"
+        else:
+            self.hooks.on_status(f"COMPARING REV {base} / REV {rev}")
+            issues = "\n".join(f"- {i['problem']} → {i['change']}" for i in self.issues)
+            obj = self._vision_call(self.visual_prompts["compare"], [
+                {"type": "text", "text": f"BRIEF:\n{self.brief}\n\nIssues the polish tried to fix:\n{issues}"},
+                {"type": "text", "text": f"BEFORE (revision {base}): {self.baseline_capture.get('note', '')}"},
+                *self.baseline_capture["parts"],
+                {"type": "text", "text": f"AFTER (revision {rev}): {cap.get('note', '')}"},
+                *cap["parts"],
+            ])
+            if obj is None:
+                reason = "compare request failed"
+            else:
+                compare = {
+                    "choice": str(obj.get("choice") or "").lower(),
+                    "improved": [str(x)[:200] for x in (obj.get("improved") or [])][:5],
+                    "regressions": [str(x)[:200] for x in (obj.get("regressions") or [])][:5],
+                    "reason": str(obj.get("reason") or "")[:400],
+                }
+                decision = "after" if compare["choice"] == "after" else "before"
+                reason = compare["reason"]
+        chosen = rev if decision == "after" else base
+        self._log(f"before/after compare: kept revision {chosen} ({decision}) — {reason[:160]}")
+        self._record_round(polished=rev, decision=f"{decision}: {reason[:200]}", compare=compare)
+        self.selected_rev = chosen
+        self.phase = "repair"
+        if decision == "before" and self.polish_rounds_left > 0 and self.visual_enabled:
+            # Another round starts from the kept revision, not the rejected polish
+            new_rev, lines = self.store.write(self.store.revisions[base])
+            self.checks[new_rev] = self.checks[base]
+            self.hooks.on_source(self.store.source, new_rev, lines, f"restored revision {base}")
+            self.history.append(f"rev {new_rev}: restored revision {base} (polish rejected)")
+            self.selected_rev = new_rev
+
+    def _record_round(self, decision: str, polished: int | None = None, compare: dict | None = None) -> None:
+        self.visual["rounds"].append({
+            "baseline_revision": self.baseline_rev, "issues": self.issues,
+            "polished_revision": polished, "compare": compare, "decision": decision,
+        })
+
+    def _vision_call(self, system: str, parts: list[dict]) -> dict | None:
+        """A text-only (no tools) multimodal request expecting a JSON object back. Any failure
+        disables visual review for the rest of the session rather than ending it."""
+        self.vision_calls += 1
+        try:
+            resp = self.hooks.llm([{"role": "system", "content": system},
+                                   {"role": "user", "content": parts}], None)
+        except lm_client.LMClientError as e:
+            self._disable_visual(f"vision request failed ({e}); the model may not accept image/video input")
+            return None
+        if resp.get("aborted"):
+            return None
+        try:
+            return demo_tools.parse_json_object(resp.get("content", ""))
+        except demo_tools.ActionParseError as e:
+            self._disable_visual(f"vision reply unusable ({e})")
+            return None
+
+    def _disable_visual(self, why: str) -> None:
+        self._log(f"visual review skipped: {why}")
+        self.visual_enabled = False
+        self.visual["skipped"] = why
+
     def _ask_model(self) -> tuple[list[dict] | None, str | None]:
         """One model turn. Returns (actions, None), (None, None) after a recoverable format
         problem (recorded as feedback for the next turn), or (None, outcome) to stop."""
         self.turns += 1
+        self.finish_requested = False
         self.hooks.on_status(f"THINKING — TURN {self.turns}/{self.budgets.max_turns}")
         messages = self._build_messages()
         self.feedback = []
@@ -222,8 +393,11 @@ class IterativeSession:
                         return self._interrupted()
                     changed = False
                 if self._passed():
-                    self._log(f"finish accepted at revision {self.store.current}")
-                    return "finished"
+                    # The loop decides what a passing revision still needs (visual review,
+                    # before/after compare) — finishing just ends the model's edits.
+                    self._log(f"finish requested at revision {self.store.current}")
+                    self.finish_requested = True
+                    break
                 res = self.checks.get(self.store.current, {})
                 self.feedback.append(
                     f"finish_demo rejected: revision {self.store.current} did not pass its latest "
@@ -304,13 +478,21 @@ class IterativeSession:
         ]
         if self.history:
             parts.append("CHANGE LOG:\n" + "\n".join(f"- {h}" for h in self.history[-8:]))
+        if self.phase == "polish":
+            lines = "\n".join(f"{n}. {i['problem']} (seen: {i['evidence']}) → {i['change']}"
+                              for n, i in enumerate(self.issues, 1))
+            parts.append(
+                f"VISUAL REVIEW of revision {self.baseline_rev} (frames captured while it ran):\n{lines}\n"
+                "Polish these with targeted edits and keep everything else as it is. Skip an issue "
+                "if fixing it would hurt the demo. To keep revision "
+                f"{self.baseline_rev} unchanged, call finish_demo without edits.")
         if res is not None:
             head = f"LATEST CHECK of revision {rev}: {res.get('result')}"
             if res.get("error"):
                 head += f" — {res.get('error')}"
             diag = validator.format_diagnostics(res.get("diagnostics") or {})
             parts.append(head + (f"\n{diag}" if diag else ""))
-            if res.get("result") == "OK":
+            if res.get("result") == "OK" and self.phase == "repair":
                 reasons = self._attention_reasons()
                 if reasons:
                     parts.append("The demo runs, but: " + "; ".join(reasons) + ". Fix this with targeted "
@@ -337,9 +519,18 @@ class IterativeSession:
     def _result(self, outcome: str) -> SessionResult:
         passing = [r for r, res in self.checks.items() if res.get("result") == "OK"]
         best = None
-        if outcome in ("first_draft_ok", "finished") and self._passed():
+        if outcome == "cancelled":
+            pass
+        elif self.phase == "polish":
+            # The polish never reached an accepted before/after compare: keep the reviewed revision
+            best = self.baseline_rev
+            self._log(f"polish unfinished ({outcome}); keeping reviewed revision {best}")
+            self._record_round(decision=f"before: polish unfinished ({outcome})")
+        elif self.selected_rev is not None and outcome == "finished":
+            best = self.selected_rev
+        elif outcome in ("first_draft_ok", "finished") and self._passed():
             best = self.store.current
-        elif passing and outcome != "cancelled":
+        elif passing:
             best = max(passing)   # latest runtime-valid revision
             self._log(f"falling back to revision {best} (latest that passed)")
         last_fail = None
@@ -357,4 +548,6 @@ class IterativeSession:
             tool_calls=self.tool_calls,
             last_error=last_fail,
             trace=self.trace,
+            vision_calls=self.vision_calls,
+            visual=self.visual if (self.visual["enabled"] or self.visual.get("skipped")) else None,
         )

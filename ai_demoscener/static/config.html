@@ -63,6 +63,20 @@
         <div class="field"><label>Max tool calls per demo</label><input type="number" id="itMaxToolCalls" min="1" max="100"></div>
         <div class="field"><label>Session deadline (seconds)</label><input type="number" id="itDeadline" min="60" max="3600"></div>
         <div class="field"><label>Max requested run length (seconds)</label><input type="number" id="itMaxRun" min="3" max="60"></div>
+        <div class="field"><label class="check-row"><input type="checkbox" id="itVisual" onchange="toggleIterativeFields()"> Visual review — critique captured frames, polish, keep the better of before/after (needs a model that accepts images)</label></div>
+        <div id="visualFields" style="display:none">
+          <div class="field"><label>Vision input</label>
+            <select id="itVisionInput">
+              <option value="frames">frames (screenshots; any vision model)</option>
+              <option value="video">video (Ninfer only; needs ffmpeg)</option>
+            </select>
+            <small id="visionVideoNote" style="display:none;color:var(--c-muted)">Video needs the Ninfer provider — frames are used with the selected provider.</small>
+          </div>
+          <div class="field"><label>Frames per capture</label><input type="number" id="itFrames" min="1" max="8"></div>
+          <div class="field"><label>Time between frames (ms)</label><input type="number" id="itFrameInterval" min="200" max="5000" step="100"></div>
+          <div class="field"><label>Frame size (long edge, px)</label><input type="number" id="itFramePx" min="256" max="1536" step="64"></div>
+          <div class="field"><label>Polish rounds</label><input type="number" id="itPolishRounds" min="0" max="3"></div>
+        </div>
       </div>
       <div class="save-row"><button class="btn btn-primary" onclick="saveSection('mode')">Save</button><span class="save-msg" id="modeSaved"></span></div>
     </div>
@@ -117,7 +131,6 @@
             <option value="xhigh">xhigh</option>
           </select>
         </div>
-        <div class="field"><label class="check-row"><input type="checkbox" id="ninferVideoCheck"> Improve demo via video check (~30s capture + vision review)</label></div>
       </div>
 
       <div class="section-body" id="strataFields" style="padding:0.75rem 0 0; display:none">
@@ -228,6 +241,8 @@
       <div class="field"><label>Update prompt</label><textarea id="promptUpdate" rows="5"></textarea></div>
       <div class="field"><label>Repair prompt <small style="color:var(--c-muted)">(use {error})</small></label><textarea id="promptRepair" rows="5"></textarea></div>
       <div class="field"><label>Iterative prompt <small style="color:var(--c-muted)">(iterative strategy only)</small></label><textarea id="promptIterative" rows="8"></textarea></div>
+      <div class="field"><label>Visual critique prompt <small style="color:var(--c-muted)">(iterative visual review)</small></label><textarea id="promptVisualCritique" rows="6"></textarea></div>
+      <div class="field"><label>Visual compare prompt <small style="color:var(--c-muted)">(iterative visual review)</small></label><textarea id="promptVisualCompare" rows="6"></textarea></div>
       <div class="save-row"><button class="btn btn-primary" onclick="saveSection('prompts')">Save</button><span class="save-msg" id="promptsSaved"></span></div>
     </div>
   </div>

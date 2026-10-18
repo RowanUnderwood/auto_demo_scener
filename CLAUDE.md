@@ -27,7 +27,7 @@ python app.py --launch      # starts server on :8080, opens display in browser
 
 Dependencies (already available): `flask`, `flask-sock`, `requests`
 
-`ffmpeg` on PATH is required only for the Ninfer "improve demo via video check" feature (transcodes the browser's recording to H.264 MP4 before sending to the vision model). Not a pip dependency — install via the system package manager (`sudo apt install ffmpeg`). Everything else runs fine without it; missing `ffmpeg` just makes `_transcode_for_vision()` log a warning and skip the video-improve pass for that cycle.
+`ffmpeg` on PATH is required only for iterative visual review with **video** input (Ninfer only; transcodes the browser's recording to H.264 MP4 before sending it to the vision model). Not a pip dependency — install via the system package manager (`sudo apt install ffmpeg`). Everything else runs fine without it; missing `ffmpeg` just makes `_transcode_for_vision()` log a warning, and visual review is skipped for that demo.
 
 ---
 
@@ -51,12 +51,6 @@ Orchestrator (daemon thread)
                                ↑          ↓          │
                             REPAIR ←──────┘          └─→ IDLE  (user pressed 'd' + confirmed)
 
-     Ninfer video-check only, after the DISPLAY above completes (video recorded concurrently
-     with it, see "LLM providers" below):
-       DISPLAY → VIDEO_IMPROVE → VALIDATE → DISPLAY (improved) ──→ ARCHIVE → IDLE
-                                     ↑          ↓
-                                  REPAIR ←──────┘
-
      generation_strategy = "iterative" replaces VALIDATE/REPAIR above with:
        GENERATE (classic stream = revision 1) → ITERATE (check → model turn → edits → check …)
                                               → DISPLAY → ARCHIVE → IDLE
@@ -72,7 +66,7 @@ Orchestrator (daemon thread)
 | `validator.py` | Probe script injection into demo HTML; fence-stripping; validation sync primitives; `format_diagnostics()` |
 | `agent_runner.py` | Iterative strategy: `IterativeSession` bounded model/tool loop with injected hooks (LLM, run, display), budgets, stopping rules |
 | `demo_tools.py` | Iterative strategy: `SourceStore` (revisions, exact/whitespace-tolerant unique edits), tool schemas, native/JSON action parsing |
-| `tests/test_iterative.py` | stdlib `unittest` tests for the above (run from `ai_demoscener/`: `python3 -m unittest discover tests`) |
+| `tests/` | stdlib `unittest` tests: `test_iterative.py` (session loop, tools, visual review), `test_validation.py` (reply correlation, timeouts, brief-preserving repairs). Run from `ai_demoscener/`: `python3 -m unittest discover tests` |
 | `archive.py` | Save/version/list/prune/delete archived demos; `archive_index.json` |
 | `stats.py` | Run/failure/deletion tracking per effect+model; `load()`, `save()`, `record_run()`, `record_failure()`, `record_deletion()` → `prompt_stats.json` |
 | `config.py` | `load()` / `save()` with deep-merge defaults; atomic write |
@@ -91,7 +85,7 @@ Orchestrator (daemon thread)
 5. `validator.receive_result()` unblocks the orchestrator's `wait_for_result()` call — but only for a result whose `audition_id` matches the pending one (first match wins; late replies and duplicates from a second display tab are ignored). Recordings use the same pattern keyed by `record_id`, and `/api/upload_recording` rejects uploads for any record ID that isn't pending.
 6. No reply within `audition_seconds + 15` → `{"result":"TIMEOUT"}`, which is an infrastructure problem, never a pass and never a repair trigger: `_validate_and_repair()` waits for a display if none is connected, otherwise retries once and then gives up with `kind=None` (DISCARD with no error overlay, nothing archived, nothing recorded in stats).
 
-**Repairs keep the brief.** `_build_brief()` produces a compact statement of the cycle's request (stock: effect name + CSV prompt; creative: the first draft's `<title>` as the concept; update: the source filename/title, never its full source). `_do_repair()` keeps the user-editable `repair` system prompt (`{error}` placeholder) and sends a user message of: original brief → earlier failed attempts → `_format_diagnostics()` text → current HTML. The video-improve re-validation passes the same brief.
+**Repairs keep the brief.** `_build_brief()` produces a compact statement of the cycle's request (stock: effect name + CSV prompt; creative: the first draft's `<title>` as the concept; update: the source filename/title, never its full source). `_do_repair()` keeps the user-editable `repair` system prompt (`{error}` placeholder) and sends a user message of: original brief → earlier failed attempts → `_format_diagnostics()` text → current HTML.
 
 The probe also relays `keydown` events from inside the iframe to the parent via `postMessage({type:"probe_keydown", key})`. This is necessary because the iframe steals focus from the parent document when a WebGL demo loads, which would otherwise block keyboard shortcuts.
 
@@ -137,17 +131,11 @@ In replay mode, `entry_model` from `archive_index.json` is passed directly to `_
 
 **Thinking effort** (`cfg["ninfer"]["thinking_effort"]`, one of `none`/`low`/`medium`/`xhigh`) applies to Ninfer and Strata (`cfg["strata"]["thinking_effort"]`, one of `none`/`low`/`medium`/`high`): `_stream` passes it as `extra_params={"reasoning_effort": ...}` to `chat_stream`, which merges it into the request JSON via `lm_client.chat`/`chat_stream`'s `extra_params` kwarg (a no-op on LM Studio, which never sets it). `_generate_title_meta` always hardcodes `reasoning_effort="none"` on the Ninfer/Strata branch regardless of the configured value — title/description generation is cheap and low-stakes, mirroring the existing `"/no_think\n"` prompt-prefix convention already used on the LM Studio branch for the same reason.
 
-**Video-improve** (`cfg["ninfer"]["video_check_enabled"]`, Ninfer-only, generate-mode only):
+**Video capture** (used only by iterative visual review with `vision_input: "video"`, Ninfer only — the config page disables the option for other providers, and the orchestrator falls back to frames if it's set anyway). The classic Ninfer "improve demo via video check" pass was removed in favour of visual review, which adds the before/after regression check; `ninfer.video_check_enabled`, `ninfer.video_max_tokens` and `system_prompts.video_improve` are gone (stale keys in an existing `config.json` are ignored).
 
-1. Recording happens **concurrently with the first `DISPLAY` phase**, not as a separate sequential step — `_display_phase(..., capture_video_seconds=30)` spawns a daemon thread (mirroring the existing background-title-generation pattern) that runs `_record_video()` for `min(30, demo_runtime_seconds)` seconds while `_run_timer(runtime)` runs on the main thread. Once the timer returns, the thread is joined (10s timeout) and its result stashed on `self._last_raw_video`. This means video-check normally adds **zero extra display time** — the capture rides along on the demo's already-scheduled runtime.
-2. `_record_video()` broadcasts `{type:"record_video", seconds, fps:2, record_id}`; `display.js` relays this into the sandboxed demo iframe via `demoFrame.contentWindow.postMessage(...)` (the iframe is `sandbox="allow-scripts"` with no `allow-same-origin`, so `postMessage` is the only channel in or out — direct DOM/canvas access from the parent is impossible).
-3. The probe (`validator.PROBE_JS`) listens for `start_recording`, finds the demo's canvas via its already-stashed `_glCtxs` array, and uses `canvas.captureStream(2)` + `MediaRecorder` to record natively at 2fps (matching what the vision model expects — no wasteful oversampling). On stop it `fetch()`s the blob directly to `POST /api/upload_recording` from inside the iframe. That route needs explicit CORS headers (`Access-Control-Allow-Origin`, handling the browser's preflight `OPTIONS` itself) — the iframe's opaque sandboxed origin makes the browser treat this same-app request as cross-origin.
-4. That route synchronously calls `validator.receive_recording(...)`, unblocking `validator.wait_for_recording()` — the same threading-event pattern as `start_validation`/`wait_for_result`, just a second independent pair.
-5. Once the first display's runtime ends and a video was captured, `orchestrator._video_improve_from_recording()` runs: `_transcode_for_vision()` shells out to `ffmpeg` (must be on PATH) to normalize the recording into 768px-long-edge/H.264/MP4/no-audio, then broadcasts a new `VIDEO_IMPROVE` state (`display.js` renders this like `GENERATE` — mock-OS view, editor reset, status "UPDATING BASED ON VIDEO…" — since the demo itself is no longer needed once it's been recorded) before calling `_do_video_improve()`.
-6. `_do_video_improve()` builds a multimodal `content` list (`video_url` part + `text` part containing the HTML) and streams it through the existing `_stream()`/`chat_stream()` path (not a separate non-streaming call) so the improved code visibly types into the editor exactly like `GENERATE`/`REPAIR` do; `_stream()` takes an optional `max_tokens_override`, used here to pass the Ninfer-only `video_max_tokens` cap (kept separate from `max_tokens` since reasoning tokens share the same output budget and a too-small cap can silently return empty content).
-7. The result is re-validated through `_validate_and_repair()` (extracted from the original inline validate/repair loop so it can run twice per cycle without duplicating logic) and, if it passes, re-displayed live via `_display_phase()` (also extracted, for the same reason) before archiving. Any failure at any step (transcode, the LLM call, or re-validation) silently falls back to archiving the original, unmodified demo — this feature never blocks or corrupts a cycle that already succeeded.
-
-A video-check cycle still takes longer than a normal one whenever an improvement is actually found and validated (LLM round-trip + a second full display), but the recording itself adds no time — see the "improve demo via video check" row in `README.md`'s config table.
+1. `orchestrator._capture_video()` calls `_record_video()`, which broadcasts `{type:"record_video", seconds, fps:2, record_id}`; `display.js` relays this into the sandboxed demo iframe via `demoFrame.contentWindow.postMessage(...)` (the iframe is `sandbox="allow-scripts"` with no `allow-same-origin`, so `postMessage` is the only channel in or out).
+2. The probe (`validator.PROBE_JS`) listens for `start_recording`, finds the demo's canvas via its `_glCtxs` array, and records with `canvas.captureStream(2)` + `MediaRecorder` at 2 fps. On stop it `fetch()`es the blob directly to `POST /api/upload_recording` from inside the iframe. That route needs explicit CORS headers (and handles the browser's preflight `OPTIONS` itself), because the iframe's opaque sandboxed origin makes this same-app request cross-origin. It accepts only the pending `record_id`.
+3. The route calls `validator.receive_recording(...)`, unblocking `validator.wait_for_recording()`. `_transcode_for_vision()` then shells out to `ffmpeg` to produce a 768px-long-edge, H.264, no-audio MP4, sent as a `video_url` content part.
 
 ### Iterative strategy (`generation_strategy: "iterative"`)
 
@@ -160,7 +148,17 @@ Milestone 2 of `auto_demo_scener_iterative_plan.md`. The first draft is still st
 - **Stopping:** finished; budget (`max_turns`, `max_tool_calls`, `session_deadline_seconds`); `stuck` (same failure 3 checks in a row); `format_error` (two unusable responses in a row — truncated at `length`, no parseable actions); `llm_error`; `cancelled` (skip/stop, polled during streaming too); `infra` (no display could run a check). Anything but cancelled falls back to the latest passing revision; that fallback is re-checked before display (it loads the exact source into the iframe and ties validation to it).
 - **Display:** `ITERATE` state (`text`, `busy`) drives status/spinner without resetting the editor; `{type:"source", html, rev, lines, summary}` replaces the editor content, highlights the changed lines in the gutter and scrolls to them.
 - **Records:** archive entries get `strategy` and, for iterative, `session: {outcome, turns, tool_calls, revisions, final_revision, interaction}`. Stats failures are recorded as for classic (the session's last failed check), so per-effect failure rates currently mix strategies — Milestone 4 adds separate comparative metrics.
-- The Ninfer video-improve pass still runs after an iterative session if enabled (its re-validation uses classic repairs). Milestone 3 replaces it with in-session visual review.
+
+**Visual review** (`iterative.visual_review`, Milestone 3; needs a model that accepts image input, or video on Ninfer):
+
+- When a revision passes in the repair phase (and turns remain), `_start_visual_review()` captures it and makes a tool-free multimodal request with `system_prompts.visual_critique`, expecting `{"issues": [{problem, evidence, change}]}` (at most 3 kept). No issues → finish with that revision.
+- Issues switch the session to the `polish` phase: the baseline revision is remembered, and ordinary edit turns get a `VISUAL REVIEW` section listing the issues (critique and editing stay separate; edit turns never carry images). `finish_demo` without edits keeps the baseline.
+- When a polished revision passes its runtime check, `_compare_polish()` captures it and sends `system_prompts.visual_compare` the BEFORE and AFTER captures, expecting `{"choice": "after"|"before", improved, regressions, reason}`. Anything but `"after"` keeps the baseline. If the polish never passes (budget, stuck…), the baseline is kept. With `max_polish_rounds` > 1 a rejected polish is reverted (new revision with the baseline source) before the next round.
+- `finish_demo` no longer ends the session directly: it sets `finish_requested`, and `_on_passing()` decides what a passing revision still needs. Passing revisions are handled before the budget check, so a polish that passes on the last turn still gets compared; a new critique only starts if turns remain.
+- Vision calls don't count as turns (recorded as `vision_calls`). Any capture failure, HTTP rejection (e.g. Strata started without its vision encoder) or unusable reply disables visual review for the rest of the session and keeps the current passing revision.
+- Capture (`orchestrator._capture_frames`): `{type:"capture_frames", capture_id, count, interval_ms, max_px}` → `display.js` relays it into the iframe → the probe draws the most recent WebGL canvas into a scaled 2D canvas every `interval_ms` and posts JPEG data URLs (`probe_frame`, then `probe_capture_done` with the canvas count) → `display.js` returns `{type:"capture_result", capture_id, frames, canvases|error}` over the WebSocket → `validator.receive_capture()`. Frames are taken from the revision still running in the hidden iframe after its check, so their timestamps start about 5 s after load (a slow opening isn't visible). Multiple WebGL canvases are noted in the capture description, since only the last is captured. With `vision_input: "video"` on Ninfer, `_capture_video()` reuses `_record_video()` + `_transcode_for_vision()` instead.
+- `validator._PendingReply` is the shared ID-correlated request/reply waiter behind auditions, recordings and captures.
+- The session record (`session.visual`) keeps every round's issues, compare result and decision, for later review in `archive_index.json`.
 
 ### Delete / discard
 
@@ -224,9 +222,9 @@ Key display defaults:
 }
 ```
 
-Strategy config: `generation_strategy` (`"classic"` default | `"iterative"`) and `iterative: {interaction, max_turns, max_tool_calls, session_deadline_seconds, max_run_seconds}`; the iterative system prompt is `system_prompts.iterative`.
+Strategy config: `generation_strategy` (`"classic"` default | `"iterative"`) and `iterative: {interaction, max_turns, max_tool_calls, session_deadline_seconds, max_run_seconds, visual_review, vision_input, capture_frames, capture_interval_ms, capture_max_px, video_capture_seconds, max_polish_rounds}`; prompts are `system_prompts.iterative`, `visual_critique` and `visual_compare`.
 
-Provider config: `llm_provider` (`"lm_studio"` | `"ninfer"` | `"strata"`) plus a full sibling config dict per provider (`lm_studio` unchanged; `ninfer` adds `thinking_effort`, `video_check_enabled`, `video_max_tokens` on top of the same base_url/model/max_tokens/temperature/request_timeout_seconds/context_ceiling_tokens/surprise_me fields; `strata` adds `api_key` and `thinking_effort`, with no video-improve because Strata can't take video input). All three dicts are always present in `DEFAULTS` regardless of which is active, so switching providers in the config GUI never loses the other provider's settings.
+Provider config: `llm_provider` (`"lm_studio"` | `"ninfer"` | `"strata"`) plus a full sibling config dict per provider (`lm_studio` unchanged; `ninfer` adds `thinking_effort` on top of the same base_url/model/max_tokens/temperature/request_timeout_seconds/context_ceiling_tokens/surprise_me fields; `strata` adds `api_key` and `thinking_effort`, with no video-improve because Strata can't take video input). All three dicts are always present in `DEFAULTS` regardless of which is active, so switching providers in the config GUI never loses the other provider's settings.
 
 ### Modes
 
@@ -262,7 +260,7 @@ Provider config: `llm_provider` (`"lm_studio"` | `"ninfer"` | `"strata"`) plus a
 | POST | `/api/title_cards/stop_generate` | Cancel batch generation |
 | POST | `/api/title_cards/clear_all` | Strip all titles/descriptions from archive_index.json |
 | GET | `/api/models?provider=` | List models for `lm_studio`, `ninfer` or `strata` (defaults to the active provider) |
-| POST | `/api/upload_recording?record_id=` | Probe uploads a video-improve recording blob; unblocks `validator.wait_for_recording()` |
+| POST | `/api/upload_recording?record_id=` | Probe uploads a visual-review video recording (Ninfer, video input); unblocks `validator.wait_for_recording()` |
 
 ---
 

@@ -81,7 +81,7 @@ def ws_handler(ws):
             # still alive) — a genuine disconnect raises ConnectionClosed instead, caught
             # below. Treating a None timeout as a disconnect here was closing the socket
             # every ~30s of silence (e.g. during any longer demo_runtime_seconds display,
-            # or the video-improve recording wait), forcing spurious reconnects that could
+            # or a visual-review recording wait), forcing spurious reconnects that could
             # silently drop one-shot broadcasts like record_video sent during that window.
             raw = ws.receive(timeout=30)
             if raw is None:
@@ -96,6 +96,8 @@ def ws_handler(ws):
                 log.info("Display connected (%d active)", display_count())
             elif msg.get("type") == "audit_result":
                 validator.receive_result(msg)
+            elif msg.get("type") == "capture_result":
+                validator.receive_capture(msg)
             elif msg.get("type") == "record_error":
                 validator.receive_recording(
                     str(msg.get("record_id") or ""), {"status": "error", "error": msg.get("error")}
@@ -197,7 +199,7 @@ def api_models():
         return jsonify({"error": str(e)}), 502
 
 
-# ── API: video-improve recording upload ─────────────────────────────────────────
+# ── API: visual-review video recording upload ─────────────────────────────────────────
 # The probe's fetch() runs inside the demo iframe, which is sandbox="allow-scripts" with no
 # allow-same-origin — that gives it an opaque origin, so the browser treats this upload as
 # cross-origin (CORS) even though it's hitting the same Flask app. Explicit CORS headers
@@ -541,11 +543,13 @@ if __name__ == "__main__":
     port = int(next((sys.argv[i + 1] for i, a in enumerate(sys.argv) if a == "--port"), 8080))
 
     _startup_cfg = cfg_mod.load()
-    if _startup_cfg.get("ninfer", {}).get("video_check_enabled") and shutil.which("ffmpeg") is None:
+    _it = _startup_cfg.get("iterative", {})
+    if (_it.get("visual_review") and _it.get("vision_input") == "video"
+            and shutil.which("ffmpeg") is None):
         log.warning(
-            "Ninfer video-check is enabled but ffmpeg was not found on PATH — "
-            "install it (e.g. 'sudo apt install ffmpeg') or the video-improve pass "
-            "will silently skip every cycle."
+            "Visual review is set to video input but ffmpeg was not found on PATH — "
+            "install it (e.g. 'sudo apt install ffmpeg') or visual review will be skipped "
+            "every cycle."
         )
 
     orc.start()

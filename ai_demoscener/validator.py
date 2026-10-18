@@ -5,86 +5,93 @@ import threading
 
 log = logging.getLogger(__name__)
 
-# ── Validation synchronisation ─────────────────────────────────────────────────
-# Each audition / recording carries an ID. Only a reply carrying the pending ID completes
-# the wait, so a late reply from a previous audition, or a duplicate from a second display
-# tab, can't satisfy the wrong request (the first matching reply wins).
-_event = threading.Event()
-_result: dict | None = None
-_pending_id: str | None = None
-_lock = threading.Lock()
+# ── Request/reply synchronisation ──────────────────────────────────────────────
+# Auditions, recordings and frame captures are requests to the display browser that are
+# answered asynchronously. Each carries an ID; only a reply carrying the pending ID
+# completes the wait, so a late reply from an earlier request, or a duplicate from a second
+# display tab, can't satisfy the wrong request (the first matching reply wins).
+
+
+class _PendingReply:
+    def __init__(self, name: str):
+        self.name = name
+        self._event = threading.Event()
+        self._result: dict | None = None
+        self._pending_id: str | None = None
+        self._lock = threading.Lock()
+
+    def start(self, request_id: str) -> None:
+        with self._lock:
+            self._result = None
+            self._pending_id = request_id
+        self._event.clear()
+
+    def is_pending(self, request_id: str) -> bool:
+        with self._lock:
+            return self._pending_id is not None and request_id == self._pending_id
+
+    def receive(self, request_id: str | None, result: dict) -> None:
+        with self._lock:
+            if self._pending_id is None or request_id != self._pending_id:
+                log.debug("Ignoring stale/unexpected %s reply %s (pending %s)",
+                          self.name, request_id, self._pending_id)
+                return
+            self._result = result
+            self._pending_id = None
+        self._event.set()
+        log.debug("%s reply received for %s", self.name, request_id)
+
+    def wait(self, timeout: float) -> dict | None:
+        self._event.wait(timeout=timeout)
+        with self._lock:
+            if self._result is None:
+                self._pending_id = None  # timed out — a reply arriving now is stale
+            return self._result
+
+
+_validation = _PendingReply("audit_result")
+_recording = _PendingReply("recording")
+_capture = _PendingReply("capture")
 
 
 def start_validation(audition_id: str) -> None:
-    global _result, _pending_id
-    with _lock:
-        _result = None
-        _pending_id = audition_id
-    _event.clear()
+    _validation.start(audition_id)
 
 
 def receive_result(result: dict) -> None:
-    global _result, _pending_id
-    with _lock:
-        if _pending_id is None or result.get("audition_id") != _pending_id:
-            log.debug("Ignoring stale/unexpected audit_result %s (pending %s)",
-                      result.get("audition_id"), _pending_id)
-            return
-        _result = result
-        _pending_id = None
-    _event.set()
-    log.debug("Validation result received: %s", result.get("result"))
+    _validation.receive(result.get("audition_id"), result)
 
 
 def wait_for_result(timeout: float) -> dict | None:
-    global _pending_id
-    _event.wait(timeout=timeout)
-    with _lock:
-        if _result is None:
-            _pending_id = None  # timed out — a reply arriving now is stale
-        return _result
-
-
-# ── Video-recording synchronisation ─────────────────────────────────────────────
-_rec_event = threading.Event()
-_rec_result: dict | None = None
-_rec_pending_id: str | None = None
-_rec_lock = threading.Lock()
+    return _validation.wait(timeout)
 
 
 def start_recording(record_id: str) -> None:
-    global _rec_result, _rec_pending_id
-    with _rec_lock:
-        _rec_result = None
-        _rec_pending_id = record_id
-    _rec_event.clear()
+    _recording.start(record_id)
 
 
 def is_pending_recording(record_id: str) -> bool:
-    with _rec_lock:
-        return _rec_pending_id is not None and record_id == _rec_pending_id
+    return _recording.is_pending(record_id)
 
 
 def receive_recording(record_id: str, result: dict) -> None:
-    global _rec_result, _rec_pending_id
-    with _rec_lock:
-        if _rec_pending_id is None or record_id != _rec_pending_id:
-            log.debug("Ignoring stale/unexpected recording result %s (pending %s)",
-                      record_id, _rec_pending_id)
-            return
-        _rec_result = result
-        _rec_pending_id = None
-    _rec_event.set()
-    log.debug("Recording result received: %s", result.get("status"))
+    _recording.receive(record_id, result)
 
 
 def wait_for_recording(timeout: float) -> dict | None:
-    global _rec_pending_id
-    _rec_event.wait(timeout=timeout)
-    with _rec_lock:
-        if _rec_result is None:
-            _rec_pending_id = None
-        return _rec_result
+    return _recording.wait(timeout)
+
+
+def start_capture(capture_id: str) -> None:
+    _capture.start(capture_id)
+
+
+def receive_capture(result: dict) -> None:
+    _capture.receive(result.get("capture_id"), result)
+
+
+def wait_for_capture(timeout: float) -> dict | None:
+    return _capture.wait(timeout)
 
 
 # ── Diagnostics ─────────────────────────────────────────────────────────────────
@@ -247,6 +254,35 @@ PROBE_JS = r"""
   /* Relay keydown events to parent so 'd' works even when iframe has focus */
   document.addEventListener('keydown',function(e){
     send({type:'probe_keydown',key:e.key});
+  });
+
+  /* Frame capture for visual review: on a capture_frames command from the parent, grab
+     `count` JPEG frames of the demo's WebGL canvas `interval_ms` apart (scaled so the long
+     edge is at most max_px) and post them back. Works because preserveDrawingBuffer is
+     forced above. Only the most recently created WebGL canvas is captured; `canvases`
+     tells the caller when that may not be the whole composition. */
+  window.addEventListener('message',function(ev){
+    var m=ev.data;
+    if(!m||m.type!=='capture_frames')return;
+    var canvas=null;
+    for(var i=_glCtxs.length-1;i>=0;i--){ if(_glCtxs[i].canvas){ canvas=_glCtxs[i].canvas; break; } }
+    if(!canvas){ send({type:'probe_capture_error',capture_id:m.capture_id,error:'no WebGL canvas found'}); return; }
+    var count=Math.max(1,Math.min(8,m.count||4)), interval=m.interval_ms||1500, maxPx=m.max_px||768, n=0;
+    function grab(){
+      try{
+        var w=canvas.width,h=canvas.height, sc=Math.min(1,maxPx/Math.max(w,h,1));
+        var c2=document.createElement('canvas');
+        c2.width=Math.max(1,Math.round(w*sc)); c2.height=Math.max(1,Math.round(h*sc));
+        var g=c2.getContext('2d'); g.fillStyle='#000'; g.fillRect(0,0,c2.width,c2.height);
+        g.drawImage(canvas,0,0,c2.width,c2.height);
+        send({type:'probe_frame',capture_id:m.capture_id,index:n,t:+(performance.now()/1000).toFixed(2),
+              width:c2.width,height:c2.height,data:c2.toDataURL('image/jpeg',0.8)});
+      }catch(e){ send({type:'probe_capture_error',capture_id:m.capture_id,error:String(e)}); return; }
+      n++;
+      if(n<count)setTimeout(grab,interval);
+      else send({type:'probe_capture_done',capture_id:m.capture_id,count:n,canvases:_glCtxs.length});
+    }
+    grab();
   });
 
   /* Video-improve recording: dormant unless the parent sends a start_recording command,

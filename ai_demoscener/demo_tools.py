@@ -193,3 +193,19 @@ def actions_from_content(content: str) -> list[dict]:
             raise ActionParseError(f"arguments for {name} must be a JSON object")
         actions.append({"action": name, "arguments": args})
     return actions
+
+
+def parse_json_object(content: str) -> dict:
+    """Extract the first-{-to-last-} JSON object from a model reply (ignoring <think> blocks
+    and markdown fences). Raises ActionParseError if there is none."""
+    text = _THINK_RE.sub("", content or "").strip()
+    start, end = text.find("{"), text.rfind("}")
+    if start == -1 or end <= start:
+        raise ActionParseError("no JSON object found in the response")
+    try:
+        obj = json.loads(text[start:end + 1])
+    except json.JSONDecodeError as e:
+        raise ActionParseError(f"response is not valid JSON ({e.msg} at char {e.pos})") from e
+    if not isinstance(obj, dict):
+        raise ActionParseError("expected a JSON object")
+    return obj

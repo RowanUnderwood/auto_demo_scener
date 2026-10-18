@@ -302,5 +302,126 @@ class SessionTests(unittest.TestCase):
         self.assertEqual(session(h).run().outcome, "llm_error")
 
 
+
+# ── Visual review ──────────────────────────────────────────────────────────────
+
+PROMPTS = {"critique": "CRITIQUE", "compare": "COMPARE"}
+ISSUE = json.dumps({"issues": [{"problem": "too dark", "evidence": "frame 2 is black",
+                                "change": "raise brightness"}]})
+
+
+def text(obj):
+    return reply(content=obj if isinstance(obj, str) else json.dumps(obj), finish="stop")
+
+
+class VisualHarness(Harness):
+    def __init__(self, replies, judge, capture_ok=True):
+        super().__init__(replies, judge)
+        self.captured = []   # source that was running in the display at each capture
+        self.capture_ok = capture_ok
+
+    def capture(self):
+        if not self.capture_ok:
+            return None
+        self.captured.append(self.runs[-1][0])
+        return {"parts": [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,AAAA"}}],
+                "note": "1 frame"}
+
+    def hooks(self):
+        h = super().hooks()
+        h.capture = self.capture
+        return h
+
+
+def vsession(h, budgets=None):
+    return agent_runner.IterativeSession("Effect: test", SRC, "SYSTEM", budgets or agent_runner.Budgets(),
+                                         "auto", h.hooks(), visual_prompts=PROMPTS)
+
+
+POLISH = reply(tool("edit_demo", old_text="speed = 0.1", new_text="speed = 0.5", change_summary="brighter"))
+
+
+class VisualReviewTests(unittest.TestCase):
+    def test_polish_accepted(self):
+        h = VisualHarness([text(ISSUE), POLISH, text({"choice": "after", "reason": "brighter"})],
+                          lambda html: OK)
+        r = vsession(h).run()
+        self.assertEqual((r.outcome, r.revision), ("finished", 2))
+        self.assertEqual(h.captured, [SRC, h.runs[-1][0]])           # before = rev 1, after = rev 2
+        self.assertEqual(r.vision_calls, 2)
+        self.assertEqual(r.turns, 1)                                   # vision calls aren't edit turns
+        self.assertTrue(r.visual["rounds"][0]["decision"].startswith("after"))
+        # critique was multimodal and tool-free; the polish turn carried the issues as text
+        crit_msgs, crit_tools = h.requests[0]
+        self.assertIsNone(crit_tools)
+        self.assertEqual(crit_msgs[1]["content"][1]["type"], "image_url")
+        self.assertIn("VISUAL REVIEW of revision 1", h.requests[1][0][1]["content"])
+        self.assertIn("too dark", h.requests[1][0][1]["content"])
+        # compare saw BEFORE then AFTER images
+        cmp_parts = h.requests[2][0][1]["content"]
+        self.assertIn("BEFORE (revision 1)", cmp_parts[1]["text"])
+        self.assertIn("AFTER (revision 2)", cmp_parts[3]["text"])
+
+    def test_polish_rejected_keeps_baseline(self):
+        h = VisualHarness([text(ISSUE), POLISH, text({"choice": "before", "reason": "lost detail"})],
+                          lambda html: OK)
+        r = vsession(h).run()
+        self.assertEqual((r.outcome, r.revision, r.html), ("finished", 1, SRC))
+
+    def test_unclear_choice_keeps_baseline(self):
+        h = VisualHarness([text(ISSUE), POLISH, text({"choice": "both look fine"})], lambda html: OK)
+        self.assertEqual(vsession(h).run().revision, 1)
+
+    def test_no_issues_finishes_without_edit_turns(self):
+        h = VisualHarness([text({"issues": []})], lambda html: OK)
+        r = vsession(h).run()
+        self.assertEqual((r.outcome, r.revision, r.turns, r.vision_calls), ("finished", 1, 0, 1))
+
+    def test_vision_rejected_disables_review(self):
+        h = VisualHarness([lm_client.LMHTTPError(400, "image input not supported")], lambda html: OK)
+        r = vsession(h).run()
+        self.assertEqual((r.outcome, r.revision), ("finished", 1))
+        self.assertIn("vision request failed", r.visual["skipped"])
+
+    def test_capture_failure_skips_review(self):
+        h = VisualHarness([], lambda html: OK, capture_ok=False)
+        r = vsession(h).run()
+        self.assertEqual((r.outcome, r.revision, r.vision_calls), ("finished", 1, 0))
+
+    def test_broken_polish_out_of_budget_keeps_baseline(self):
+        h = VisualHarness([text(ISSUE), POLISH, reply(tool("run_demo"))],
+                          lambda html: OK if html == SRC else crash("polish broke it"))
+        r = vsession(h, agent_runner.Budgets(max_turns=2)).run()
+        self.assertEqual((r.outcome, r.revision, r.html), ("budget", 1, SRC))
+        self.assertIn("polish unfinished", r.visual["rounds"][-1]["decision"])
+
+    def test_model_keeps_baseline_with_finish(self):
+        h = VisualHarness([text(ISSUE), reply(tool("finish_demo", summary="it's intentional"))],
+                          lambda html: OK)
+        r = vsession(h).run()
+        self.assertEqual((r.outcome, r.revision, r.vision_calls), ("finished", 1, 1))
+
+    def test_repair_then_review(self):
+        fix = reply(tool("edit_demo", old_text="speed = 0.1", new_text="speed = 0.5", change_summary="fix"))
+        polish = reply(tool("edit_demo", old_text="speed2 = 0.1", new_text="speed2 = 0.3", change_summary="p"))
+        h = VisualHarness([fix, text(ISSUE), polish, text({"choice": "after", "reason": "ok"})],
+                          by_speed("speed = 0.5"))
+        r = vsession(h).run()
+        self.assertEqual((r.outcome, r.revision), ("finished", 3))
+        self.assertEqual(r.visual["rounds"][0]["baseline_revision"], 2)
+
+    def test_no_review_without_turns_left(self):
+        fix = reply(tool("edit_demo", old_text="speed = 0.1", new_text="speed = 0.5", change_summary="fix"))
+        h = VisualHarness([fix], by_speed("speed = 0.5"))
+        r = vsession(h, agent_runner.Budgets(max_turns=1)).run()
+        self.assertEqual((r.outcome, r.revision, r.vision_calls), ("finished", 2, 0))
+
+    def test_second_round_starts_from_kept_revision(self):
+        h = VisualHarness([text(ISSUE), POLISH, text({"choice": "before", "reason": "worse"}),
+                           text({"issues": []})], lambda html: OK)
+        r = vsession(h, agent_runner.Budgets(max_polish_rounds=2)).run()
+        self.assertEqual(r.html, SRC)
+        self.assertEqual(h.captured[-1], SRC)   # second critique looked at the restored source
+
 if __name__ == "__main__":
     unittest.main()

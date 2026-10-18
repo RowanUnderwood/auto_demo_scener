@@ -38,10 +38,18 @@ function populateForm(c) {
   setVal('itMaxToolCalls', c.iterative?.max_tool_calls ?? 24);
   setVal('itDeadline',     c.iterative?.session_deadline_seconds ?? 600);
   setVal('itMaxRun',       c.iterative?.max_run_seconds ?? 15);
+  setChecked('itVisual',   c.iterative?.visual_review ?? false);
+  setVal('itFrames',       c.iterative?.capture_frames ?? 4);
+  setVal('itFrameInterval', c.iterative?.capture_interval_ms ?? 1500);
+  setVal('itFramePx',      c.iterative?.capture_max_px ?? 768);
+  setVal('itPolishRounds', c.iterative?.max_polish_rounds ?? 1);
   toggleIterativeFields();
 
   // LLM Provider
   setProvider(c.llm_provider || 'lm_studio', false);
+  // After the provider, so the Ninfer-only video lock sees the right one
+  setVal('itVisionInput',  c.iterative?.vision_input ?? 'frames');
+  updateVisionInputLock();
 
   setVal('lmUrl',       c.lm_studio?.base_url ?? '');
   setVal('lmMaxTokens', c.lm_studio?.max_tokens ?? 8192);
@@ -64,7 +72,6 @@ function populateForm(c) {
   document.getElementById('surpriseLastFieldNinfer').style.display =
     (c.ninfer?.surprise_me) ? '' : 'none';
   setVal('ninferThinkingEffort', c.ninfer?.thinking_effort ?? 'low');
-  setChecked('ninferVideoCheck', c.ninfer?.video_check_enabled ?? false);
   populateModelDropdown('ninferModel', [c.ninfer?.model ?? ''], c.ninfer?.model ?? '');
 
   setVal('strataUrl',       c.strata?.base_url ?? '');
@@ -109,6 +116,8 @@ function populateForm(c) {
   setVal('promptUpdate',   c.system_prompts?.update   ?? '');
   setVal('promptRepair',   c.system_prompts?.repair   ?? '');
   setVal('promptIterative', c.system_prompts?.iterative ?? '');
+  setVal('promptVisualCritique', c.system_prompts?.visual_critique ?? '');
+  setVal('promptVisualCompare',  c.system_prompts?.visual_compare ?? '');
 }
 
 // ── Section save ──────────────────────────────────────────────────────────────
@@ -130,6 +139,12 @@ async function saveSection(section) {
       cfg.iterative.max_tool_calls           = +getVal('itMaxToolCalls');
       cfg.iterative.session_deadline_seconds = +getVal('itDeadline');
       cfg.iterative.max_run_seconds          = +getVal('itMaxRun');
+      cfg.iterative.visual_review            = getChecked('itVisual');
+      cfg.iterative.vision_input             = getVal('itVisionInput');
+      cfg.iterative.capture_frames           = +getVal('itFrames');
+      cfg.iterative.capture_interval_ms      = +getVal('itFrameInterval');
+      cfg.iterative.capture_max_px           = +getVal('itFramePx');
+      cfg.iterative.max_polish_rounds        = +getVal('itPolishRounds');
       break;
     case 'llmProvider':
       cfg.llm_provider = activeProvider();
@@ -151,7 +166,6 @@ async function saveSection(section) {
       cfg.ninfer.context_ceiling_tokens  = +getVal('ninferCeiling');
       cfg.ninfer.surprise_me             = getChecked('ninferSurpriseMe');
       cfg.ninfer.thinking_effort         = getVal('ninferThinkingEffort');
-      cfg.ninfer.video_check_enabled     = getChecked('ninferVideoCheck');
 
       cfg.strata ??= {};
       cfg.strata.base_url                = getVal('strataUrl');
@@ -194,6 +208,8 @@ async function saveSection(section) {
       cfg.system_prompts.update   = getVal('promptUpdate');
       cfg.system_prompts.repair   = getVal('promptRepair');
       cfg.system_prompts.iterative = getVal('promptIterative');
+      cfg.system_prompts.visual_critique = getVal('promptVisualCritique');
+      cfg.system_prompts.visual_compare  = getVal('promptVisualCompare');
       break;
   }
 
@@ -222,6 +238,20 @@ function setMode(mode, save = false) {
 function toggleIterativeFields() {
   document.getElementById('iterativeFields').style.display =
     getVal('genStrategy') === 'iterative' ? '' : 'none';
+  document.getElementById('visualFields').style.display = getChecked('itVisual') ? '' : 'none';
+  updateVisionInputLock();
+}
+
+// Video input for visual review only works on Ninfer (LM Studio and Strata take images at
+// most), so the option is locked to the provider currently selected in the LLM PROVIDER
+// section — and a saved "video" falls back to frames while another provider is active.
+function updateVisionInputLock() {
+  const sel = document.getElementById('itVisionInput');
+  if (!sel) return;
+  const videoOk = activeProvider() === 'ninfer';
+  sel.querySelector('option[value="video"]').disabled = !videoOk;
+  if (!videoOk && sel.value === 'video') sel.value = 'frames';
+  document.getElementById('visionVideoNote').style.display = videoOk ? 'none' : '';
 }
 
 // ── LLM provider UI ───────────────────────────────────────────────────────────
@@ -243,6 +273,7 @@ function setProvider(provider, save = false) {
     document.getElementById(btnId).classList.toggle('active', p === provider);
     document.getElementById(fieldsId).style.display = p === provider ? '' : 'none';
   }
+  updateVisionInputLock();
   if (save) saveSection('llmProvider');
 }
 
@@ -428,7 +459,7 @@ function toggleSurpriseLastField(cb, fieldId) {
 function updateStateDisplay(state) {
   document.getElementById('stateLabel').textContent = state;
   const dot = document.getElementById('stateDot');
-  dot.className = ['GENERATE','DISPLAY','REPLAY','VIDEO_IMPROVE'].includes(state) ? 'active'
+  dot.className = ['GENERATE','ITERATE','DISPLAY','REPLAY'].includes(state) ? 'active'
                 : ['DISCARD','REPAIR'].includes(state) ? 'error' : '';
 }
 

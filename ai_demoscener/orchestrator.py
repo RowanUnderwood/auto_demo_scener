@@ -36,7 +36,6 @@ class Orchestrator:
         self._discard_current = threading.Event()
         self._lm_unavailable = False
         self._last_display_meta: dict | None = None
-        self._last_raw_video: Path | None = None
         self._stock_deck: list[dict] = []
         self._replay_deck: list[Path] = []
         self.state = "IDLE"
@@ -271,34 +270,12 @@ class Orchestrator:
         source_path = prompt_data.get("source_path") if isinstance(prompt_data, dict) else None
         effect_slug = prompt_data.get("effect", mode) if isinstance(prompt_data, dict) else mode
 
-        provider, ninfer_cfg = self._active_provider_cfg(cfg)
-        video_check_enabled = provider == "ninfer" and ninfer_cfg.get("video_check_enabled")
-
-        html = self._display_phase(
-            cfg, html, temp_path, effect_slug, mode, model, source_path,
-            capture_video_seconds=30 if video_check_enabled else None,
-        )
+        html = self._display_phase(cfg, html, temp_path, effect_slug, mode, model)
         if html is None:
             log.info("Generate-mode demo discarded by user before archiving")
             self._tx("IDLE")
             return
         display_meta_result = self._last_display_meta
-        raw_video_path = self._last_raw_video if video_check_enabled else None
-
-        # Optional Ninfer video-improve pass, using the video captured during the display
-        # above (may re-display an improved version if it validates successfully)
-        if raw_video_path is not None:
-            html2 = self._video_improve_from_recording(
-                cfg, html, raw_video_path, temp_path, model, effect_slug, mode, source_path,
-                brief=brief,
-            )
-            if html2 is None:
-                log.info("Generate-mode demo discarded by user before archiving (video-improve re-display)")
-                self._tx("IDLE")
-                return
-            html = html2
-            if self._last_display_meta is not None:
-                display_meta_result = self._last_display_meta
 
         self._tx("ARCHIVE")
         archive_path = archive_mod.save(html, effect_slug, mode, cfg,
@@ -328,8 +305,7 @@ class Orchestrator:
         Returns (final_html, None) on success, or (None, last_error) if repairs were
         exhausted or a repair call itself failed. Does not record stats, does not broadcast
         DISCARD, and does not delete temp_path on failure — the caller decides what
-        exhaustion means in its context (e.g. a first-generation failure discards the whole
-        cycle, but a failed video-improve pass just falls back to the original demo).
+        exhaustion means.
 
         An audition TIMEOUT is an infrastructure problem, not a demo failure: it never
         triggers a repair. With no display connected it waits for one and re-auditions; with
@@ -417,6 +393,7 @@ class Orchestrator:
             deadline_seconds=float(it.get("session_deadline_seconds", 600)),
             run_seconds=float(cfg["validation"]["audition_seconds"]),
             max_run_seconds=float(it.get("max_run_seconds", 15)),
+            max_polish_rounds=int(it.get("max_polish_rounds", 1)),
         )
         extra_params = ({"reasoning_effort": lm["thinking_effort"]}
                         if provider in ("ninfer", "strata") else None)
@@ -447,7 +424,25 @@ class Orchestrator:
                              "lines": list(lines), "summary": summary})
 
         def on_status(text: str) -> None:
-            self._tx("ITERATE", text=text, busy=text.startswith("THINKING"))
+            busy = text.startswith(("THINKING", "REVIEWING", "COMPARING"))
+            self._tx("ITERATE", text=text, busy=busy)
+
+        capture = None
+        visual_prompts = None
+        if it.get("visual_review"):
+            visual_prompts = {"critique": cfg["system_prompts"].get("visual_critique", ""),
+                              "compare": cfg["system_prompts"].get("visual_compare", "")}
+            if it.get("vision_input") == "video" and provider == "ninfer":
+                def capture():
+                    return self._capture_video(float(it.get("video_capture_seconds", 8)))
+            else:
+                if it.get("vision_input") == "video":
+                    log.warning("Video input for visual review is Ninfer-only; using frames on %s", provider)
+
+                def capture():
+                    return self._capture_frames(int(it.get("capture_frames", 4)),
+                                                int(it.get("capture_interval_ms", 1500)),
+                                                int(it.get("capture_max_px", 768)))
 
         session = agent_runner.IterativeSession(
             brief=brief,
@@ -456,7 +451,9 @@ class Orchestrator:
             budgets=budgets,
             interaction=it.get("interaction", "auto"),
             hooks=agent_runner.SessionHooks(llm=llm, run=run, on_source=on_source,
-                                            on_status=on_status, should_abort=should_abort),
+                                            on_status=on_status, should_abort=should_abort,
+                                            capture=capture),
+            visual_prompts=visual_prompts,
         )
         result = session.run()
         meta = {
@@ -466,6 +463,8 @@ class Orchestrator:
             "revisions": result.revisions,
             "final_revision": result.revision,
             "interaction": "native_tools" if session.use_tools else "json_actions",
+            "vision_calls": result.vision_calls,
+            **({"visual": result.visual} if result.visual else {}),
         }
         log.info("Iterative session: %s", meta)
 
@@ -489,26 +488,66 @@ class Orchestrator:
             temp_path.write_text(result.html, encoding="utf-8")
         return result.html, None, meta
 
+    def _capture_frames(self, count: int, interval_ms: int, max_px: int) -> dict | None:
+        """Ask the display page for `count` JPEG frames of the demo currently running in its
+        iframe. Returns {"parts": image_url content parts, "note": description} or None."""
+        capture_id = uuid.uuid4().hex[:8]
+        validator.start_capture(capture_id)
+        self._broadcast({"type": "capture_frames", "capture_id": capture_id, "count": count,
+                         "interval_ms": interval_ms, "max_px": max_px})
+        res = validator.wait_for_capture(timeout=count * interval_ms / 1000 + 10)
+        if res is None:
+            log.warning("Frame capture %s timed out", capture_id)
+            return None
+        frames = [f for f in (res.get("frames") or [])
+                  if str(f.get("data", "")).startswith("data:image/")]
+        if not frames:
+            log.warning("Frame capture %s returned no frames: %s", capture_id, res.get("error"))
+            return None
+        times = ", ".join(f"{float(f.get('t') or 0):.1f}s" for f in frames)
+        note = (f"{len(frames)} frames ({frames[0].get('width')}x{frames[0].get('height')}) "
+                f"taken {times} after the demo loaded")
+        if (res.get("canvases") or 1) > 1:
+            note += (f"; the demo uses {res['canvases']} WebGL canvases and only the last one "
+                     "is captured, so the frames may not show the whole composition")
+        log.info("Captured %s", note)
+        return {"parts": [{"type": "image_url", "image_url": {"url": f["data"]}} for f in frames],
+                "note": note}
+
+    def _capture_video(self, seconds: float) -> dict | None:
+        """Ninfer visual review with video input: record the running demo at 2 fps and
+        transcode it to the MP4 format the vision model expects."""
+        raw = self._record_video(seconds=seconds, fps=2)
+        if raw is None:
+            return None
+        mp4 = None
+        try:
+            mp4 = self._transcode_for_vision(raw)
+            if mp4 is None:
+                return None
+            b64 = base64.b64encode(mp4.read_bytes()).decode("ascii")
+            return {"parts": [{"type": "video_url", "video_url": {"url": f"data:video/mp4;base64,{b64}"}}],
+                    "note": f"{seconds:.0f}s video at 2 fps of the demo running"}
+        finally:
+            raw.unlink(missing_ok=True)
+            if mp4 is not None:
+                mp4.unlink(missing_ok=True)
+
     def _display_phase(self, cfg: dict, html: str, temp_path: Path, effect_slug: str,
-                        mode: str, model: str, source_path: Path | None,
-                        capture_video_seconds: float | None = None) -> str | None:
+                        mode: str, model: str) -> str | None:
         """Runs one full display cycle for `html`: title/meta generation (JIT or background,
         per the jit_titling setting), the DISPLAY state broadcast, the runtime timer, and the
-        discard check. If capture_video_seconds is given, also records the demo concurrently
-        with the runtime timer (in a background thread, same pattern as background title
-        generation) so a video-improve pass costs no extra display time.
+        discard check.
 
         Returns `html` unchanged on normal completion (ready for the caller to archive), or
         None if the user discarded during this display (caller must skip archiving and go to
-        IDLE). Sets self._last_display_meta to the generated title/description dict (or None),
-        and self._last_raw_video to the recorded video path (or None), so the caller can use
-        them after this returns.
+        IDLE). Sets self._last_display_meta to the generated title/description dict (or None)
+        so the caller can use it after this returns.
         """
         runtime = cfg["display"]["demo_runtime_seconds"]
         stats_key = effect_slug if mode == "stock" else mode
         stats_summary = self._meta_stats(stats_key, model)
         self._last_display_meta = None
-        self._last_raw_video = None
 
         jit_titling = cfg["display"].get("jit_titling")
         meta_thread = None
@@ -541,15 +580,6 @@ class Orchestrator:
             meta_thread = threading.Thread(target=_fetch_meta, daemon=True)
             meta_thread.start()
 
-        video_result: list = [None]
-        video_thread = None
-        if capture_video_seconds:
-            record_secs = min(capture_video_seconds, runtime)
-            def _record():
-                video_result[0] = self._record_video(seconds=record_secs, fps=2)
-            video_thread = threading.Thread(target=_record, daemon=True)
-            video_thread.start()
-
         self._run_timer(runtime)
 
         if self._discard_current.is_set():
@@ -561,57 +591,9 @@ class Orchestrator:
             meta_thread.join(timeout=10)
             self._last_display_meta = _meta_result[0]
 
-        if video_thread is not None:
-            video_thread.join(timeout=10)
-            self._last_raw_video = video_result[0]
-
         return html
 
-    # ── Ninfer video-improve pass ──────────────────────────────────────────────
-
-    def _video_improve_from_recording(self, cfg: dict, html: str, raw_path: Path, temp_path: Path,
-                                       model: str, effect_slug: str, mode: str,
-                                       source_path: Path | None, brief: str = "") -> str | None:
-        """Given a video already recorded during the first display, transcodes it, asks Qwen
-        for a visual improvement, validates the result, and re-displays it live on success.
-
-        Returns the html to archive, or None if the user discarded during the improved
-        re-display (caller must skip archiving entirely, matching a discard during the first
-        display). Any failure along the way (transcode, LLM call, or re-validation) silently
-        falls back to returning the original `html` unchanged.
-        """
-        mp4_path: Path | None = None
-        try:
-            mp4_path = self._transcode_for_vision(raw_path)
-            if mp4_path is None:
-                log.warning("ffmpeg transcode failed or ffmpeg missing; skipping video-improve pass")
-                return html
-
-            self._tx("VIDEO_IMPROVE", mode=mode, model=model)
-            improved = self._do_video_improve(cfg, html, mp4_path, model=model)
-            if not improved:
-                return html
-
-            max_repairs = cfg["validation"]["max_repair_attempts"]
-            audition_secs = cfg["validation"]["audition_seconds"]
-            temp_path.write_text(improved, encoding="utf-8")
-            final_html, err = self._validate_and_repair(
-                cfg, temp_path, improved, model, max_repairs, audition_secs, brief=brief
-            )
-            if final_html is None:
-                log.warning("Video-improved HTML failed validation (%s); archiving original instead", err)
-                temp_path.write_text(html, encoding="utf-8")
-                return html
-
-            return self._display_phase(cfg, final_html, temp_path, effect_slug, mode, model, source_path)
-        except Exception:
-            log.exception("Video-improve pass failed; keeping original demo")
-            temp_path.write_text(html, encoding="utf-8")
-            return html
-        finally:
-            raw_path.unlink(missing_ok=True)
-            if mp4_path is not None:
-                mp4_path.unlink(missing_ok=True)
+    # ── Video capture (Ninfer visual review with video input) ─────────────────
 
     def _record_video(self, seconds: float, fps: int) -> Path | None:
         record_id = uuid.uuid4().hex[:8]
@@ -660,26 +642,6 @@ class Orchestrator:
             log.warning("ffmpeg transcode failed (exit %d): %s", r.returncode, stderr_tail)
             return None
         return out_path
-
-    def _do_video_improve(self, cfg: dict, html: str, mp4_path: Path, model: str = "") -> str | None:
-        _, lm = self._active_provider_cfg(cfg)
-        prompt = cfg["system_prompts"].get("video_improve", "")
-        if not prompt:
-            return None
-        b64 = base64.b64encode(mp4_path.read_bytes()).decode("ascii")
-        messages = [
-            {"role": "system", "content": prompt},
-            {"role": "user", "content": [
-                {"type": "video_url", "video_url": {"url": f"data:video/mp4;base64,{b64}"}},
-                {"type": "text", "text": html},
-            ]},
-        ]
-        # Reuses the same streaming path as generate/repair (chat_stream already forwards
-        # multimodal content verbatim) so the improved code visibly types into the editor
-        # during the VIDEO_IMPROVE state, exactly like GENERATE/REPAIR do.
-        max_tokens_override = lm.get("video_max_tokens", lm["max_tokens"])
-        improved, _err = self._stream(cfg, messages, model=model, max_tokens_override=max_tokens_override)
-        return improved
 
     def _run_timer(self, seconds: float) -> None:
         deadline = time.time() + seconds
@@ -802,15 +764,14 @@ class Orchestrator:
             ]
         return []
 
-    def _stream(self, cfg: dict, messages: list[dict], model: str = "",
-                max_tokens_override: int | None = None) -> tuple[str | None, str | None]:
+    def _stream(self, cfg: dict, messages: list[dict], model: str = "") -> tuple[str | None, str | None]:
         """Run the LLM stream; return (html, error_msg)."""
         provider, lm = self._active_provider_cfg(cfg)
         tokens: list[str] = []
         start = time.time()
         extra_params = ({"reasoning_effort": lm["thinking_effort"]}
                         if provider in ("ninfer", "strata") else None)
-        max_tokens = max_tokens_override if max_tokens_override is not None else lm["max_tokens"]
+        max_tokens = lm["max_tokens"]
 
         try:
             for tok in lm_client.chat_stream(

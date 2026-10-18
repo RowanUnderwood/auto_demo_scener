@@ -18,6 +18,17 @@ DEFAULTS: dict = {
         "max_tool_calls": 24,           # executed edits/runs/finishes per demo
         "session_deadline_seconds": 600,
         "max_run_seconds": 15,          # cap on a model-requested longer run
+        # Visual review (milestone 3): once a revision passes, capture what it looks like,
+        # ask the model for at most three concrete issues, let it polish them with edits,
+        # then compare before/after and keep the earlier revision unless the polish is
+        # clearly better. Needs a model that accepts image (or, for Ninfer, video) input.
+        "visual_review": False,
+        "vision_input": "frames",       # frames | video (video: Ninfer only, needs ffmpeg)
+        "capture_frames": 4,            # frames per capture
+        "capture_interval_ms": 1500,    # time between frames
+        "capture_max_px": 768,          # long edge of each frame
+        "video_capture_seconds": 8,
+        "max_polish_rounds": 1,
     },
     "llm_provider": "lm_studio",
     "lm_studio": {
@@ -38,8 +49,6 @@ DEFAULTS: dict = {
         "context_ceiling_tokens": 16384,
         "surprise_me": False,
         "thinking_effort": "low",
-        "video_check_enabled": False,
-        "video_max_tokens": 16384,
     },
     "strata": {
         "base_url": "http://192.168.2.192:8080",
@@ -101,14 +110,6 @@ DEFAULTS: dict = {
             "Fix the file and output the corrected complete HTML. "
             "Output ONLY the HTML, no commentary, no markdown fences."
         ),
-        "video_improve": (
-            "You are an expert creative coder reviewing a running three.js demo. "
-            "Attached is a short video capture of the demo actually running, followed by its "
-            "complete HTML source. Watch how it looks and moves, then make any improvements you "
-            "feel are relevant to make it more visually appealing — timing, color, composition, "
-            "motion, contrast, or polish — while keeping the core idea and effect intact. "
-            "Output ONLY the complete corrected HTML file, no commentary, no markdown fences."
-        ),
         "iterative": (
             "You are an expert creative coder fixing and polishing a single-file three.js demo "
             "that runs full-screen in a kiosk browser. You work in rounds: each round you see the "
@@ -127,6 +128,26 @@ DEFAULTS: dict = {
             "Environment: three.js r160 is available via the import map as 'three'; the page is a "
             "sandboxed iframe (no localStorage, no network requests other than CDN imports); the "
             "canvas should fill the window and animate continuously."
+        ),
+        "visual_critique": (
+            "You review a running three.js demo for a kiosk demoscene show. You get the brief and "
+            "frames captured from the demo while it runs. Name at most three concrete visual "
+            "problems you can actually see in the frames — e.g. an overexposed or washed-out "
+            "image, the subject clipped or too small in frame, imperceptible or jerky motion, poor "
+            "contrast, an empty or static-looking scene — each with the change that would fix it. "
+            "Do not ask for a different effect or a rewrite. If it already looks good, return no "
+            "issues. Output ONLY a JSON object, no markdown: "
+            "{\"issues\": [{\"problem\": str, \"evidence\": str, \"change\": str}]}"
+        ),
+        "visual_compare": (
+            "You compare two captures of the same three.js demo: BEFORE and AFTER a polish pass "
+            "that tried to fix the listed issues. The scenes may differ slightly between runs "
+            "because of randomness or timing; judge the overall look, not exact pixels. Choose "
+            "AFTER only if it is clearly better and has no obvious regression (broken framing, "
+            "lost detail, darker or emptier image, less motion, the effect changed). If unsure, "
+            "choose BEFORE. Output ONLY a JSON object, no markdown: "
+            "{\"choice\": \"after\" | \"before\", \"improved\": [str], \"regressions\": [str], "
+            "\"reason\": str}"
         ),
         "title": (
             "You are a creative naming assistant for demoscene visuals. "
