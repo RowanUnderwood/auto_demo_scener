@@ -414,4 +414,56 @@ Findings:
 
 Limitations: n = 6 with one repeat, one model, software rendering (frame rate not judged, render timings not representative of the kiosk), no human preference ratings yet, and no token counts.
 
-Recommendations (defaults unchanged until the blind review and a larger run support them): keep `classic` as the default. `iterative` without visual review is a low-risk alternative: it matched classic on every trial, fixed the one failure faster with less output, and after the tuning above it no longer edits passing demos on dark/slow signals alone. Treat `iterative_visual` as experimental until blind ratings show the polish is preferred, and prefer `max_polish_rounds: 1`. Next: rate the 8 pairs, then run the plan's 20+ paired trials with repeats on the real kiosk display.
+Initial recommendations (superseded by "Analysis of all evaluation runs" below): keep `classic` as the default. `iterative` without visual review is a low-risk alternative: it matched classic on every trial, fixed the one failure faster with less output, and after the tuning above it no longer edits passing demos on dark/slow signals alone. Treat `iterative_visual` as experimental until blind ratings show the polish is preferred, and prefer `max_polish_rounds: 1`. Next: rate the 8 pairs, then run the plan's 20+ paired trials with repeats on the real kiosk display.
+
+### Analysis of all evaluation runs (2026-10-18)
+
+Three runs on Ninfer `qwen3.8-27b`, 33 shared drafts, 23 blind ratings:
+
+| Run | Display | Trials | Arms | Rated pairs |
+| --- | --- | --- | --- | --- |
+| `20261018-082246-smoke-ninfer` | headless, software rendering | 6/6 | all four | 8 of 8 |
+| `20261018-092931-smoke` | kiosk (Firefox, ~60 fps) | 12/12 | classic, iterative | 3 of 3 |
+| `20261018-101218-smoke` | kiosk | 15/36 (stopped) | all four | 12 of 25 |
+
+Most of run 2 (t03–t12) and all of run 3 used the tuned visibility check and attention rules (app restarted 09:56).
+
+**Reliability.** Final pass: classic 32/33 (97%), classic_matched 21/21, iterative 33/33, iterative_visual 21/21. On the kiosk 6 of 27 drafts genuinely failed their first check (22%); in run 3, 5 of 15. Classic used up its two repairs once (run 3 t10, Auto-Play Tetris), where `classic_matched` and both iterative arms recovered. That is the only trial where the matched budget mattered.
+
+**Repair speed on the kiosk** (drafts that failed; wall time after the draft, including classic's typing animation):
+
+| Trial | Classic | Iterative |
+| --- | --- | --- |
+| run 2 t11 creative | 34.4 s | 12.6 s |
+| run 3 t04 Tetris (no draws) | 29.9 s | 57.3 s |
+| run 3 t06 update | 38.1 s | 7.9 s |
+| run 3 t10 Tetris | 67.2 s, failed | 58.6 s |
+| run 3 t11 creative | 24.7 s | 12.3 s |
+| run 3 t12 update | 34.2 s | 8.2 s |
+
+Iterative was faster in 5 of 6 and recovered the one classic lost. It also wrote far less text (run 3 mean 1,711 vs 4,093 output chars per demo).
+
+**Blind preference vs classic** (non-identical pairs, rated):
+
+| Arm | Wins | Losses | Ties | Both bad | Identical (auto-tie) |
+| --- | --- | --- | --- | --- | --- |
+| iterative_visual | 6 | 3 | 3 | 2 | 1 |
+| iterative | 1 | 2 | 1 | 2 | 22 |
+| classic_matched | 1 | 0 | 1 | 1 | 16 |
+
+- **iterative_visual** won 6 of 9 decisive pairs (Auto-Play Tetris 2–0, Solar System 2–1, creative 1–0, Boids 1–0 with two "both bad", Plasma 0–1, update 0–1). That leans positive but isn't significant at this size (two-sided sign test p ≈ 0.5). The model's own before/after judgement kept its polish in 35 of 39 rounds (90%), much more confident than the human ratings, so it is not a substitute for them. All 4 rejections came in second rounds (round 1: 20 kept, 0 rejected; round 2: 15 kept, 4 rejected). Cost on the kiosk: median 90 s per demo after the draft, against about 5 s for drafts that pass.
+- **iterative** produced output identical to classic in 22 of 33 pairs (11 differed, 6 of those rated). Of its 2 losses, one was the pre-tuning blind edit of a dark scene (fixed) and one an update-mode repair where both arms rewrote the demo. Its 1 win (run 2 t04 Tetris) came from a "frozen output" look on a passing draft with 0/64 cells lit. The edits made the game visible, and you marked classic's unchanged version as not meeting the brief.
+- **classic_matched** differed from classic in 5 of 21 pairs (3 rated), including the one where classic failed outright.
+
+**Check issues found in this analysis:**
+1. *"Frozen" is grid-based and fires on sparse scenes.* It triggered all three looks iterative took at passing drafts on the kiosk: run 2 t04 (Tetris, 0/64 lit), run 3 t14 (Solar System, 0/64 lit, so the samples were always black) and t15 (Boids, small objects moving between sample points). The only rated one (t04) was a clear win, and t14/t15 are unrated. So it stays a text-only trigger for now. Rating run 3's t14/t15 iterative pairs will show whether it should move to visual-review-only like "mostly dark".
+2. *Zero-heartbeat BLANK (fixed).* Run 2 t03 (Boids): the classic arm's check got no heartbeats at all ("No activity detected"), while the iterative arm passed the same draft. Classic then rewrote a working demo, and you rated both "bad". A BLANK with zero heartbeats and no errors is now re-run once before it counts.
+3. Flaky BLANK on sparse scenes: already fixed after the first smoke run (full-frame check).
+
+**Data caveats:** "Satisfies the brief" ticks were sometimes inconsistent for the same classic output across pairs, and an unticked box can't be told apart from a skipped one, so brief rates aren't used here. Per-category results have one to three ratings each. 13 pairs in run 3 are still unrated.
+
+**Updated recommendations:**
+1. **Use `iterative` (visual off) as the strategy.** It is as reliable as classic (it never lost a demo, and classic did once), repairs failures faster with much less output, and it leaves passing drafts alone except for console warnings or whole-run frozen output. Its output was identical to classic in most cases, and blind quality was otherwise indistinguishable. Your `config.json` already uses it. Changing the shipped `DEFAULTS` from `classic` is reasonable, but still yours to decide.
+2. **Visual review: optional, with `max_polish_rounds: 1`.** Humans preferred its output more often than not (6–3), with no regression in pass rate, at about 90 s extra per demo. Second rounds were where all the self-rejections happened and they double the time, so 1 round gets most of the benefit. Enable it when polish matters more than throughput. Keep treating the model's compare as a safety net, not as evidence of improvement.
+3. **Leave `classic_matched` out of routine runs.** It only matters when classic runs out of repairs (1 of 21 trials).
+4. **Next evidence:** rate the 13 open pairs in run 3 (especially iterative t14/t15, which decide the "frozen" trigger), then resume it (`/eval` → resume) with the fixed checks. 21 trials remain, which would bring the visual comparison to roughly 30 rated pairs. Consider a different judge model for the compare step, since a model grading its own polish was nearly always satisfied.

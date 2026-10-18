@@ -439,8 +439,10 @@ class IterativeSession:
         catch. Frozen output and console warnings earn a text-only model one look (never a
         failure by themselves). "Mostly dark" and "renders on few frames" are only passed
         to the visual critique (visual_hints=True): without seeing the frames a model can't
-        tell a sparse scene or slow hardware from a bug, and in evaluation it edited
-        working demos blind on those signals."""
+        tell a sparse scene or slow hardware from a bug, and in evaluation it edited a
+        working dark scene blind on the "mostly dark" signal. ("Frozen" is grid-based too
+        and fires on sparse scenes, but its one rated look in evaluation was a win, so it
+        stays until more ratings say otherwise.)"""
         diag = self.checks.get(self.store.current, {}).get("diagnostics") or {}
         reasons = []
         beats = diag.get("heartbeats") or 0

@@ -86,6 +86,16 @@ class TimeoutAndRepairTests(unittest.TestCase):
         self.assertIsNone(err["kind"])
         self.assertEqual(o.repairs, [])
 
+    def test_zero_heartbeats_rerun_once_not_repaired(self):
+        silent = {"result": "BLANK", "error": "No activity detected", "diagnostics": {"heartbeats": 0, "errors": []}}
+        o = ScriptedOrchestrator([silent, {"result": "OK"}], [1])
+        self.assertEqual(o._validate_and_repair(self.cfg, self.path, "<h>", "m", 2, 1), ("<h>", None))
+        self.assertEqual(o.repairs, [])
+        # a second silent run is a real result and goes to repair
+        o = ScriptedOrchestrator([silent, silent, {"result": "OK"}], [1])
+        o._validate_and_repair(self.cfg, self.path, "<h>", "m", 2, 1)
+        self.assertEqual(len(o.repairs), 1)
+
     def test_waits_for_display_then_resumes(self):
         displays = [0]
         o = ScriptedOrchestrator([{"result": "TIMEOUT"}, {"result": "OK"}], displays)

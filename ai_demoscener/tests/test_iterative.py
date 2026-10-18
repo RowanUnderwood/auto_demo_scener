@@ -228,12 +228,12 @@ class SessionTests(unittest.TestCase):
     def test_budget_exhaustion_falls_back_to_latest_passing(self):
         judge = lambda html: OK if ("speed = 0.5" in html and "BROKEN" not in html) else crash()  # noqa: E731
         h = Harness([
-            # rev 1 passes but looks frozen → one attention turn; the model breaks it, then can't fix it
+            # rev 1 passes with console warnings → one attention turn; the model breaks it, then can't fix it
             reply(tool("edit_demo", old_text="speed = 0.1", new_text="speed = 0.5 // BROKEN", change_summary="a")),
             reply(tool("edit_demo", old_text="speed2", new_text="speed3", change_summary="b")),
         ], judge)
-        frozen = {"result": "OK", "diagnostics": {"heartbeats": 5, "frozen_seconds": 5}}
-        h.judge = lambda html: frozen if html == SRC else judge(html)
+        noisy = {"result": "OK", "diagnostics": {"heartbeats": 5, "console": [{"level": "warn", "text": "x"}]}}
+        h.judge = lambda html: noisy if html == SRC else judge(html)
         r = session(h, agent_runner.Budgets(max_turns=2)).run()
         self.assertEqual(r.outcome, "budget")
         self.assertEqual(r.revision, 1)
@@ -311,6 +311,11 @@ class AttentionTests(unittest.TestCase):
         h = Harness([], lambda html: self.SPARSE)
         r = session(h).run()
         self.assertEqual((r.outcome, r.turns), ("first_draft_ok", 0))
+
+    def test_frozen_output_still_gets_one_look(self):
+        frozen = {"result": "OK", "diagnostics": {"heartbeats": 5, "frozen_seconds": 4}}
+        h = Harness([reply(tool("finish_demo", summary="slow on purpose"))], lambda html: frozen)
+        self.assertEqual(session(h).run().turns, 1)
 
     def test_console_warnings_still_get_one_look(self):
         noisy = {"result": "OK", "diagnostics": {"heartbeats": 5, "console": [{"level": "warn", "text": "x"}]}}

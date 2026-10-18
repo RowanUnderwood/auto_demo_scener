@@ -583,18 +583,35 @@ class Orchestrator:
         completed (cancelled while waiting, or the display didn't answer twice)."""
         result = self._audition(temp_path, seconds)
         timeouts = 0
-        while result.get("result") == "TIMEOUT":
-            if self._display_count() == 0:
-                if not self._wait_for_display():
-                    return None
+        silent_retried = False
+        while True:
+            if result.get("result") == "TIMEOUT":
+                if self._display_count() == 0:
+                    if not self._wait_for_display():
+                        return None
+                else:
+                    timeouts += 1
+                    if timeouts > 1:
+                        log.warning("Display did not answer the audition twice; abandoning this demo")
+                        return None
+                    log.warning("Audition timed out with a display connected; retrying once")
+            elif self._never_ran(result) and not silent_retried:
+                # The probe heartbeats from its own frame loop whatever the demo does, so
+                # zero heartbeats and no errors means the page never ran (a load hiccup), not
+                # a demo bug. Re-run once rather than sending a working demo for repair.
+                silent_retried = True
+                if self._acct and self._acct["checks"]:
+                    self._acct["checks"].pop()
+                log.warning("Audition got no heartbeats at all; re-running it once")
             else:
-                timeouts += 1
-                if timeouts > 1:
-                    log.warning("Display did not answer the audition twice; abandoning this demo")
-                    return None
-                log.warning("Audition timed out with a display connected; retrying once")
+                return result
             result = self._audition(temp_path, seconds)
-        return result
+
+    @staticmethod
+    def _never_ran(result: dict) -> bool:
+        diag = result.get("diagnostics") or {}
+        return (result.get("result") == "BLANK" and diag.get("heartbeats") == 0
+                and not diag.get("errors"))
 
     # ── Iterative strategy ─────────────────────────────────────────────────────
 
