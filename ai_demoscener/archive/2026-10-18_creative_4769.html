@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+*{margin:0;padding:0}
+body{overflow:hidden;background:#000}
+canvas{display:block}
+#vignette{
+  position:fixed;inset:0;pointer-events:none;
+  background:radial-gradient(ellipse at center, rgba(0,0,0,0) 45%, rgba(0,0,0,0.55) 100%);
+  z-index:10;
+}
+</style>
+</head>
+<body>
+<div id="vignette"></div>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const W = window.innerWidth, H = window.innerHeight;
+const renderer = new THREE.WebGLRenderer({ antialias: false });
+renderer.setSize(W, H);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x02030a);
+const camera = new THREE.PerspectiveCamera(60, W/H, 0.1, 300);
+camera.position.set(0, 0, 14);
+
+const N = 256;
+const RADIUS = 8;
+const positions = new Float32Array(N * 3);
+const phases = new Float32Array(N);
+const baseSize = new Float32Array(N);
+const golden = Math.PI * (3 - Math.sqrt(5));
+for (let i = 0; i < N; i++) {
+  const y = 1 - (i / (N - 1)) * 2;
+  const r = Math.sqrt(Math.max(0, 1 - y*y));
+  const th = golden * i;
+  positions[i*3]   = Math.cos(th) * r * RADIUS;
+  positions[i*3+1] = y * RADIUS;
+  positions[i*3+2] = Math.sin(th) * r * RADIUS;
+  phases[i] = Math.random() * Math.PI * 2;
+  baseSize[i] = 0.7 + Math.random() * 0.9;
+}
+
+// Build edges: each node connects to 4 nearest
+const edges = [];
+const edgeSet = new Set();
+for (let i = 0; i < N; i++) {
+  const ds = [];
+  for (let j = 0; j < N; j++) {
+    if (i === j) continue;
+    const dx = positions[i*3]-positions[j*3];
+    const dy = positions[i*3+1]-positions[j*3+1];
+    const dz = positions[i*3+2]-positions[j*3+2];
+    ds.push({j, d: dx*dx+dy*dy+dz*dz});
+  }
+  ds.sort((a,b) => a.d - b.d);
+  for (let k = 0; k < 4; k++) {
+    const j = ds[k].j;
+    const key = Math.min(i,j)*N + Math.max(i,j);
+    if (!edgeSet.has(key)) { edgeSet.add(key); edges.push([i, j]); }
+  }
+}
+
+// Adjacency
+const adj = Array.from({length: N}, () => []);
+edges.forEach(([a,b], idx) => { adj[a].push({node: b, edge: idx}); adj[b].push({node: a, edge: idx}); });
+
+// Node brightness
+const brightness = new Float32Array(N);
+for (let i = 0; i < N; i++) brightness[i] = Math.random() * 0.25;
+const nodeGeo = new THREE.BufferGeometry();
+nodeGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+nodeGeo.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+nodeGeo.setAttribute('aSize', new THREE.BufferAttribute(baseSize, 1));
+const nodeBrightAttr = new THREE.BufferAttribute(brightness, 1);
+nodeGeo.setAttribute('aBright', nodeBrightAttr);
+
+const sharedUniforms = { uTime: { value: 0 } };
+
+const nodeMat = new THREE.ShaderMaterial({
+  uniforms: sharedUniforms,
+  vertexShader: `
+    attribute float aBright;
+    attribute float aPhase;
+    attribute float aSize;
+    uniform float uTime;
+    varying float vBright;
+    void main(){
+      vBright = aBright;
+      vec3 n = normalize(position);
+      float disp = 0.22 * sin(uTime*1.5 + aPhase);
+      vec3 p = position + n*disp;
+      vec4 mv = modelViewMatrix * vec4(p, 1.0);
+      float pulse = 0.5 + 0.5*sin(uTime*2.0 + aPhase*3.0);
+      gl_PointSize = (2.5 + 14.0 * aBright + aSize*2.0*(0.6+0.4*pulse)) * (34.0 / -mv.z);
+      gl_Position = projectionMatrix * mv;
+    }
+  `,
+  fragmentShader: `
+    varying float vBright;
+    void main(){
+      float d = length(gl_PointCoord - 0.5);
+      float core = pow(max(0.0, 1.0 - d*2.0), 3.0);
+      float halo = pow(max(0.0, 1.0 - d*2.0), 2.0) * 0.55;
+      vec3 cool = vec3(0.22, 0.55, 1.0);
+      vec3 warm = vec3(1.0, 0.42, 0.85);
+      float b = clamp(vBright, 0.0, 1.0);
+      vec3 col = mix(cool, warm, clamp(b*1.3, 0.0, 1.0));
+      col += vec3(1.0, 0.96, 1.0) * pow(b, 1.5) * 1.3;
+      float glow = 0.10 + b;
+      float a = (core + halo) * glow;
+      gl_FragColor = vec4(col, a);
+    }
+  `,
+  transparent: true,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false
+});
+const nodePoints = new THREE.Points(nodeGeo, nodeMat);
+scene.add(nodePoints);
+
+// Edges
+const edgeVerts = new Float32Array(edges.length * 6);
+const edgePhase = new Float32Array(edges.length * 2);
+const edgeBright = new Float32Array(edges.length * 2);
+edges.forEach(([a,b], i) => {
+  edgeVerts.set([positions[a*3], positions[a*3+1], positions[a*3+2], positions[b*3], positions[b*3+1], positions[b*3+2]], i*6);
+  edgePhase[i*2] = phases[a];
+  edgePhase[i*2+1] = phases[b];
+});
+const edgeGeo = new THREE.BufferGeometry();
+edgeGeo.setAttribute('position', new THREE.BufferAttribute(edgeVerts, 3));
+edgeGeo.setAttribute('aPhase', new THREE.BufferAttribute(edgePhase, 1));
+const edgeBrightAttr = new THREE.BufferAttribute(edgeBright, 1);
+edgeGeo.setAttribute('aBright', edgeBrightAttr);
+
+const edgeMat = new THREE.ShaderMaterial({
+  uniforms: sharedUniforms,
+  vertexShader: `
+    attribute float aBright;
+    attribute float aPhase;
+    uniform float uTime;
+    varying float vBright;
+    void main(){
+      vBright = aBright;
+      vec3 n = normalize(position);
+      float disp = 0.22 * sin(uTime*1.5 + aPhase);
+      vec3 p = position + n*disp;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+    }
+  `,
+  fragmentShader: `
+    varying float vBright;
+    void main(){
+      float b = clamp(vBright, 0.0, 1.0);
+      vec3 idle = vec3(0.10, 0.28, 0.55);
+      vec3 hot = vec3(0.55, 0.95, 1.0);
+      vec3 col = mix(idle, hot, b);
+      col += vec3(1.0) * pow(b, 2.0) * 0.7;
+      gl_FragColor = vec4(col, 0.16 + 0.84 * b);
+    }
+  `,
+  transparent: true,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false
+});
+const edgeLines = new THREE.LineSegments(edgeGeo, edgeMat);
+scene.add(edgeLines);
+
+// Pulses
+const MAX_PULSES = 600;
+const pulses = [];
+function spawnPulse(from, to) {
+  if (pulses.length >= MAX_PULSES) return;
+  pulses.push({ from, to, t: 0, speed: 1.0 + Math.random() * 1.0 });
+}
+
+// Stars background
+const starCount = 1400;
+const starPos = new Float32Array(starCount * 3);
+for (let i = 0; i < starCount; i++) {
+  const r = 70 + Math.random() * 120;
+  const th = Math.random() * Math.PI * 2;
+  const ph = Math.acos(2 * Math.random() - 1);
+  starPos[i*3]   = r * Math.sin(ph) * Math.cos(th);
+  starPos[i*3+1] = r * Math.cos(ph);
+  starPos[i*3+2] = r * Math.sin(ph) * Math.sin(th);
+}
+const starGeo = new THREE.BufferGeometry();
+starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+const starMat = new THREE.PointsMaterial({ color: 0x99bbee, size: 0.35, sizeAttenuation: true, transparent: true, opacity: 0.7 });
+const stars = new THREE.Points(starGeo, starMat);
+scene.add(stars);
+
+// Clock & loop
+const clock = new THREE.Clock();
+let spawnTimer = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const t = clock.getElapsedTime();
+  sharedUniforms.uTime.value = t;
+
+  // Rotate with a gentle multi-axis drift
+  nodePoints.rotation.y = t * 0.28;
+  nodePoints.rotation.x = Math.sin(t * 0.18) * 0.35;
+  nodePoints.rotation.z = Math.cos(t * 0.13) * 0.15;
+  edgeLines.rotation.copy(nodePoints.rotation);
+
+  // Subtle camera breathing for depth
+  camera.position.z = 14 + Math.sin(t * 0.4) * 0.6;
+  stars.rotation.y = -t * 0.01;
+  starMat.opacity = 0.55 + 0.2 * Math.sin(t * 0.8);
+
+  // Spawn new pulses periodically
+  spawnTimer += dt;
+  if (spawnTimer > 0.10) {
+    spawnTimer = 0;
+    const a = Math.floor(Math.random() * N);
+    const neighbors = adj[a];
+    if (neighbors.length > 0) {
+      const n = neighbors[Math.floor(Math.random() * neighbors.length)];
+      spawnPulse(a, n.node);
+    }
+    // Cascade from hot nodes
+    for (let i = 0; i < N; i++) {
+      if (brightness[i] > 0.65 && Math.random() < 0.35) {
+        const nb = adj[i];
+        if (nb.length > 0) {
+          const n2 = nb[Math.floor(Math.random() * nb.length)];
+          spawnPulse(i, n2.node);
+        }
+      }
+    }
+  }
+
+  // Update pulses
+  for (let i = pulses.length - 1; i >= 0; i--) {
+    const p = pulses[i];
+    p.t += p.speed * dt;
+    if (p.t >= 1.0) {
+      brightness[p.to] = Math.min(1, brightness[p.to] + 0.55);
+      const edgeIdx = adj[p.from].find(e => e.node === p.to);
+      if (edgeIdx) {
+        edgeBright[edgeIdx.edge * 2] = 1.0;
+        edgeBright[edgeIdx.edge * 2 + 1] = 1.0;
+      }
+      const nb = adj[p.to];
+      const cascadeCount = Math.random() < 0.5 ? 2 : 1;
+      for (let c = 0; c < cascadeCount; c++) {
+        if (nb.length > 0) {
+          const n = nb[Math.floor(Math.random() * nb.length)];
+          spawnPulse(p.to, n.node);
+        }
+      }
+      pulses.splice(i, 1);
+    } else {
+      const edgeIdx = adj[p.from].find(e => e.node === p.to);
+      if (edgeIdx) {
+        const eIdx = edgeIdx.edge;
+        const intensity = Math.sin(p.t * Math.PI);
+        edgeBright[eIdx * 2] = Math.max(edgeBright[eIdx * 2], intensity * 0.9);
+        edgeBright[eIdx * 2 + 1] = Math.max(edgeBright[eIdx * 2 + 1], intensity * 0.9);
+      }
+    }
+  }
+
+  // Decay brightness
+  const decay = Math.pow(0.55, dt);
+  for (let i = 0; i < N; i++) brightness[i] *= decay;
+  for (let i = 0; i < edgeBright.length; i++) edgeBright[i] *= decay;
+
+  nodeBrightAttr.needsUpdate = true;
+  edgeBrightAttr.needsUpdate = true;
+
+  renderer.render(scene, camera);
+}
+animate();
+
+window.addEventListener('resize', () => {
+  const w = window.innerWidth, h = window.innerHeight;
+  camera.aspect = w/h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+});
+</script>
+</body>
+</html>

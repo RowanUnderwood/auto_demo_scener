@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Bioluminescent Deep</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #020810; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x020810, 0.018);
+
+        const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 200);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+        renderer.setClearColor(0x020810, 1.0);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.body.appendChild(renderer.domElement);
+
+        // --- Simplex Noise GLSL ---
+        const noiseGLSL = `
+            vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+            vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+            vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
+            vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+            vec3 fade(vec3 t) { return t*t*t*(t*(t*6.0-15.0)+10.0); }
+
+            float cnoise(vec3 P) {
+                vec3 Pi0 = floor(P);
+                vec3 Pi1 = Pi0 + vec3(1.0);
+                Pi0 = mod289(Pi0);
+                Pi1 = mod289(Pi1);
+                vec3 Pf0 = fract(P);
+                vec3 Pf1 = Pf0 - 1.0 + vec3(1.0);
+                vec4 ix = vec4(Pi0.x, Pi1.x, Pi0.x, Pi1.x);
+                vec4 iy = vec4(Pi0.yy, Pi1.yy);
+                vec4 iz0 = Pi0.zzzz;
+                vec4 iz1 = Pi1.zzzz;
+                vec4 ixy = permute(permute(ix) + iy);
+                vec4 ixy0 = permute(ixy + iz0);
+                vec4 ixy1 = permute(ixy + iz1);
+                vec4 gx0 = ixy0 * (1.0 / 7.0);
+                vec4 gy0 = fract(gx0) - 0.5;
+                gx0 = floor(gx0);
+                vec4 gz0 = vec4(0.5) - abs(gx0) - abs(gy0);
+                vec4 sz0 = step(gz0, vec4(0.0));
+                gx0 -= sz0 * (step(0.0, gx0) - 0.5);
+                gy0 -= sz0 * (step(0.0, gy0) - 0.5);
+                vec4 gx1 = ixy1 * (1.0 / 7.0);
+                vec4 gy1 = fract(gx1) - 0.5;
+                gx1 = floor(gx1);
+                vec4 gz1 = vec4(0.5) - abs(gx1) - abs(gy1);
+                vec4 sz1 = step(gz1, vec4(0.0));
+                gx1 -= sz1 * (step(0.0, gx1) - 0.5);
+                gy1 -= sz1 * (step(0.0, gy1) - 0.5);
+                vec3 g000 = vec3(gx0.x,gy0.x,gz0.x);
+                vec3 g100 = vec3(gx0.y,gy0.y,gz0.y);
+                vec3 g010 = vec3(gx0.z,gy0.z,gz0.z);
+                vec3 g110 = vec3(gx0.w,gy0.w,gz0.w);
+                vec3 g001 = vec3(gx1.x,gy1.x,gz1.x);
+                vec3 g101 = vec3(gx1.y,gy1.y,gz1.y);
+                vec3 g011 = vec3(gx1.z,gy1.z,gz1.z);
+                vec3 g111 = vec3(gx1.w,gy1.w,gz1.w);
+                vec4 norm0 = taylorInvSqrt(vec4(dot(g000,g000), dot(g010,g010), dot(g100,g100), dot(g110,g110)));
+                g000 *= norm0.x; g010 *= norm0.y; g100 *= norm0.z; g110 *= norm0.w;
+                vec4 norm1 = taylorInvSqrt(vec4(dot(g001,g001), dot(g011,g011), dot(g101,g101), dot(g111,g111)));
+                g001 *= norm1.x; g011 *= norm1.y; g101 *= norm1.z; g111 *= norm1.w;
+                float n000 = dot(g000, Pf0);
+                float n100 = dot(g100, vec3(Pf1.x, Pf0.yz));
+                float n010 = dot(g010, vec3(Pf0.x, Pf1.y, Pf0.z));
+                float n110 = dot(g110, vec3(Pf1.xy, Pf0.z));
+                float n001 = dot(g001, vec3(Pf0.xy, Pf1.z));
+                float n101 = dot(g101, vec3(Pf1.x, Pf0.y, Pf1.z));
+                float n011 = dot(g011, vec3(Pf0.x, Pf1.yz));
+                float n111 = dot(g111, Pf1);
+                vec3 fade_xyz = fade(Pf0);
+                vec4 n_z = mix(vec4(n000, n100, n010, n110), vec4(n001, n101, n011, n111), fade_xyz.z);
+                vec2 n_yz = mix(n_z.xy, n_z.zw, fade_xyz.y);
+                float n_xyz = mix(n_yz.x, n_yz.y, fade_xyz.x);
+                return 2.2 * n_xyz;
+            }
+        `;
+
+        // --- Tube Shader Material ---
+        const tubeUniforms = {
+            uTime: { value: 0.0 },
+            uColor1: { value: new THREE.Color(0x0a3d4a) },
+            uColor2: { value: new THREE.Color(0x00ffcc) },
+            uColor3: { value: new THREE.Color(0xffaa33) },
+            uAmbient: { value: new THREE.Color(0x041520) }
+        };
+
+        const tubeMaterial = new THREE.ShaderMaterial({
+            uniforms: tubeUniforms,
+            side: THREE.BackSide,
+            vertexShader: `
+                varying vec2 vUv;
+                varying vec3 vNormal;
+                varying vec3 vWorldPos;
+                void main() {
+                    vUv = uv;
+                    vNormal = normalize(normalMatrix * normal);
+                    vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                ${noiseGLSL}
+                uniform float uTime;
+                uniform vec3 uColor1;
+                uniform vec3 uColor2;
+                uniform vec3 uColor3;
+                uniform vec3 uAmbient;
+                varying vec2 vUv;
+                varying vec3 vNormal;
+                varying vec3 vWorldPos;
+
+                void main() {
+                    float t = uTime * 0.3;
+                    vec2 uv = vUv;
+
+                    // Flowing organic noise
+                    float n1 = cnoise(vec3(uv * vec2(3.0, 8.0) + vec2(0.0, t), t * 0.5));
+                    float n2 = cnoise(vec3(uv * vec2(6.0, 16.0) + vec2(2.0, t * 1.3), t * 0.3));
+                    float n3 = cnoise(vec3(uv * vec2(1.5, 4.0) - vec2(t * 0.2, 0.0), 0.0));
+
+                    // Bioluminescent spots
+                    float spots = cnoise(vec3(uv * vec2(12.0, 4.0) + vec2(0.0, t * 0.8), t * 0.2));
+                    spots = smoothstep(0.5, 0.75, spots) * 1.0;
+
+                    // Pulsing veins
+                    float veins = cnoise(vec3(uv * vec2(4.0, 20.0) + vec2(t * 0.5, 0.0), 0.0));
+                    veins = smoothstep(0.35, 0.6, veins) * (0.5 + 0.5 * sin(uTime * 2.0 + uv.x * 6.28));
+
+                    // Combine
+                    vec3 base = mix(uColor1, uAmbient, 0.85 + 0.15 * n3);
+                    vec3 glow = uColor2 * (spots * 0.5 + veins * 0.25);
+                    vec3 warm = uColor3 * max(0.0, n1 * n1 * 0.25);
+
+                    vec3 color = base + glow + warm;
+
+                    // Subtle edge glow
+                    float edge = 1.0 - abs(dot(vNormal, vec3(0.0, 0.0, 1.0)));
+                    color += uColor2 * edge * 0.1;
+
+                    // Depth fade
+                    float depthFade = smoothstep(0.0, 0.3, uv.y);
+                    color = mix(color, uAmbient, depthFade * 0.3);
+
+                    gl_FragColor = vec4(color, 1.0);
+                }
+            `
+        });
+
+        // --- Create Organic Curve ---
+        function createOrganicCurve() {
+            const points = [];
+            const count = 30;
+            for (let i = 0; i < count; i++) {
+                const t = i / (count - 1);
+                const angle = t * Math.PI * 4.0 + Math.sin(t * 5.0) * 0.8;
+                const radius = 6.0 + Math.sin(t * 7.0) * 2.5 + Math.cos(t * 3.0) * 1.5;
+                const x = radius * Math.sin(angle);
+                const z = radius * Math.cos(angle);
+                const y = Math.sin(t * 9.0) * 4.0 + Math.cos(t * 4.0) * 3.0;
+                points.push(new THREE.Vector3(x, y, z));
+            }
+            return points;
+        }
+
+        const curvePoints = createOrganicCurve();
+        const curve = new THREE.CatmullRomCurve3(curvePoints, true, 'catmullrom', 0.5);
+
+        const tubeGeometry = new THREE.TubeGeometry(curve, 300, 3.0, 24, true);
+        const tubeMesh = new THREE.Mesh(tubeGeometry, tubeMaterial);
+        scene.add(tubeMesh);
+
+        // --- Ring Accents ---
+        const ringMaterial = new THREE.MeshBasicMaterial({
+            color: 0x00ffcc,
+            transparent: true,
+            opacity: 0.3,
+            side: THREE.DoubleSide
+        });
+
+        const rings = [];
+        const ringCount = 50;
+        for (let i = 0; i < ringCount; i++) {
+            const t = i / ringCount;
+            const pos = curve.getPointAt(t);
+            const tangent = curve.getTangentAt(t);
+            const ringGeo = new THREE.TorusGeometry(3.0, 0.15, 8, 48);
+            const ring = new THREE.Mesh(ringGeo, ringMaterial.clone());
+            ring.position.copy(pos);
+            ring.lookAt(pos.clone().add(tangent));
+            ring.material.opacity = 0.7 + Math.random() * 0.3;
+            scene.add(ring);
+            rings.push(ring);
+        }
+
+        // --- Particles ---
+        const particleCount = 800;
+        const particleGeo = new THREE.BufferGeometry();
+        const positions = new Float32Array(particleCount * 3);
+        const sizes = new Float32Array(particleCount);
+        const offsets = new Float32Array(particleCount);
+
+        for (let i = 0; i < particleCount; i++) {
+            const t = Math.random();
+            const point = curve.getPointAt(t);
+            const normal = new THREE.Vector3(
+                Math.random() - 0.5,
+                Math.random() - 0.5,
+                Math.random() - 0.5
+            ).normalize();
+            const dist = Math.random() * 2.2;
+            positions[i * 3] = point.x + normal.x * dist;
+            positions[i * 3 + 1] = point.y + normal.y * dist;
+            positions[i * 3 + 2] = point.z + normal.z * dist;
+            sizes[i] = Math.random() * 3.0 + 1.0;
+            offsets[i] = Math.random() * Math.PI * 2;
+        }
+
+        particleGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        particleGeo.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+        particleGeo.setAttribute('aOffset', new THREE.BufferAttribute(offsets, 1));
+
+        const particleMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0.0 },
+                uColor: { value: new THREE.Color(0x44ffdd) }
+            },
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+            vertexShader: `
+                attribute float aSize;
+                attribute float aOffset;
+                uniform float uTime;
+                varying float vAlpha;
+                void main() {
+                    vec3 pos = position;
+                    pos.x += sin(uTime * 0.5 + aOffset) * 0.3;
+                    pos.y += cos(uTime * 0.3 + aOffset * 1.5) * 0.3;
+                    pos.z += sin(uTime * 0.4 + aOffset * 0.7) * 0.3;
+                    vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+                    gl_PointSize = aSize * (200.0 / -mvPosition.z);
+                    gl_Position = projectionMatrix * mvPosition;
+                    vAlpha = 0.3 + 0.3 * sin(uTime + aOffset * 3.0);
+                }
+            `,
+            fragmentShader: `
+                uniform vec3 uColor;
+                varying float vAlpha;
+                void main() {
+                    float d = length(gl_PointCoord - vec2(0.5));
+                    float alpha = smoothstep(0.5, 0.1, d) * vAlpha;
+                    gl_FragColor = vec4(uColor, alpha);
+                }
+            `
+        });
+
+        const particles = new THREE.Points(particleGeo, particleMaterial);
+        scene.add(particles);
+
+        // --- Lights ---
+        const ambientLight = new THREE.AmbientLight(0x041520, 3);
+        scene.add(ambientLight);
+
+        const pointLight = new THREE.PointLight(0x00ffcc, 30, 20);
+        scene.add(pointLight);
+
+        const warmLight = new THREE.PointLight(0xffaa33, 15, 15);
+        scene.add(warmLight);
+
+        // --- Camera Animation ---
+        const clock = new THREE.Clock();
+        let camT = 0;
+        let camVel = 0.055;
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const time = clock.getElapsedTime();
+            const delta = clock.getDelta ? 0.016 : 0.016;
+
+            camT = (camT + camVel * 0.016) % 1.0;
+
+            const pos = curve.getPointAt(camT);
+            const lookTarget = curve.getPointAt((camT + 0.03) % 1.0);
+
+            camera.position.lerp(pos, 0.18);
+            camera.lookAt(lookTarget);
+
+            pointLight.position.copy(camera.position);
+            warmLight.position.copy(curve.getPointAt((camT + 0.08) % 1.0));
+
+            // Animate rings
+            for (let i = 0; i < rings.length; i++) {
+                rings[i].material.opacity = 0.55 + 0.3 * Math.sin(time * 1.5 + i * 0.5);
+                rings[i].rotation.z += 0.002;
+            }
+
+            // Update uniforms
+            tubeUniforms.uTime.value = time;
+            particleMaterial.uniforms.uTime.value = time;
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

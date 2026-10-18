@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Three.js Molten Stellar Furnace</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+</script>
+<script type="module">
+    import * as THREE from 'three';
+
+    const vertexShader = `
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `;
+
+    const fragmentShader = `
+        uniform float uTime;
+        uniform vec2 uResolution;
+        varying vec2 vUv;
+
+        float hash12(vec2 p) {
+            p = fract(p * vec2(123.34, 456.21));
+            p += dot(p, p + 45.32);
+            return fract(p.x * p.y);
+        }
+
+        float noise(vec2 p) {
+            vec2 i = floor(p);
+            vec2 f = fract(p);
+            f = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+            float a = hash12(i);
+            float b = hash12(i + vec2(1.0, 0.0));
+            float c = hash12(i + vec2(0.0, 1.0));
+            float d = hash12(i + vec2(1.0, 1.0));
+            return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+        }
+
+        float fbm(vec2 p) {
+            float v = 0.0;
+            float amp = 0.5;
+            mat2 rot = mat2(0.8, 0.6, -0.6, 0.8);
+            for (int i = 0; i < 6; i++) {
+                v += amp * noise(p);
+                p = rot * p * 2.05;
+                amp *= 0.5;
+            }
+            return v;
+        }
+
+        // Hand-tuned molten ramp: black -> maroon -> crimson -> orange -> gold -> white-hot
+        vec3 moltenRamp(float t) {
+            vec3 c0 = vec3(0.0,  0.0,   0.0);
+            vec3 c1 = vec3(0.07, 0.0,   0.0);
+            vec3 c2 = vec3(0.34, 0.02,  0.0);
+            vec3 c3 = vec3(0.78, 0.12,  0.02);
+            vec3 c4 = vec3(1.0,  0.46,  0.06);
+            vec3 c5 = vec3(1.0,  0.82,  0.28);
+            vec3 c6 = vec3(1.0,  1.0,   0.88);
+
+            float s1 = smoothstep(0.0,  0.22, t);
+            float s2 = smoothstep(0.22, 0.45, t);
+            float s3 = smoothstep(0.45, 0.68, t);
+            float s4 = smoothstep(0.68, 0.86, t);
+            float s5 = smoothstep(0.86, 1.0,  t);
+
+            vec3 col = mix(c0, c1, s1);
+            col = mix(col, c2, s2);
+            col = mix(col, c3, s3);
+            col = mix(col, c4, s4);
+            col = mix(col, c5, s5 * 0.55);
+            col = mix(col, c6, s5);
+            return col;
+        }
+
+        void main() {
+            vec2 uv = vUv;
+            vec2 aspect = vec2(uResolution.x / uResolution.y, 1.0);
+            vec2 p = (uv - 0.5) * aspect;
+            float time = uTime * 0.12;
+
+            // Gentle slow breathing of the whole field
+            float breathe = 0.92 + 0.08 * sin(uTime * 0.18);
+            vec2 pc = p * breathe;
+
+            // Domain warping - first pass
+            vec2 q = vec2(
+                fbm(pc * 2.4 + vec2(0.0, 0.0) + time * 0.7),
+                fbm(pc * 2.4 + vec2(5.2, 1.3) - time * 0.5)
+            );
+
+            // Domain warping - second pass
+            vec2 r = vec2(
+                fbm(pc * 2.9 + q * 1.9 + vec2(1.7, 9.2) + time * 0.4),
+                fbm(pc * 2.9 + q * 1.9 + vec2(8.3, 2.8) - time * 0.6)
+            );
+
+            // Final intensity from triple-warped domain, sharpened for contrast
+            float fRaw = fbm(pc * 3.6 + r * 2.1 + time * 0.3);
+            float f = smoothstep(0.42, 0.92, fRaw);
+            f = pow(f, 1.45);
+
+            // Secondary convection layer for depth
+            float f2Raw = fbm(pc * 2.0 + q * 0.85 + vec2(3.1, 7.7) + time * 0.2);
+            float f2 = smoothstep(0.48, 0.88, f2Raw);
+            f2 = pow(f2, 1.4);
+
+            // Combine layers, bias toward the hot core
+            float intensity = f * 0.78 + f2 * 0.22;
+            intensity = pow(intensity, 0.9);
+
+            // Molten color mapping
+            vec3 color = moltenRamp(intensity);
+
+            // White-hot cores with a slow living pulse
+            float hotspots = smoothstep(0.8, 0.97, f);
+            float pulse = 0.8 + 0.2 * sin(uTime * 1.6 + fRaw * 6.0);
+            color += vec3(1.0, 0.95, 0.72) * hotspots * 1.35 * pulse;
+
+            // Faint cool depth in the deepest shadows for contrast (kept subtle, no green)
+            float shadowCool = smoothstep(0.22, 0.0, intensity);
+            color += vec3(0.015, 0.025, 0.05) * shadowCool;
+
+            // Soft radial vignette
+            float d = length(p * 0.85);
+            float vig = smoothstep(1.45, 0.45, d);
+            color *= mix(0.32, 1.0, vig);
+
+            // Subtle film grain
+            float grain = hash12(uv * uResolution + time * 100.0) * 0.03 - 0.015;
+            color += grain;
+
+            // Soft filmic tone mapping + gamma
+            color = color / (1.0 + color * 0.6);
+            color = pow(color, vec3(0.95));
+
+            gl_FragColor = vec4(color, 1.0);
+        }
+    `;
+
+    let scene, camera, renderer, material;
+
+    function init() {
+        scene = new THREE.Scene();
+        camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        renderer = new THREE.WebGLRenderer({ antialias: false });
+        renderer.setClearColor(0x000000);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.body.appendChild(renderer.domElement);
+
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+            },
+            vertexShader: vertexShader,
+            fragmentShader: fragmentShader
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        window.addEventListener('resize', onWindowResize, false);
+    }
+
+    function onWindowResize() {
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        material.uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+    }
+
+    function animate(time) {
+        requestAnimationFrame(animate);
+        material.uniforms.uTime.value = time * 0.001;
+        renderer.render(scene, camera);
+    }
+
+    init();
+    animate(0);
+</script>
+</body>
+</html>

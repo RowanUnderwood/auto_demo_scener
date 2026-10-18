@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Infernal Vortex</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+    </style>
+</head>
+<body>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.body.appendChild(renderer.domElement);
+
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const uniforms = {
+            u_time: { value: 0 },
+            u_resolution: { value: new THREE.Vector2(window.innerWidth * renderer.getPixelRatio(), window.innerHeight * renderer.getPixelRatio()) }
+        };
+
+        const fragmentShader = `
+            uniform float u_time;
+            uniform vec2 u_resolution;
+
+            float hash(vec2 p) {
+                p = fract(p * vec2(123.34, 456.21));
+                p += dot(p, p + 45.32);
+                return fract(p.x * p.y);
+            }
+
+            float hash13(vec3 p) {
+                p = fract(p * 0.1031);
+                p += dot(p, p.yzx + 33.33);
+                return fract((p.x + p.y) * p.z);
+            }
+
+            float noise(vec2 p) {
+                vec2 i = floor(p);
+                vec2 f = fract(p);
+                f = f * f * (3.0 - 2.0 * f);
+                float a = hash(i);
+                float b = hash(i + vec2(1.0, 0.0));
+                float c = hash(i + vec2(0.0, 1.0));
+                float d = hash(i + vec2(1.0, 1.0));
+                return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+            }
+
+            float fbm(vec2 p) {
+                float v = 0.0;
+                float amp = 0.5;
+                mat2 rot = mat2(0.8, -0.6, 0.6, 0.8);
+                for (int i = 0; i < 6; i++) {
+                    v += amp * noise(p);
+                    p = rot * p * 2.0;
+                    amp *= 0.5;
+                }
+                return v;
+            }
+
+            float ridgedFbm(vec2 p) {
+                float v = 0.0;
+                float amp = 0.5;
+                mat2 rot = mat2(0.8, -0.6, 0.6, 0.8);
+                for (int i = 0; i < 5; i++) {
+                    float n = noise(p);
+                    n = 1.0 - abs(n * 2.0 - 1.0);
+                    v += n * n * amp;
+                    p = rot * p * 2.1;
+                    amp *= 0.5;
+                }
+                return v;
+            }
+
+            void main() {
+                vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / min(u_resolution.y, u_resolution.x);
+                
+                // Subtle breathing
+                float breathe = 1.0 + 0.05 * sin(u_time * 0.4);
+                uv *= breathe;
+
+                float r = length(uv);
+                float a = atan(uv.y, uv.x);
+
+                // 3-arm spiral with tighter winding
+                float spiralAngle = 3.0 * a + log(max(r, 0.005)) * 10.0 - u_time * 0.35;
+                float spiral = pow(0.5 + 0.5 * cos(spiralAngle), 12.0);
+                spiral *= exp(-r * 1.3);
+
+                // Secondary faint spiral (counter-rotating)
+                float spiral2 = pow(0.5 + 0.5 * cos(-2.0 * a + log(max(r, 0.005)) * 7.0 + u_time * 0.2), 20.0);
+                spiral2 *= exp(-r * 1.8) * 0.3;
+
+                // Core - multi-layered
+                float core1 = exp(-r * 18.0);
+                float core2 = exp(-r * 6.0) * 0.3;
+                float core = core1 + core2;
+
+                // Turbulent domain warping for dust
+                vec2 warpUV = uv * 5.0;
+                float warp1 = fbm(warpUV + vec2(u_time * 0.08, -u_time * 0.05));
+                float warp2 = fbm(warpUV + vec2(warp1 * 2.0, u_time * 0.03));
+                vec2 warpedUV = warpUV + vec2(warp1, warp2) * 1.5;
+
+                // Smoky dust lanes
+                float dust = ridgedFbm(warpedUV);
+                float dustMask = smoothstep(0.2, 0.8, dust);
+
+                // Fine ember particles with smooth staggered lifecycle
+                vec2 emberCell = floor(uv * 55.0);
+                vec2 emberLocal = fract(uv * 55.0) - 0.5;
+                float emberSoft = smoothstep(0.5, 0.0, length(emberLocal));
+                float emberPhase = hash(emberCell) * 6.2831;
+                float emberLife = 0.5 + 0.5 * sin(u_time * 0.6 + emberPhase);
+                float emberMask = step(0.88, hash(emberCell + 7.31));
+                float embers = emberMask * emberSoft * smoothstep(0.05, 0.4, emberLife) * smoothstep(0.95, 0.6, emberLife);
+                embers *= exp(-r * 3.0);
+
+                // Bright stars
+                vec2 starUV = uv * 25.0;
+                vec2 starId = floor(starUV);
+                float starHash = hash(starId);
+                vec2 starPos = fract(starUV) - 0.5;
+                float starDist = length(starPos);
+                float star = smoothstep(0.06, 0.0, starDist - 0.3 * starHash);
+                star *= step(0.85, starHash);
+                star *= exp(-r * 1.5) * (0.3 + 0.7 * (0.5 + 0.5 * sin(u_time * 2.0 + starHash * 6.28)));
+
+                // Combine light
+                float light = core + spiral + spiral2;
+                light *= (1.0 - dustMask * 0.72);
+                light += embers * 0.8;
+                light += star * 0.6;
+
+                // Color palette: deep crimson -> orange -> gold -> white-hot core
+                vec3 deepRed = vec3(0.22, 0.03, 0.02);
+                vec3 crimson = vec3(0.8, 0.07, 0.03);
+                vec3 orange = vec3(1.0, 0.38, 0.06);
+                vec3 gold = vec3(1.0, 0.68, 0.12);
+                vec3 whiteHot = vec3(1.0, 0.9, 0.65);
+
+                // Radius-based color
+                vec3 baseColor;
+                if (r < 0.15) {
+                    baseColor = mix(gold, whiteHot, smoothstep(0.0, 0.15, r));
+                } else if (r < 0.4) {
+                    baseColor = mix(crimson, gold, smoothstep(0.15, 0.4, r));
+                } else if (r < 0.7) {
+                    baseColor = mix(deepRed, crimson, smoothstep(0.4, 0.7, r));
+                } else {
+                    baseColor = mix(deepRed, vec3(0.05, 0.01, 0.02), smoothstep(0.7, 1.0, r));
+                }
+
+                // Dust gets cooler tone
+                vec3 dustColor = mix(vec3(0.2, 0.05, 0.1), vec3(0.4, 0.1, 0.2), dustMask);
+                baseColor = mix(baseColor, dustColor, dustMask * 0.4);
+
+                // Final color
+                vec3 finalColor = baseColor * light * 1.35;
+                finalColor += whiteHot * core1 * 0.35;
+                finalColor += orange * embers * 1.6;
+                finalColor += vec3(1.0, 0.9, 0.7) * star * 0.5;
+
+                // Vignette
+                float vignette = 1.0 - smoothstep(0.5, 1.2, length(uv) * 1.3);
+                finalColor *= vignette;
+
+                // Tone mapping with contrast S-curve
+                finalColor = finalColor / (1.0 + finalColor);
+                finalColor = clamp((finalColor - 0.12) * 1.25, 0.0, 1.0);
+                finalColor = pow(finalColor, vec3(0.9));
+
+                gl_FragColor = vec4(finalColor, 1.0);
+            }
+        `;
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: uniforms,
+            vertexShader: `
+                void main() {
+                    gl_Position = vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: fragmentShader
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        function animate(time) {
+            uniforms.u_time.value = time * 0.001;
+            renderer.render(scene, camera);
+            requestAnimationFrame(animate);
+        }
+
+        window.addEventListener('resize', () => {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            renderer.setSize(w, h);
+            const pr = renderer.getPixelRatio();
+            uniforms.u_resolution.value.set(w * pr, h * pr);
+        });
+
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>

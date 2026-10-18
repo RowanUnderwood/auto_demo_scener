@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>MOLTEN GEODE: THERMAL SINGULARITY</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #0a0504; font-family: 'Courier New', monospace; }
+        canvas { display: block; }
+        #ui {
+            position: absolute; bottom: 30px; right: 30px; color: #d4956b;
+            text-align: right; pointer-events: none; font-size: 11px;
+            letter-spacing: 1px; opacity: 0.75; line-height: 1.8;
+        }
+        #title {
+            position: absolute; top: 30px; left: 30px; color: #f0b06a;
+            font-weight: bold; letter-spacing: 4px; text-transform: uppercase; font-size: 14px;
+            border-bottom: 1px solid rgba(240, 176, 106, 0.35); padding-bottom: 8px;
+            text-shadow: 0 0 12px rgba(255,120,40,0.4);
+        }
+        #subtitle {
+            position: absolute; top: 58px; left: 30px; color: #a06a42;
+            font-size: 9px; letter-spacing: 3px; text-transform: uppercase;
+        }
+    </style>
+</head>
+<body>
+    <div id="title">Molten Geode</div>
+    <div id="subtitle">Thermal Singularity v2.7</div>
+    <div id="ui">
+        Core Temp: <span id="coreTemp">1400K</span><br>
+        Viscosity: <span id="viscVal">0.00</span><br>
+        Symmetry: Icosahedral<br>
+        State: <span id="stateVal">SOLIDIFYING</span>
+    </div>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setClearColor(0x080403, 1);
+        document.body.appendChild(renderer.domElement);
+
+        const fragmentShader = `
+            uniform float uTime;
+            uniform vec2 uRes;
+            uniform float uMouse;
+
+            mat2 rot(float a) { return mat2(cos(a), -sin(a), sin(a), cos(a)); }
+
+            float hash(vec3 p) {
+                p = fract(p * 0.3183099 + 0.1);
+                p *= 17.0;
+                return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+            }
+
+            float noise(vec3 p) {
+                vec3 i = floor(p);
+                vec3 f = fract(p);
+                f = f * f * (3.0 - 2.0 * f);
+                return mix(
+                    mix(mix(hash(i), hash(i + vec3(1,0,0)), f.x),
+                        mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
+                    mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x),
+                        mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x), f.y),
+                    f.z
+                );
+            }
+
+            // Bounded icosahedral-folded crystal with molten wobble
+            float map(vec3 p) {
+                p.xz *= rot(uTime * 0.12);
+                p.xy *= rot(uTime * 0.07);
+
+                vec3 q = abs(p);
+                q.xz = rot(0.5235988) * q.xz;
+                q = min(q, vec3(q.zyx));
+
+                vec3 dir = normalize(vec3(1.0, 1.35, 1.0));
+                float facet  = dot(q, dir) - 0.82;
+                float sphere = length(p) - 1.05;
+                float d = min(facet, sphere);
+
+                // Molten surface wobble + slow breathing
+                d += (noise(p * 3.0 + vec3(0.0, uTime * 0.25, 0.0)) - 0.5) * 0.20;
+                d += 0.04 * sin(uTime * 0.9);
+                return d;
+            }
+
+            vec3 getNormal(vec3 p) {
+                vec2 e = vec2(0.002, 0.0);
+                return normalize(vec3(
+                    map(p + e.xyy) - map(p - e.xyy),
+                    map(p + e.yxy) - map(p - e.yxy),
+                    map(p + e.yyx) - map(p - e.yyx)
+                ));
+            }
+
+            // Molten lava palette: deep red -> ember -> orange -> gold
+            vec3 lavaPalette(float t) {
+                vec3 a = vec3(0.05, 0.00, 0.00);
+                vec3 b = vec3(0.45, 0.06, 0.00);
+                vec3 c = vec3(1.00, 0.35, 0.05);
+                vec3 d = vec3(1.00, 0.82, 0.45);
+                t = clamp(t, 0.0, 1.0);
+                if (t < 0.33) return mix(a, b, t / 0.33);
+                if (t < 0.66) return mix(b, c, (t - 0.33) / 0.33);
+                return mix(c, d, (t - 0.66) / 0.34);
+            }
+
+            // Thin-film iridescence
+            vec3 iridescence(float cosTheta, float thickness) {
+                float d = thickness * 0.02;
+                vec3 col;
+                col.r = cos(6.28 * (d + 0.00));
+                col.g = cos(6.28 * (d + 0.33));
+                col.b = cos(6.28 * (d + 0.66));
+                return 0.5 + 0.5 * col * abs(cosTheta);
+            }
+
+            void main() {
+                vec2 uv = (gl_FragCoord.xy - 0.5 * uRes.xy) / min(uRes.y, uRes.x);
+
+                // Orbiting camera that always stays outside the crystal
+                float ang = uTime * 0.18;
+                vec3 ro = vec3(sin(ang) * 3.0, 0.5 + 0.4 * sin(uTime * 0.13), cos(ang) * 3.0);
+                vec3 ta = vec3(0.0, 0.0, 0.0);
+                vec3 ww = normalize(ta - ro);
+                vec3 uu = normalize(cross(ww, vec3(0.0, 1.0, 0.0)));
+                vec3 vv = cross(uu, ww);
+                vec3 rd = normalize(uv.x * uu + uv.y * vv + 1.5 * ww);
+
+                float t = 0.0;
+                bool hit = false;
+                vec3 p = ro;
+
+                for (int i = 0; i < 90; i++) {
+                    p = ro + rd * t;
+                    float d = map(p);
+                    if (d < 0.0006) { hit = true; break; }
+                    t += d;
+                    if (t > 20.0) break;
+                }
+
+                // Deep ember background with heat haze
+                vec3 color = vec3(0.030, 0.012, 0.006);
+                float bgGrad = 1.0 - length(uv) * 0.7;
+                color += vec3(0.06, 0.025, 0.006) * max(bgGrad, 0.0);
+                color += vec3(0.04, 0.015, 0.005) * noise(vec3(uv * 2.0, uTime * 0.05)) * 0.5;
+
+                if (hit) {
+                    vec3 n = getNormal(p);
+                    vec3 viewDir = normalize(ro - p);
+
+                    float fresnel = pow(1.0 - max(dot(n, viewDir), 0.0), 5.0);
+                    float pulse = 0.5 + 0.5 * sin(uTime * 1.2);
+
+                    // Self-illuminated molten body
+                    float tCol = clamp(0.35 + 0.55 * noise(p * 2.0 + uTime * 0.10) + fresnel * 0.45 + pulse * 0.20, 0.0, 1.0);
+                    vec3 lava = lavaPalette(tCol);
+
+                    vec3 light1 = normalize(vec3(1.0, 1.5, -0.5));
+                    vec3 light2 = normalize(vec3(-1.0, -0.5, 1.0));
+                    vec3 light3 = normalize(vec3(0.0, 1.0, 1.0));
+                    float diff1 = max(dot(n, light1), 0.0);
+                    float diff2 = max(dot(n, light2), 0.0) * 0.3;
+                    float diff3 = max(dot(n, light3), 0.0) * 0.2;
+
+                    vec3 h1 = normalize(light1 + viewDir);
+                    vec3 h2 = normalize(light2 + viewDir);
+                    float spec1 = pow(max(dot(n, h1), 0.0), 96.0);
+                    float spec2 = pow(max(dot(n, h2), 0.0), 48.0);
+
+                    color = lava * (0.45 + 0.55 * pulse) + lava * (diff1 + diff2 + diff3) * 0.9;
+                    color += spec1 * vec3(1.0, 0.9, 0.7) * 1.6;
+                    color += spec2 * vec3(0.6, 0.3, 0.15);
+
+                    // Iridescent film on grazing facets
+                    vec3 irid = iridescence(dot(n, viewDir), length(p) * 5.0 + uTime);
+                    color = mix(color, irid * (0.5 + diff1), 0.45 * fresnel);
+
+                    // Warm rim glow
+                    color += fresnel * vec3(1.0, 0.5, 0.15) * 0.7;
+
+                    // Inner molten glow (light from within)
+                    float innerGlow = smoothstep(1.4, 0.4, length(p)) * 0.5;
+                    color += vec3(1.0, 0.35, 0.08) * innerGlow * (0.6 + 0.4 * pulse);
+                }
+
+                // Heat distortion glow around center
+                float centerDist = length(uv);
+                color += vec3(0.35, 0.12, 0.03) * exp(-centerDist * 2.5) * 0.18;
+
+                // Warm vignette
+                float vig = 1.0 - smoothstep(0.5, 1.9, length(uv));
+                color *= vig;
+
+                // Film grain
+                float grain = hash(vec3(uv * uRes * 0.5, uTime)) * 0.035;
+                color += grain - 0.017;
+
+                // Tone mapping
+                color = color / (1.0 + color * 0.55);
+                color = pow(color, vec3(0.92));
+
+                gl_FragColor = vec4(color, 1.0);
+            }
+        `;
+
+        const vertexShader = `
+            void main() {
+                gl_Position = vec4(position, 1.0);
+            }
+        `;
+
+        const quadGeom = new THREE.PlaneGeometry(2, 2);
+        const shaderMat = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uRes: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+                uMouse: { value: 0.5 }
+            },
+            vertexShader,
+            fragmentShader
+        });
+        const quad = new THREE.Mesh(quadGeom, shaderMat);
+        scene.add(quad);
+
+        // --- EMBER PARTICLES (rising sparks) ---
+        const particleCount = 600;
+        const pGeometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(particleCount * 3);
+        const colors = new Float32Array(particleCount * 3);
+        const velocities = new Float32Array(particleCount * 3);
+        const lifetimes = new Float32Array(particleCount);
+        const maxLifetimes = new Float32Array(particleCount);
+
+        function resetParticle(i) {
+            const angle = Math.random() * Math.PI * 2;
+            const r = Math.random() * 0.8;
+            positions[i*3]   = Math.cos(angle) * r;
+            positions[i*3+1] = -0.5 - Math.random() * 1.0;
+            positions[i*3+2] = Math.sin(angle) * r;
+
+            velocities[i*3]   = (Math.random() - 0.5) * 0.1;
+            velocities[i*3+1] = 0.3 + Math.random() * 0.5;
+            velocities[i*3+2] = (Math.random() - 0.5) * 0.1;
+
+            maxLifetimes[i] = 2.0 + Math.random() * 3.0;
+            lifetimes[i] = maxLifetimes[i];
+        }
+
+        for (let i = 0; i < particleCount; i++) {
+            resetParticle(i);
+            lifetimes[i] = Math.random() * maxLifetimes[i];
+        }
+
+        pGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        pGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+        const pMaterial = new THREE.PointsMaterial({
+            size: 0.025,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.85,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        });
+
+        const particleSystem = new THREE.Points(pGeometry, pMaterial);
+        scene.add(particleSystem);
+
+        // --- OUTER DUST RING (ambient atmosphere) ---
+        const dustCount = 1500;
+        const dustGeom = new THREE.BufferGeometry();
+        const dustPos = new Float32Array(dustCount * 3);
+        const dustCol = new Float32Array(dustCount * 3);
+
+        for (let i = 0; i < dustCount; i++) {
+            const phi = Math.acos(-1 + (2 * i) / dustCount);
+            const theta = Math.sqrt(dustCount * Math.PI) * phi;
+            const r = 2.5 + Math.random() * 3.0;
+
+            dustPos[i*3]   = r * Math.sin(phi) * Math.cos(theta);
+            dustPos[i*3+1] = r * Math.sin(phi) * Math.sin(theta) * 0.6;
+            dustPos[i*3+2] = r * Math.cos(phi);
+
+            const warmth = Math.random();
+            dustCol[i*3]   = 0.30 + warmth * 0.45;
+            dustCol[i*3+1] = 0.10 + warmth * 0.18;
+            dustCol[i*3+2] = 0.03;
+        }
+
+        dustGeom.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
+        dustGeom.setAttribute('color', new THREE.BufferAttribute(dustCol, 3));
+
+        const dustMat = new THREE.PointsMaterial({
+            size: 0.009,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.28,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        });
+
+        const dustSystem = new THREE.Points(dustGeom, dustMat);
+        scene.add(dustSystem);
+
+        camera.position.z = 5;
+        camera.position.y = 0.3;
+
+        const clock = new THREE.Clock();
+        const coreTempEl = document.getElementById('coreTemp');
+        const viscValEl = document.getElementById('viscVal');
+        const stateValEl = document.getElementById('stateVal');
+        const states = ['MOLTEN', 'SOLIDIFYING', 'CRYSTALLIZING', 'COOLING', 'STABLE'];
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const elapsed = clock.getElapsedTime();
+            const dt = clock.getDelta() || 0.016;
+
+            shaderMat.uniforms.uTime.value = elapsed;
+
+            const posAttr = pGeometry.attributes.position;
+            const colAttr = pGeometry.attributes.color;
+
+            for (let i = 0; i < particleCount; i++) {
+                lifetimes[i] -= 0.016;
+                if (lifetimes[i] <= 0) resetParticle(i);
+
+                posAttr.array[i*3]   += velocities[i*3] * 0.016;
+                posAttr.array[i*3+1] += velocities[i*3+1] * 0.016;
+                posAttr.array[i*3+2] += velocities[i*3+2] * 0.016;
+
+                posAttr.array[i*3]   += Math.sin(elapsed * 2.0 + i) * 0.002;
+                posAttr.array[i*3+2] += Math.cos(elapsed * 1.5 + i * 0.7) * 0.002;
+
+                const lifeRatio = lifetimes[i] / maxLifetimes[i];
+                const brightness = lifeRatio * 0.9;
+                colAttr.array[i*3]   = brightness;
+                colAttr.array[i*3+1] = brightness * 0.45 * lifeRatio;
+                colAttr.array[i*3+2] = brightness * 0.12 * lifeRatio * lifeRatio;
+            }
+            posAttr.needsUpdate = true;
+            colAttr.needsUpdate = true;
+
+            dustSystem.rotation.y = elapsed * 0.02;
+            dustSystem.rotation.x = Math.sin(elapsed * 0.1) * 0.05;
+
+            const temp = 1200 + Math.sin(elapsed * 0.5) * 200 + Math.sin(elapsed * 2.3) * 50;
+            coreTempEl.innerText = Math.round(temp) + 'K';
+            viscValEl.innerText = (0.5 + Math.sin(elapsed * 0.3) * 0.3).toFixed(3);
+            const stateIdx = Math.floor((elapsed % 20) / 4) % states.length;
+            stateValEl.innerText = states[stateIdx];
+            stateValEl.style.color = stateIdx < 2 ? '#ff6633' : '#d4956b';
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            renderer.setSize(w, h);
+            camera.aspect = w / h;
+            camera.updateProjectionMatrix();
+            shaderMat.uniforms.uRes.value.set(w, h);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

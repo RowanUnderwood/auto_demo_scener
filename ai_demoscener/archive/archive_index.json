@@ -3770,20 +3770,537 @@
       "interaction": "native_tools"
     }
   },
-  "2026-05-17_creative_4d9e_v3.html": {
-    "created": "2026-10-18T07:00:00.218537",
+  "2026-09-05_cube_twister_302e_v2.html": {
+    "created": "2026-10-18T07:24:39.450019",
     "mode": "update",
     "effect": "update",
     "passed_validation": true,
-    "model": "qwen3.8-flash-next-coder-iq1_m",
+    "model": "qwen3.8-27b",
+    "title": "Twisting Hexagonal Prism Stack",
+    "description": "Glowing hexagons spiral upward through a field of drifting, luminous particles.",
     "strategy": "iterative",
     "session": {
       "outcome": "finished",
       "turns": 1,
-      "tool_calls": 6,
-      "revisions": 7,
-      "final_revision": 7,
-      "interaction": "native_tools"
+      "tool_calls": 8,
+      "revisions": 9,
+      "final_revision": 9,
+      "interaction": "native_tools",
+      "vision_calls": 0
+    }
+  },
+  "2026-05-10_fire_5396_v7.html": {
+    "created": "2026-10-18T07:26:24.024492",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Molten Stellar Furnace Breathing",
+    "description": "Crimson magma swirls through a slow, breathing furnace of white-hot stars.",
+    "strategy": "iterative",
+    "session": {
+      "outcome": "first_draft_ok",
+      "turns": 0,
+      "tool_calls": 0,
+      "revisions": 1,
+      "final_revision": 1,
+      "interaction": "native_tools",
+      "vision_calls": 0
+    }
+  },
+  "2026-10-18_creative_4769.html": {
+    "created": "2026-10-18T07:28:50.335385",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Fibonacci Signal Bloom",
+    "description": "Neon whispers ripple through a golden spiral of breathing light.",
+    "strategy": "iterative",
+    "session": {
+      "outcome": "finished",
+      "turns": 1,
+      "tool_calls": 7,
+      "revisions": 8,
+      "final_revision": 8,
+      "interaction": "native_tools",
+      "vision_calls": 0
+    }
+  },
+  "2026-05-10_creative_8844_v4.html": {
+    "created": "2026-10-18T07:33:05.811043",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Molten Geode Thermal Singularity",
+    "description": "Icosahedral facets breathe with molten fire, glowing through iridescent heat haze.",
+    "strategy": "iterative",
+    "session": {
+      "outcome": "first_draft_ok",
+      "turns": 0,
+      "tool_calls": 0,
+      "revisions": 1,
+      "final_revision": 1,
+      "interaction": "native_tools",
+      "vision_calls": 0
+    }
+  },
+  "2026-10-18_creative_8168.html": {
+    "created": "2026-10-18T07:36:21.087727",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Synaptic Bloom Neural Dreams",
+    "description": "Electric whispers ripple through the dark, blooming into luminous thought.",
+    "strategy": "iterative",
+    "session": {
+      "outcome": "first_draft_ok",
+      "turns": 0,
+      "tool_calls": 0,
+      "revisions": 1,
+      "final_revision": 1,
+      "interaction": "native_tools",
+      "vision_calls": 0
+    }
+  },
+  "2026-05-17_wormhole_5953_v2.html": {
+    "created": "2026-10-18T07:53:08.755123",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Bioluminescent Deep Currents",
+    "description": "Neon veins pulse through the abyss, breathing light into the silent dark.",
+    "strategy": "iterative",
+    "session": {
+      "outcome": "finished",
+      "turns": 2,
+      "tool_calls": 15,
+      "revisions": 16,
+      "final_revision": 16,
+      "interaction": "native_tools",
+      "vision_calls": 4,
+      "visual": {
+        "enabled": true,
+        "rounds": [
+          {
+            "baseline_revision": 1,
+            "issues": [
+              {
+                "problem": "Washed-out, near-zero contrast image (overexposed look)",
+                "evidence": "All four frames show a near-pure-white background with very faint, thin cyan strokes; the 'neon' lines barely register against the white field, so nothing reads as glowing or electric.",
+                "change": "Set the scene/background/clear color to a dark value (black or deep navy) and raise the line material brightness/opacity so the cyan rings read as bright neon against darkness instead of pale marks on white."
+              },
+              {
+                "problem": "Scene goes completely empty for part of the cycle",
+                "evidence": "Frame 2 (6.6s) is essentially blank white with at most a tiny speck of color, while frames 1/3/4 show the rings; the geometry disappears entirely between 5.0s and 6.6s.",
+                "change": "Ensure geometry is always on screen by extending line/trail lifetime and keeping a minimum number of visible rings (or a base ring that never fades to zero), so the camera never pulls ahead of the content and leaves a blank frame."
+              },
+              {
+                "problem": "Imperceptible / near-static motion",
+                "evidence": "Across the 5.0s, 8.2s and 9.8s frames the large outer ring and inner ring sit at almost the same size and position, so the 'tunnel' does not visibly expand, recede or scroll between captures.",
+                "change": "Increase the tunnel travel / camera dolly speed (and/or the rate at which rings spawn and grow) so the rings clearly scale up and pass the camera between consecutive frames, giving visible forward motion."
+              }
+            ],
+            "polished_revision": 10,
+            "compare": {
+              "choice": "after",
+              "improved": [
+                "No fully blank frames \u2014 every capture shows visible cyan rings (BEFORE had a near-empty white frame at ~6.6s)",
+                "Clearer forward motion \u2014 ring geometry and scale change more dramatically between consecutive frames (e.g. the large diagonal streak/overlapping rings in the last AFTER frame)",
+                "Slightly brighter, more saturated cyan lines in several frames, giving marginally better contrast"
+              ],
+              "regressions": [],
+              "reason": "AFTER keeps the scene populated across all four frames and shows noticeably more dynamic scaling/movement, addressing the 'empty scene' and 'near-static motion' issues. The overexposed white background was not fully fixed (the brief wanted a dark clear color), but that condition is unchanged from BEFORE rather than a regression, so AFTER is the safer, clearly better capture."
+            },
+            "decision": "after: AFTER keeps the scene populated across all four frames and shows noticeably more dynamic scaling/movement, addressing the 'empty scene' and 'near-static motion' issues. The overexposed white backgroun"
+          },
+          {
+            "baseline_revision": 10,
+            "issues": [
+              {
+                "problem": "Washed-out, near-white background causing poor contrast (overexposed look)",
+                "evidence": "In all four frames the background is an almost pure white / very pale cyan tint, so the pale mint line work barely reads against it; the image looks like a blown-out white canvas rather than a neon scene.",
+                "change": "Darken the clear/background color to a deep tone (e.g. near-black or dark navy) or raise the line emissive/brightness so the cyan strokes have strong contrast against the backdrop."
+              },
+              {
+                "problem": "Scene reads as empty and sparse \u2014 thin, faint strokes with vast blank areas instead of a dense tunnel",
+                "evidence": "Frames 1\u20134 each contain only one or two thin (\u22481\u20132 px) arcs/circles surrounded by large empty white regions; the subject is too small and too sparse to convey the 'tunnel vision' core idea.",
+                "change": "Increase the number of tunnel rings, thicken the line width, and add a glow/bloom pass so the tunnel structure fills the frame and the motion is clearly visible across the whole canvas."
+              }
+            ],
+            "polished_revision": 16,
+            "compare": {
+              "choice": "after",
+              "improved": [
+                "Tunnel is now dense with many receding concentric rings filling the frame, fixing the empty/sparse look",
+                "Line width is thicker and strokes are brighter, so the cyan structure reads clearly across the whole canvas",
+                "Tunnel depth and motion are now unmistakable (clear forward-receding rings) instead of a couple of faint arcs"
+              ],
+              "regressions": [],
+              "reason": "The AFTER version directly resolves the 'empty and sparse' issue: it shows a full, dense tunnel of thick bright-cyan rings that fill the frame with visible depth and motion, whereas the BEFORE was a faint, washed-out scene with only a few thin arcs and large blank areas. The background remains light/overexposed in both (the dark-backdrop contrast fix was not achieved), but since it was already lig"
+            },
+            "decision": "after: The AFTER version directly resolves the 'empty and sparse' issue: it shows a full, dense tunnel of thick bright-cyan rings that fill the frame with visible depth and motion, whereas the BEFORE was a f"
+          }
+        ]
+      }
+    }
+  },
+  "2026-05-10_galaxy_spiral_8d3a_v2.html": {
+    "created": "2026-10-18T07:55:36.000309",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Crimson Vortex Of Ash",
+    "description": "Spiraling embers ignite the void in a breath of molten gold.",
+    "strategy": "iterative",
+    "session": {
+      "outcome": "finished",
+      "turns": 2,
+      "tool_calls": 11,
+      "revisions": 12,
+      "final_revision": 12,
+      "interaction": "native_tools",
+      "vision_calls": 4,
+      "visual": {
+        "enabled": true,
+        "rounds": [
+          {
+            "baseline_revision": 1,
+            "issues": [
+              {
+                "problem": "Abrupt pop-in/pop-out of the outer particle field (jerky motion)",
+                "evidence": "The scattered dot field is dense and clearly visible at 5.0s, 6.5s and 9.6s, but is almost entirely gone at 8.1s, leaving only the central galaxy. The particles disappear and reappear as a step rather than a smooth transition.",
+                "change": "Drive particle opacity/lifetime with a smooth envelope (e.g. fade in over ~1s and fade out before respawn) and stagger the respawn timers so the field density never collapses to near-zero; this removes the visible 'blink'."
+              },
+              {
+                "problem": "Overexposed, washed-out central spiral core with poor contrast",
+                "evidence": "In all four frames the inner spiral is a flat near-white disc; the spiral arms are only faintly readable and the centre is blown to low-contrast white, so the 'spiral dust' structure loses definition.",
+                "change": "Reduce the core emissive/brightness and add a tone-map or contrast curve (or darken the background behind the core) so the spiral arms read with clear dark-on-light contrast instead of a uniform white blob."
+              },
+              {
+                "problem": "Muddy, low-contrast mid-tone disc (poor contrast in the body of the galaxy)",
+                "evidence": "The broad brownish-olive disc surrounding the core has very low saturation and contrast across all frames; the mottled nebular texture is barely distinguishable from a flat olive fill, making the mid region look static and murky rather than 'fresh'.",
+                "change": "Increase the saturation and local contrast of the disc texture/lighting (e.g. boost albedo variation or add a subtle directional/rim light) so the nebular mottling is clearly legible against the dark space background."
+              }
+            ],
+            "polished_revision": 7,
+            "compare": {
+              "choice": "after",
+              "improved": [
+                "Central core contrast: the spiral is now a readable golden/yellow form instead of a washed-out white blob",
+                "Mid-disc contrast: deep reds and bright oranges create legible nebular mottling instead of a uniform muddy olive tone",
+                "Outer particle field consistency: smaller, more numerous particles with staggered timing reduce the visible pop-in/pop-out blink between frames"
+              ],
+              "regressions": [
+                "Particle sprites render as small square/pixel shapes rather than smooth round dots in several frames",
+                "Overall composition is slightly less structured \u2014 the clean circular disc silhouette is lost in favour of a more amorphous swirl"
+              ],
+              "reason": "All three listed issues (core overexposure, muddy mid-disc, jerky particle blink) are clearly addressed in the AFTER. The core spiral reads with strong dark-on-light contrast, the disc body shows rich red/orange variation against deep shadows, and the particle field maintains consistent density across all four frames. The square-sprite artifact and looser silhouette are minor and acceptable given "
+            },
+            "decision": "after: All three listed issues (core overexposure, muddy mid-disc, jerky particle blink) are clearly addressed in the AFTER. The core spiral reads with strong dark-on-light contrast, the disc body shows rich"
+          },
+          {
+            "baseline_revision": 7,
+            "issues": [
+              {
+                "problem": "Central core is an opaque, overbearing white/grey sphere that obscures the spiral structure, making the galactic core read as a solid ball rather than a luminous center",
+                "evidence": "In all four frames the central disc is a large (~180px) near-white opaque sphere with only a faint spiral texture visible on its surface; the surrounding red glow is cut off at its hard edge",
+                "change": "Reduce the core mesh opacity to ~0.3\u20130.4 or replace it with a smaller emissive sprite so the underlying spiral arm geometry and red glow show through the center"
+              },
+              {
+                "problem": "Background dust particles render as hard-edged squares that look like untextured quad billboards (debug artifacts) rather than soft dust motes",
+                "evidence": "Numerous orange and red axis-aligned squares of roughly 8\u201314px are scattered across the black background in every frame (e.g. top-left, right side, bottom); their flat, aliased edges contrast sharply with the soft glow of the spiral arms",
+                "change": "Apply a radial-falloff alpha texture (soft circular point-sprite) to the particle material so each particle renders as a soft dot with feathered edges instead of a hard square"
+              },
+              {
+                "problem": "The spiral system occupies only ~45% of the frame width, leaving large dead-black margins that waste kiosk screen real estate and make the subject feel cramped and small",
+                "evidence": "In all four frames the outermost yellow spiral arms reach only to roughly x=200..560 out of 768px width; the left and right thirds of the screen are mostly empty black with just a few stray squares",
+                "change": "Scale the spiral group up by ~1.5\u00d7 or dolly the camera closer so the outer arms extend to fill at least 80% of the frame width, ensuring the kiosk display shows edge-to-edge motion"
+              }
+            ],
+            "polished_revision": 12,
+            "compare": {
+              "choice": "after",
+              "improved": [
+                "Central core is now translucent/darker, letting the red glow and inner spiral swirl show through instead of an opaque white ball",
+                "Background dust particles render as soft feathered round dots rather than hard-edged square quad billboards",
+                "Spiral arms scale up and extend further outward, filling most of the frame width and reducing dead black margins"
+              ],
+              "regressions": [],
+              "reason": "All three listed issues are visibly addressed: the opaque core ball is replaced by a translucent center revealing the spiral, the square debug billboards become soft circular motes, and the spiral fills the frame edge-to-edge with no loss of detail, motion, or framing. The overall composition is larger and more luminous at the edges while the center reads as a glowing core rather than a solid sphe"
+            },
+            "decision": "after: All three listed issues are visibly addressed: the opaque core ball is replaced by a translucent center revealing the spiral, the square debug billboards become soft circular motes, and the spiral fil"
+          }
+        ]
+      }
+    }
+  },
+  "2026-05-10_creative_5723_v4.html": {
+    "created": "2026-10-18T07:58:13.206130",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Abyssal Phosphor Tidal Drift",
+    "description": "Bioluminescent fractals breathe beneath the crushing weight of the deep.",
+    "strategy": "iterative",
+    "session": {
+      "outcome": "finished",
+      "turns": 3,
+      "tool_calls": 13,
+      "revisions": 14,
+      "final_revision": 14,
+      "interaction": "native_tools",
+      "vision_calls": 4,
+      "visual": {
+        "enabled": true,
+        "rounds": [
+          {
+            "baseline_revision": 3,
+            "issues": [
+              {
+                "problem": "Central subject is overexposed and washed out to near-pure white",
+                "evidence": "In all four frames the dominant ember/fractal mass is a flat white blob with almost no tonal range; internal detail is reduced to faint blue specks and the surface reads as clipped highlights rather than a textured form.",
+                "change": "Lower the bloom/exposure or the fragment brightness and add a tonemap (e.g. ACES) or reduce additive blending so the core retains gradations and texture instead of blowing to white."
+              },
+              {
+                "problem": "Subject is too large in frame and clipped at the edges",
+                "evidence": "The white mass fills nearly the entire 768x490 viewport in every frame, with its boundary touching the top, bottom and side borders, so the form's true silhouette is never visible.",
+                "change": "Pull the camera back or scale the object down (and/or narrow its growth radius) so the whole form sits inside the frame with breathing room, letting its shape read clearly against the blue background."
+              },
+              {
+                "problem": "Motion is barely perceptible / scene looks near-static",
+                "evidence": "Across the 5.0s / 7.0s / 8.9s / 10.7s frames the central blob keeps the same size, position and silhouette; only the thin peripheral tendrils shift slightly, so the hero element appears frozen.",
+                "change": "Increase the drift/deformation speed and amplitude of the fractal displacement (or add a slow camera orbit/parallax) so the core form visibly deforms and moves frame-to-frame."
+              }
+            ],
+            "polished_revision": 9,
+            "compare": {
+              "choice": "after",
+              "improved": [
+                "Central core now retains surface gradations, fibrous striations and a defined spherical form instead of a featureless near-white blob (overexposure/tonemap fix worked)",
+                "Subject is scaled back and contained within the frame with breathing room, so the whole shape reads clearly against the blue background instead of being clipped at the edges",
+                "Frame-to-frame motion is now clearly visible via deformation/rotation of the core and the surrounding filament arcs, so the scene no longer looks near-static"
+              ],
+              "regressions": [],
+              "reason": "AFTER addresses all three listed issues: the washed-out white mass becomes a textured, tonemapped sphere with visible detail and a glow halo; the form is pulled back so it sits inside the frame with margin; and the four frames show noticeably more deformation and camera/surface motion. No broken framing, no lost detail, and the background is a touch darker which adds contrast, so there is no obvio"
+            },
+            "decision": "after: AFTER addresses all three listed issues: the washed-out white mass becomes a textured, tonemapped sphere with visible detail and a glow halo; the form is pulled back so it sits inside the frame with m"
+          },
+          {
+            "baseline_revision": 9,
+            "issues": [
+              {
+                "problem": "Overexposed / blown-out core of the central fractal mass",
+                "evidence": "Frame 1 (15.9s) still shows internal filaments and shading in the body, but by frame 3 (19.3s) and frame 4 (21.2s) the center is a flat near-pure-white region with no internal detail, so the subject loses its structure and reads as a featureless puff.",
+                "change": "Lower the additive/emissive intensity or add tone-mapping/roll-off (e.g. reduce bloom strength and clamp highlights) so the core keeps internal contrast instead of saturating to white."
+              },
+              {
+                "problem": "Background drifting trails / wisps are too faint and low-contrast",
+                "evidence": "Across all four frames the radiating line-trails around the mass are very dim, thin, dotted streaks that barely separate from the dark blue background and read as noise rather than intentional motion.",
+                "change": "Increase the opacity/brightness (or width) of the ambient trail particles so they are clearly perceptible against the background."
+              },
+              {
+                "problem": "Poor contrast at the subject's edge \u2014 bright bloom halo melts the silhouette into the glow",
+                "evidence": "In frames 2\u20134 a strong cyan-white halo surrounds the mass, so its outer boundary blends into the glow and the form looks flat and 2D rather than a defined 3D body with a clear silhouette.",
+                "change": "Tighten the glow/bloom radius and add a subtle dark rim or edge falloff so the mass's outline stays distinct from its surrounding glow, restoring a sense of volume."
+              }
+            ],
+            "polished_revision": 14,
+            "compare": {
+              "choice": "after",
+              "improved": [
+                "Central core now retains internal blue/cyan contrast instead of saturating to a flat white blowout",
+                "Background drifting trails and wisps are clearly perceptible against a darker backdrop, with brighter and more distinct segmented/curved lines",
+                "Mass silhouette edge is crisper, with a subtle dark rim/falloff keeping the outline distinct from the surrounding glow, restoring a sense of volume"
+              ],
+              "regressions": [],
+              "reason": "All three targeted issues are addressed: the overexposed core now shows internal tonal structure, the faint ambient trails are much more visible (aided by a darker background that makes them pop), and the subject's edge no longer melts into the halo. The darker background is a deliberate change that supports trail visibility and edge contrast rather than an emptiness regression; framing, detail, a"
+            },
+            "decision": "after: All three targeted issues are addressed: the overexposed core now shows internal tonal structure, the faint ambient trails are much more visible (aided by a darker background that makes them pop), and"
+          }
+        ]
+      }
+    }
+  },
+  "2026-05-14_lava_lamp_be70_v2.html": {
+    "created": "2026-10-18T08:00:31.169387",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Bioluminescent Helix Descent",
+    "description": "A living ribbon of cold light spirals through the abyssal dark.",
+    "strategy": "iterative",
+    "session": {
+      "outcome": "finished",
+      "turns": 2,
+      "tool_calls": 9,
+      "revisions": 10,
+      "final_revision": 10,
+      "interaction": "native_tools",
+      "vision_calls": 4,
+      "visual": {
+        "enabled": true,
+        "rounds": [
+          {
+            "baseline_revision": 1,
+            "issues": [
+              {
+                "problem": "Primary blob is scaled too large and clipped at the frame edges",
+                "evidence": "In all four frames the main blob fills ~100% of the width and is cropped at the top and sides; the full silhouette is never visible, so its shape and motion are hard to read.",
+                "change": "Reduce the blob scale (or pull the camera back) so the entire form fits inside the frame with a margin."
+              },
+              {
+                "problem": "Center of the blob washes out to a pale, desaturated cyan (overexposed core)",
+                "evidence": "Frames 3 and 4 show a large near-white/cyan flat region in the middle of the blob, losing the saturated iridescent color and reducing contrast so the core looks bland and flat.",
+                "change": "Lower the brightness/specular (white) term or compress the color-ramp frequency in the center so the core stays saturated instead of clipping to pale white."
+              },
+              {
+                "problem": "Secondary blob at the bottom is mostly cropped and reads as a thin cluttered sliver",
+                "evidence": "A second shape sits along the bottom edge in every frame, mostly cut off and merged into a faint rainbow fringe rather than a readable distinct form.",
+                "change": "Reposition or shrink the secondary blob so it appears as a separate, fully-visible shape (or remove it) to declutter the lower frame."
+              }
+            ],
+            "polished_revision": 4,
+            "compare": {
+              "choice": "after",
+              "improved": [
+                "Primary form now fits fully inside the frame with a clear black margin on all sides (no edge clipping), addressing the over-scaled blob issue.",
+                "Core saturation is higher: the center now reads as deep saturated blue/purple rather than the washed-out pale desaturated cyan/white seen in the BEFORE frames.",
+                "The lower secondary blob is no longer a cropped thin cluttered sliver; it appears as a separate, fully-visible rounded lobe (and a top lobe), decluttering the bottom of the frame."
+              ],
+              "regressions": [],
+              "reason": "All three targeted issues are visibly fixed in the AFTER set: the blob scale/camera was pulled back so the whole form sits inside the frame with margin (frames 1-4 show consistent black border, no clipping), the overexposed pale core is tamed so centers stay saturated (deep blue/violet tones dominate instead of pale cyan-white), and the secondary blob is repositioned/shrunk into a distinct fully-v"
+            },
+            "decision": "after: All three targeted issues are visibly fixed in the AFTER set: the blob scale/camera was pulled back so the whole form sits inside the frame with margin (frames 1-4 show consistent black border, no cli"
+          },
+          {
+            "baseline_revision": 4,
+            "issues": [
+              {
+                "problem": "Flat, low-contrast interior that loses the 3D glossy read",
+                "evidence": "In frames 3 and 4 the body of the blob is a dull green-yellow / dull purple region with no bright specular spot, so the surface reads as a flat heatmap rather than a glossy 3D form; only frame 1 has a clear bright highlight on the upper lobe.",
+                "change": "Add/strengthen a specular light (or a highlight term) so the surface always has a bright glossy hotspot, restoring the rounded 3D lava-lamp look instead of a flat colored patch."
+              },
+              {
+                "problem": "Subject brightness oscillates over time (fading in and out)",
+                "evidence": "Frame 1 (19.6s) is bright with saturated cyan highlights, while frame 4 (26.3s) is markedly darker and desaturated, so the whole blob appears to dim and re-brighten as it moves, hurting consistency for a kiosk loop.",
+                "change": "Hold the lighting constant \u2014 raise the ambient/minimum brightness or normalize the shading \u2014 so the subject stays at a consistent exposure across the animation instead of dropping to a dull state."
+              },
+              {
+                "problem": "Iridescent color banding is too tightly packed, reading as a striped contour/heat-map plot",
+                "evidence": "All four frames show very narrow concentric red-green-blue-purple rings packed closely on the surface, giving a busy scientific contour-plot look rather than a smooth molten glow.",
+                "change": "Lower the iridescence band frequency (widen the scale of the color transitions) so the rainbow bands become broader and smoother, reducing the striped/aliasing-like appearance while keeping the iridescent effect."
+              }
+            ],
+            "polished_revision": 10,
+            "compare": {
+              "choice": "after",
+              "improved": [
+                "Specular glossiness: AFTER shows bright white hotspot highlights on the lobes (e.g. frame 3 top-left lobe, frame 4), restoring the rounded 3D lava-lamp read that was flat/matte in BEFORE",
+                "Consistent exposure: AFTER frames hold a steady bright luminance across the sequence, whereas BEFORE frame 4 dropped to a dull, darker state",
+                "Smoother iridescence: AFTER has broader, wider rainbow bands with smoother transitions, reducing the tight striped/heat-map contour look seen on BEFORE's edges"
+              ],
+              "regressions": [],
+              "reason": "All three targeted issues are visibly fixed in AFTER \u2014 a clear glossy specular hotspot returns, brightness stays consistent frame-to-frame, and the iridescent bands are widened and smoothed \u2014 with no loss of framing, detail, or motion. The new purple/magenta lean is part of the intended fresh aesthetic rather than a regression."
+            },
+            "decision": "after: All three targeted issues are visibly fixed in AFTER \u2014 a clear glossy specular hotspot returns, brightness stays consistent frame-to-frame, and the iridescent bands are widened and smoothed \u2014 with no "
+          }
+        ]
+      }
+    }
+  },
+  "2026-05-15_creative_f78d_v4.html": {
+    "created": "2026-10-18T08:03:04.042926",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3.8-27b",
+    "title": "Solar Corona Pulse",
+    "description": "Molten plasma ripples beneath a rhythmic, breathing heartbeat of light.",
+    "strategy": "iterative",
+    "session": {
+      "outcome": "finished",
+      "turns": 2,
+      "tool_calls": 14,
+      "revisions": 15,
+      "final_revision": 15,
+      "interaction": "native_tools",
+      "vision_calls": 4,
+      "visual": {
+        "enabled": true,
+        "rounds": [
+          {
+            "baseline_revision": 1,
+            "issues": [
+              {
+                "problem": "Blown-out, overexposed central core at the pulse peak",
+                "evidence": "In frames 2 and 3 the core swells into a large, featureless pure-white mass that clips to full white and hides the ring/disc structure that is visible in frames 1 and 4; the subject reads as a blob rather than a defined object for most of the cycle.",
+                "change": "Cap the core's brightness so the highlight does not saturate: raise the bloom threshold / lower bloom intensity, apply tone-mapping (e.g. Reinhard or ACES) with a max luminance, and reduce the pulse's max scale so the core stays under full-white at its peak."
+              },
+              {
+                "problem": "Core colour at the pulse trough is a dull olive/green-yellow that breaks the warm palette",
+                "evidence": "In frame 4, once the pulse recedes, the exposed core material reads as a muddy greenish-yellow/olive tone that clashes with the surrounding warm orange and magenta/pink ribbons.",
+                "change": "Shift the core's base and emissive colour toward warm white/amber (or match the ribbon hue) so the receded, lower-intensity state stays on-palette instead of turning green-olive."
+              },
+              {
+                "problem": "Dense, high-contrast background bokeh competes with the subject and muddies its edges",
+                "evidence": "The backdrop is a thick field of bright amber spheres on near-black that is as eye-catching as the centre; where the pink tendrils cross these bright dots the subject's edges lose separation, and the busy dot pattern distracts from the central aurora.",
+                "change": "Push the background back visually: reduce the bokeh spheres' size, opacity and/or count, and increase depth-of-field blur on them so the backdrop recedes and the central subject separates cleanly."
+              }
+            ],
+            "polished_revision": 7,
+            "compare": {
+              "choice": "after",
+              "improved": [
+                "Peak core no longer saturates to a featureless white blob \u2014 tone-mapping/bloom cap keeps the halo and core structure visible at the pulse peak",
+                "Background bokeh is smaller, dimmer and more blurred, so the backdrop recedes and the central subject separates cleanly",
+                "Trough core reads as a warm amber/white rather than a dull olive-green, keeping it on-palette"
+              ],
+              "regressions": [],
+              "reason": "All three targeted issues are visibly addressed: the overexposed core is tamed while retaining detail, the busy bokeh no longer competes with the subject's edges, and the receded state stays warm. Framing, motion and ribbon detail are preserved with no obvious regression, so AFTER is clearly better."
+            },
+            "decision": "after: All three targeted issues are visibly addressed: the overexposed core is tamed while retaining detail, the busy bokeh no longer competes with the subject's edges, and the receded state stays warm. Fra"
+          },
+          {
+            "baseline_revision": 7,
+            "issues": [
+              {
+                "problem": "Central core and its orbiting ring are overexposed / blown to pure white, clipping out the warm gold color of the aesthetic",
+                "evidence": "In frames 3 and 4 (18.1s, 19.6s) the core and the white elliptical ring around it are flat near-white blobs with no internal color or shading; by frame 4 the core is a blown highlight that loses the magenta/gold character seen in frame 1",
+                "change": "Reduce the core emissive/bloom intensity and add a tone-mapper (e.g. ACES) so the pulse peaks in bright gold/amber instead of clipping to white, keeping the ring within the warm palette"
+              },
+              {
+                "problem": "Locked, static camera framing \u2014 the subject stays dead-center at the same size in every frame, so the scene reads like a pulsing still rather than a moving demoscene",
+                "evidence": "Across all four frames (15.0s\u219219.6s) the core remains in the exact same central position at the same scale and the wide shot composition is unchanged; only the light intensity and slight tendril wiggles move, giving a static poster-like impression",
+                "change": "Add a slow camera drift / orbital rotation or subtle scale-and-pan so the framing and parallax evolve over time, giving the kiosk piece continuous motion"
+              },
+              {
+                "problem": "Dense, uniform background bokeh particle field competes with the subject and flattens depth",
+                "evidence": "The warm cream/orange bokeh spheres fill the entire frame at similar apparent brightness in all four frames, leaving little negative space around the core and making the foreground subject blend into a busy, flat field rather than standing out",
+                "change": "Reduce particle count and increase size/blur variance plus edge fade so the field has clear depth layers and the central subject pops against calmer negative space"
+              }
+            ],
+            "polished_revision": 15,
+            "compare": {
+              "choice": "after",
+              "improved": [
+                "Central core now peaks in warm gold/amber with legible orbit ring instead of clipping to a blown-out white blob",
+                "Framing and parallax evolve across frames (subject shifts position/scale, ribbons sweep differently), giving continuous demoscene motion rather than a locked still",
+                "Background bokeh has more depth variance and darker negative space with edge fade, so the subject pops against a calmer field"
+              ],
+              "regressions": [],
+              "reason": "All three targeted issues are visibly addressed: the tone-mapped core retains warm gold and the ring shape instead of overexposing to pure white, the camera drifts so framing/parallax change over time, and the particle field is sparser with clearer depth layers and edge fade. No obvious regression in framing, brightness, or the magenta/gold aesthetic."
+            },
+            "decision": "after: All three targeted issues are visibly addressed: the tone-mapped core retains warm gold and the ring shape instead of overexposing to pure white, the camera drifts so framing/parallax change over time"
+          }
+        ]
+      }
     }
   }
 }

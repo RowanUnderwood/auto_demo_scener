@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>ABYSSAL_PHOSPHOR // TIDALDRIFT</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #020810; font-family: 'Courier New', monospace; }
+        #ui {
+            position: absolute; top: 28px; left: 28px; color: #4de8d0; pointer-events: none;
+            text-shadow: 0 0 14px rgba(60,220,200,.6), 0 0 40px rgba(40,180,200,.2);
+            letter-spacing: 3px; font-size: 11px; line-height: 2.0;
+        }
+        #ui b { color: #7af5e0; }
+        #ui .dim { color: #1a4a4a; }
+        #ui .mag { color: #d060c0; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <b>ABYSSAL_PHOSPHOR</b> // TIDALDRIFT v1<br>
+        DEPTH: <span id="st">-3,847m</span> <span class="dim">// SPECIMEN: LUMINOS-IX · BIOFIELD: 24576</span><br>
+        <span class="mag">CAUSTIC RESONANCE</span> <span class="dim">ACTIVE</span>
+    </div>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        const PR = Math.min(window.devicePixelRatio, 1.5);
+        let W = window.innerWidth, H = window.innerHeight;
+
+        const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
+        renderer.setPixelRatio(PR);
+        renderer.setSize(W, H);
+        document.body.appendChild(renderer.domElement);
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(55, W / H, 0.1, 100);
+        camera.position.set(0, 0, 3.6);
+
+        // ---------------- Phosphor Core (raymarched Mandelbulb, power 5) ----------------
+        const coreFS = `
+            precision highp float;
+            uniform float uTime;
+            uniform vec2 uRes;
+
+            vec2 mbulb(vec3 pos, float power) {
+                vec3 z = pos;
+                float dr = 1.0, r = 0.0;
+                for (int i = 0; i < 8; i++) {
+                    r = length(z);
+                    if (r > 2.5) break;
+                    float rr = max(r, 0.0005);
+                    float theta = acos(clamp(z.z / rr, -1.0, 1.0)) / rr * power;
+                    float phi = atan(z.y, z.x) / rr * power;
+                    float zr = pow(r, power);
+                    dr = pow(r, power - 1.0) * power * dr + 1.0;
+                    z = zr * vec3(sin(theta) * cos(phi), sin(phi) * sin(theta), cos(theta)) + pos;
+                }
+                return vec2(0.5 * log(r) * r / dr, r);
+            }
+
+            float map(vec3 p) {
+                float t = uTime * 0.28;
+                p.xz = mat2(cos(t*0.9), -sin(t*0.9), sin(t*0.9), cos(t*0.9)) * p.xz;
+                p.yx = mat2(cos(t*0.55), -sin(t*0.55), sin(t*0.55), cos(t*0.55)) * p.yx;
+                return mbulb(p * 0.95, 5.0).x;
+            }
+
+            vec3 calcNormal(vec3 p) {
+                vec2 e = vec2(0.002, 0.0);
+                return normalize(vec3(
+                    map(p + e.xyy) - map(p - e.xyy),
+                    map(p + e.yxy) - map(p - e.yxy),
+                    map(p + e.yyx) - map(p - e.yyx)));
+            }
+
+            void main() {
+                vec2 uv = (gl_FragCoord.xy - 0.5 * uRes) / min(uRes.x, uRes.y);
+
+                float a = uTime * 0.15;
+                vec3 ro = vec3(0.0, 0.0, 5.2);
+                ro.xz = mat2(cos(a), -sin(a), sin(a), cos(a)) * ro.xz;
+                ro.y = 0.35 * sin(uTime * 0.09);
+
+                vec3 fw = normalize(-ro);
+                vec3 rt = normalize(cross(fw, vec3(0.0, 1.0, 0.0)));
+                vec3 up = cross(rt, fw);
+                vec3 rd = normalize(fw * 2.2 + uv.x * rt + uv.y * up);
+
+                float t = 0.0, d = 0.0;
+                bool hit = false;
+                for (int i = 0; i < 90; i++) {
+                    vec3 p = ro + rd * t;
+                    d = map(p);
+                    if (d < 0.001 || t > 7.0) { if (d < 0.001) hit = true; break; }
+                    t += d * 0.85;
+                }
+
+                vec3 col = vec3(0.0);
+                if (hit) {
+                    vec3 p = ro + rd * t;
+                    vec3 n = calcNormal(p);
+                    vec3 l1 = normalize(vec3(0.5, 2.5, 1.5));
+                    vec3 l2 = normalize(vec3(-2.0, -0.5, 1.0));
+                    float dif = max(dot(n, l1), 0.0);
+                    float rim = pow(1.0 - max(dot(n, -rd), 0.0), 4.0);
+                    float fresnel = pow(1.0 - max(dot(n, -rd), 0.0), 2.0);
+
+                    vec3 deep = vec3(0.01, 0.04, 0.10);
+                    vec3 mid  = vec3(0.03, 0.18, 0.28);
+                    vec3 bright = vec3(0.10, 0.55, 0.50);
+
+                    col = mix(deep, mid, dif);
+                    col += bright * dif * 0.35;
+                    col += vec3(0.10, 0.40, 0.45) * rim * 0.45;
+                    col += vec3(0.6, 0.2, 0.8) * pow(fresnel, 5.0) * 0.5;
+                    col += pow(max(dot(reflect(-l1, n), -rd), 0.0), 64.0) * vec3(0.4, 0.5, 0.5);
+                    col += vec3(0.1, 0.4, 0.5) * max(dot(n, l2), 0.0) * 0.4;
+                }
+
+                // deep ambient glow
+                col += vec3(0.03, 0.12, 0.15) * exp(-dot(uv, uv) * 3.2) * 0.3;
+                // subtle caustic shimmer in background
+                float caust = sin(uv.x * 12.0 + uTime * 0.4) * sin(uv.y * 10.0 - uTime * 0.3) * 0.5 + 0.5;
+                col += vec3(0.02, 0.08, 0.1) * caust * exp(-dot(uv, uv) * 3.0) * 0.3;
+
+                col = 1.0 - exp(-col * 2.5);
+                gl_FragColor = vec4(col, 1.0);
+            }
+        `;
+        const coreMat = new THREE.ShaderMaterial({
+            uniforms: { uTime: { value: 0 }, uRes: { value: new THREE.Vector2(W * PR, H * PR) } },
+            vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+            fragmentShader: coreFS,
+            depthWrite: false
+        });
+        const coreQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), coreMat);
+        coreQuad.frustumCulled = false;
+        scene.add(coreQuad);
+
+        // ---------------- Phosphorescent Plankton (GPU particles) ----------------
+        const COUNT = 24576;
+        const pGeo = new THREE.BufferGeometry();
+        const dummyPos = new Float32Array(COUNT * 3);
+        const seeds = new Float32Array(COUNT);
+        for (let i = 0; i < COUNT; i++) seeds[i] = Math.random();
+        pGeo.setAttribute('position', new THREE.BufferAttribute(dummyPos, 3));
+        pGeo.setAttribute('aSeed', new THREE.BufferAttribute(seeds, 1));
+
+        const sparkMat = new THREE.ShaderMaterial({
+            uniforms: { uTime: { value: 0 } },
+            vertexShader: `
+                attribute float aSeed;
+                uniform float uTime;
+                varying float vGlow;
+                varying float vHue;
+
+                void main() {
+                    float s = aSeed;
+                    float speed   = 0.08 + 0.35 * fract(s * 7.31);
+                    float phase   = s * 6.28318;
+                    float radius  = 0.9 + 2.2 * pow(fract(s * 3.71), 1.6);
+                    float incl    = (fract(s * 5.13) - 0.5) * 3.0;
+                    float freqY   = 0.7 + 1.5 * fract(s * 11.3);
+                    float freqZ   = 0.5 + 1.2 * fract(s * 13.7);
+                    float ang     = uTime * speed + phase;
+
+                    vec3 p;
+                    p.x = cos(ang) * radius;
+                    p.y = sin(ang * freqY + phase * 2.0) * radius * 0.4;
+                    p.z = sin(ang * freqZ) * radius;
+
+                    float ca = cos(incl), sa = sin(incl);
+                    p = vec3(p.x, p.y * ca - p.z * sa, p.y * sa + p.z * ca);
+
+                    // organic breathing
+                    p *= 1.0 + 0.22 * sin(uTime * 0.4 + s * 31.0);
+                    p += 0.15 * vec3(
+                        sin(uTime * 0.3 + s * 50.0),
+                        cos(uTime * 0.25 + s * 70.0),
+                        sin(uTime * 0.35 + s * 90.0)
+                    );
+
+                    vec4 mv = modelViewMatrix * vec4(p, 1.0);
+                    gl_Position = projectionMatrix * mv;
+                    gl_PointSize = clamp((30.0 * fract(s * 9.17) + 6.0) / -mv.z, 1.0, 8.0);
+                    vGlow = fract(s * 4.31);
+                    vHue = fract(s * 17.3);
+                }
+            `,
+            fragmentShader: `
+                varying float vGlow;
+                varying float vHue;
+                void main() {
+                    vec2 d = gl_PointCoord - 0.5;
+                    float r = length(d);
+                    float a = smoothstep(0.5, 0.0, r);
+                    a *= a;
+                    vec3 cyan   = vec3(0.2, 0.9, 0.85);
+                    vec3 teal   = vec3(0.1, 0.6, 0.55);
+                    vec3 magenta = vec3(0.7, 0.2, 0.85);
+                    vec3 c = mix(cyan, teal, vGlow);
+                    c = mix(c, magenta, step(0.92, vHue) * 0.7);
+                    gl_FragColor = vec4(c * a * 2.0, a * 0.95);
+                }
+            `,
+            transparent: true,
+            depthTest: false,
+            blending: THREE.AdditiveBlending
+        });
+        const swarm = new THREE.Points(pGeo, sparkMat);
+        swarm.frustumCulled = false;
+        scene.add(swarm);
+
+        // ---------------- Feedback / Trail pass (ping-pong) ----------------
+        function makeRT() {
+            return new THREE.WebGLRenderTarget(W * PR, H * PR, {
+                minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat
+            });
+        }
+        let rtA = makeRT(), rtB = makeRT(), rtScene = makeRT();
+
+        const trailCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const fsQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2));
+
+        const trailMat = new THREE.ShaderMaterial({
+            uniforms: {
+                tCur: { value: null }, tPrev: { value: null },
+                uDecay: { value: 0.72 }, uTime: { value: 0 }
+            },
+            vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+            fragmentShader: `
+                uniform sampler2D tCur, tPrev;
+                uniform float uDecay, uTime;
+                varying vec2 vUv;
+                void main() {
+                    vec3 cur = texture2D(tCur, vUv).rgb;
+                    // temporal drift with organic wobble
+                    vec2 off = vec2(
+                        sin(uTime * 0.19 + vUv.x * 3.0),
+                        cos(uTime * 0.14 + vUv.y * 2.0)
+                    ) * 0.002;
+                    vec3 prev = texture2D(tPrev, vUv + off).rgb;
+                    vec3 ghost = prev * uDecay;
+                    // slight blue tint on trails for underwater feel
+                    ghost *= vec3(0.95, 1.0, 1.05);
+                    gl_FragColor = vec4(cur + ghost, 1.0);
+                }
+            `
+        });
+        fsQuad.material = trailMat;
+        const trailScene = new THREE.Scene();
+        trailScene.add(fsQuad);
+
+        // ---------------- Final Grade pass ----------------
+        const gradeMat = new THREE.ShaderMaterial({
+            uniforms: { tDiffuse: { value: null }, uTime: { value: 0 } },
+            vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+            fragmentShader: `
+                uniform sampler2D tDiffuse;
+                uniform float uTime;
+                varying vec2 vUv;
+                float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+
+                void main() {
+                    vec3 c = texture2D(tDiffuse, vUv).rgb;
+                    // soft shoulder
+                    c = c / (1.0 + 0.3 * c);
+                    // vignette (deeper, rounder)
+                    float d = distance(vUv, vec2(0.5));
+                    c *= smoothstep(0.85, 0.2, d) * 1.15;
+                    // cool grade
+                    c.r *= 0.92; c.g *= 1.0; c.b *= 1.08;
+                    // subtle caustic interference
+                    float caust = sin(vUv.x * 20.0 + uTime * 0.2) * sin(vUv.y * 18.0 - uTime * 0.15) * sin((vUv.x + vUv.y) * 15.0 + uTime * 0.1);
+                    c += vec3(0.01, 0.04, 0.05) * caust * smoothstep(0.7, 0.3, d);
+                    // film grain (cooler, subtler)
+                    float g = hash(vUv * vec2(1920.0, 1080.0) + fract(uTime * 0.07) * 13.0) - 0.5;
+                    c += g * 0.035;
+                    // subtle pulsing brightness
+                    c *= 1.0 + 0.04 * sin(uTime * 0.5);
+                    gl_FragColor = vec4(c, 1.0);
+                }
+            `
+        });
+        const gradeScene = new THREE.Scene();
+        const gradeQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), gradeMat);
+        gradeScene.add(gradeQuad);
+
+        // ---------------- Loop ----------------
+        const clock = new THREE.Clock();
+        const stEl = document.getElementById('st');
+        const uiEl = document.getElementById('ui');
+        const depths = ['-3,847m', '-4,102m', '-4,298m', '-4,531m', '-4,716m', '-4,890m'];
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const t = clock.getElapsedTime();
+
+            coreMat.uniforms.uTime.value = t;
+            sparkMat.uniforms.uTime.value = t * 0.45;
+            swarm.rotation.y = t * 0.018;
+            swarm.rotation.x = Math.sin(t * 0.06) * 0.2;
+            swarm.rotation.z = Math.sin(t * 0.04) * 0.1;
+
+            // 1. main scene -> rtScene
+            renderer.setRenderTarget(rtScene);
+            renderer.render(scene, camera);
+
+            // 2. trail composite
+            trailMat.uniforms.tCur.value = rtScene.texture;
+            trailMat.uniforms.tPrev.value = rtB.texture;
+            trailMat.uniforms.uTime.value = t;
+            renderer.setRenderTarget(rtA);
+            renderer.render(trailScene, trailCam);
+
+            // 3. grade -> screen
+            gradeMat.uniforms.tDiffuse.value = rtA.texture;
+            gradeMat.uniforms.uTime.value = t;
+            renderer.setRenderTarget(null);
+            renderer.render(gradeScene, trailCam);
+
+            // ping-pong
+            const tmp = rtA; rtA = rtB; rtB = tmp;
+
+            // UI
+            uiEl.style.opacity = 0.5 + Math.sin(t * 2.0) * 0.5;
+            stEl.textContent = depths[Math.floor(t * 0.25) % depths.length];
+        }
+
+        window.addEventListener('resize', () => {
+            W = window.innerWidth; H = window.innerHeight;
+            camera.aspect = W / H;
+            camera.updateProjectionMatrix();
+            renderer.setPixelRatio(PR);
+            renderer.setSize(W, H);
+            coreMat.uniforms.uRes.value.set(W * PR, H * PR);
+            [rtA, rtB, rtScene].forEach(rt => { rt.setSize(W * PR, H * PR); });
+        });
+
+        animate();
+    </script>
+</body>
+</html>

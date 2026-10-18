@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Solar Corona</title>
+<style>
+html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #050208; }
+canvas { display: block; width: 100%; height: 100%; }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x080308, 0.018);
+
+const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 200);
+camera.position.set(0, 2, 14);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.4;
+document.body.appendChild(renderer.domElement);
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.4, 0.55, 0.5);
+composer.addPass(bloom);
+
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+const masterGain = audioCtx.createGain();
+masterGain.gain.value = 0.18;
+masterGain.connect(audioCtx.destination);
+
+const BPM = 72;
+const beatInterval = 60 / BPM;
+let beatTime = -beatInterval;
+
+function triggerBeat() {
+  const now = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  const flt = audioCtx.createBiquadFilter();
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(55, now);
+  osc.frequency.exponentialRampToValueAtTime(35, now + 0.8);
+  flt.type = 'lowpass';
+  flt.frequency.setValueAtTime(200, now);
+  flt.frequency.exponentialRampToValueAtTime(80, now + 0.8);
+  flt.Q.value = 2;
+  gain.gain.setValueAtTime(1.0, now);
+  gain.gain.exponentialRampToValueAtTime(0.01, now + 0.8);
+  osc.connect(flt).connect(gain).connect(masterGain);
+  osc.start(now);
+  osc.stop(now + 0.85);
+
+  if (Math.random() > 0.3) {
+    const o2 = audioCtx.createOscillator();
+    const g2 = audioCtx.createGain();
+    const f2 = audioCtx.createBiquadFilter();
+    o2.type = 'sine';
+    o2.frequency.value = 220 + Math.random() * 110;
+    f2.type = 'bandpass';
+    f2.frequency.value = o2.frequency.value;
+    f2.Q.value = 4;
+    g2.gain.setValueAtTime(0.12, now);
+    g2.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+    o2.connect(f2).connect(g2).connect(masterGain);
+    o2.start(now);
+    o2.stop(now + 0.45);
+  }
+
+  const o3 = audioCtx.createOscillator();
+  const g3 = audioCtx.createGain();
+  o3.type = 'sine';
+  o3.frequency.setValueAtTime(80, now);
+  o3.frequency.exponentialRampToValueAtTime(40, now + 0.1);
+  g3.gain.setValueAtTime(0.5, now);
+  g3.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+  o3.connect(g3).connect(masterGain);
+  o3.start(now);
+  o3.stop(now + 0.2);
+}
+
+const coreVert = `
+uniform float uTime;
+uniform float uBeat;
+varying vec3 vNormal;
+varying vec3 vViewPos;
+varying vec3 vPos;
+void main() {
+  vPos = position;
+  vec3 pos = position;
+  float pulse = 1.0 + uBeat * 0.15;
+  pos *= pulse;
+  float n = sin(pos.x * 3.0 + uTime) * sin(pos.y * 4.0 + uTime * 0.7) * sin(pos.z * 3.5 + uTime * 1.3);
+  pos += normal * n * 0.15;
+  vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
+  vViewPos = mvPos.xyz;
+  vNormal = normalize(normalMatrix * normal);
+  gl_Position = projectionMatrix * mvPos;
+}`;
+
+const coreFrag = `
+uniform float uTime;
+uniform float uBeat;
+varying vec3 vNormal;
+varying vec3 vViewPos;
+varying vec3 vPos;
+void main() {
+  vec3 viewDir = normalize(-vViewPos);
+  float fresnel = pow(1.0 - abs(dot(viewDir, normalize(vNormal))), 2.0);
+  vec3 deepRed = vec3(0.85, 0.15, 0.05);
+  vec3 orange = vec3(1.0, 0.5, 0.1);
+  vec3 gold = vec3(1.0, 0.75, 0.3);
+  vec3 white = vec3(1.0, 0.95, 0.85);
+  vec3 magenta = vec3(0.5, 0.1, 0.35);
+  float t = uTime * 0.8;
+  float n = sin(vPos.x * 4.0 + t) * sin(vPos.y * 3.0 + t * 0.7) * sin(vPos.z * 5.0 + t * 1.2);
+  vec3 col = mix(deepRed, orange, n * 0.5 + 0.5);
+  col = mix(col, gold, fresnel * 0.5);
+  col = mix(col, white, pow(fresnel, 3.0) * 0.6);
+  col += magenta * (1.0 - fresnel) * 0.15 * sin(t * 0.5);
+  col += uBeat * vec3(1.0, 0.5, 0.1) * 0.3;
+  float alpha = 0.9 + uBeat * 0.1;
+  gl_FragColor = vec4(col * 0.65, alpha);
+}`;
+
+const coreGeo = new THREE.IcosahedronGeometry(1.2, 4);
+const coreMat = new THREE.ShaderMaterial({
+  uniforms: { uTime: { value: 0 }, uBeat: { value: 0 } },
+  vertexShader: coreVert,
+  fragmentShader: coreFrag,
+  transparent: true
+});
+const core = new THREE.Mesh(coreGeo, coreMat);
+scene.add(core);
+
+const flareVert = `
+uniform float uTime;
+uniform float uBeat;
+uniform float uPhase;
+varying vec2 vUv;
+varying float vFlow;
+void main() {
+  vUv = uv;
+  vec3 pos = position;
+  float t = uTime * 0.5 + uPhase;
+  float flow = sin(pos.x * 0.8 - t * 0.6 + uPhase) * 0.5 + 0.5;
+  vFlow = flow;
+  pos.y += sin(pos.x * 1.5 + t * 0.4 + uPhase * 2.0) * 0.4 * (1.0 - uv.x * 0.5);
+  pos.z += cos(pos.x * 1.2 - t * 0.3 + uPhase) * 0.3 * (1.0 - uv.x * 0.5);
+  pos.y += uBeat * sin(pos.x * 2.0 + t) * 0.3;
+  pos.z += uBeat * cos(pos.x * 1.8 + t * 1.2) * 0.2;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+}`;
+
+const flareFrag = `
+uniform float uTime;
+uniform float uBeat;
+uniform float uPhase;
+varying vec2 vUv;
+varying float vFlow;
+float hash(float n) { return fract(sin(n) * 43758.5453); }
+float noise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  float a = hash(i.x + i.y * 57.0);
+  float b = hash(i.x + 1.0 + i.y * 57.0);
+  float c = hash(i.x + (i.y + 1.0) * 57.0);
+  float d = hash(i.x + 1.0 + (i.y + 1.0) * 57.0);
+  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+void main() {
+  float t = uTime * 0.6 + uPhase;
+  float n1 = noise(vec2(vUv.x * 8.0 - t * 0.5, vUv.y * 4.0 + t * 0.3));
+  float n2 = noise(vec2(vUv.x * 16.0 + t * 0.3, vUv.y * 8.0 - t * 0.4 + 100.0));
+  float plasma = n1 * 0.6 + n2 * 0.4;
+  vec3 deepRed = vec3(0.9, 0.05, 0.0);
+  vec3 orange = vec3(1.0, 0.35, 0.02);
+  vec3 gold = vec3(1.0, 0.75, 0.15);
+  vec3 white = vec3(1.0, 0.95, 0.85);
+  vec3 crimson = vec3(0.5, 0.0, 0.15);
+  vec3 purple = vec3(0.35, 0.0, 0.4);
+  vec3 col = mix(crimson, deepRed, plasma * 0.8);
+  col = mix(col, orange, smoothstep(0.3, 0.7, plasma) * 0.7);
+  col = mix(col, gold, smoothstep(0.6, 0.9, plasma) * 0.5);
+  col = mix(col, white, smoothstep(0.85, 1.0, plasma) * 0.6);
+  float edgeGlow = smoothstep(0.3, 0.0, vUv.y) + smoothstep(0.7, 1.0, vUv.y);
+  col = mix(col, purple, edgeGlow * 0.4);
+  col += vec3(1.0, 0.6, 0.1) * uBeat * 0.4 * vFlow;
+  float taper = smoothstep(1.0, 0.0, vUv.x) * 0.7 + 0.3;
+  taper = pow(taper, 1.5);
+  float widthFade = smoothstep(0.0, 0.15, vUv.y) * smoothstep(1.0, 0.85, vUv.y);
+  widthFade *= 0.5 + 0.5 * sin(vUv.y * 3.14159);
+  float flowBright = 0.4 + vFlow * 0.6;
+  float alpha = taper * widthFade * flowBright * 0.6;
+  alpha += uBeat * 0.15 * taper;
+  gl_FragColor = vec4(col * (1.2 + uBeat * 0.5), alpha);
+}`;
+
+const flareMats = [];
+const flareGroup = new THREE.Group();
+const flareCount = 14;
+for (let i = 0; i < flareCount; i++) {
+  const length = 6 + Math.random() * 6;
+  const width = 0.8 + Math.random() * 1.2;
+  const geo = new THREE.PlaneGeometry(length, width, 64, 8);
+  const posAttr = geo.attributes.position;
+  for (let j = 0; j < posAttr.count; j++) {
+    posAttr.setX(j, posAttr.getX(j) + length / 2);
+  }
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+      uBeat: { value: 0 },
+      uPhase: { value: i * 0.45 + Math.random() * 0.3 }
+    },
+    vertexShader: flareVert,
+    fragmentShader: flareFrag,
+    transparent: true,
+    side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  });
+  flareMats.push(mat);
+  const mesh = new THREE.Mesh(geo, mat);
+  const angle = (i / flareCount) * Math.PI * 2 + Math.random() * 0.3;
+  const elevation = (Math.random() - 0.5) * 1.2;
+  const tilt = (Math.random() - 0.5) * 0.8;
+  mesh.rotation.set(elevation, angle, tilt);
+  mesh.translateX(1.0);
+  flareGroup.add(mesh);
+}
+scene.add(flareGroup);
+
+const emberCount = 2500;
+const emberGeo = new THREE.BufferGeometry();
+const emberPos = new Float32Array(emberCount * 3);
+const emberSize = new Float32Array(emberCount);
+const emberSeed = new Float32Array(emberCount);
+for (let i = 0; i < emberCount; i++) {
+  emberPos[i * 3] = (Math.random() - 0.5) * 20;
+  emberPos[i * 3 + 1] = Math.random() * 20 - 5;
+  emberPos[i * 3 + 2] = (Math.random() - 0.5) * 20;
+  const r = Math.random();
+  emberSize[i] = r < 0.5 ? Math.random() * 1.5 + 0.3 : Math.random() * 3.0 + 1.0;
+  emberSeed[i] = Math.random();
+}
+emberGeo.setAttribute('position', new THREE.BufferAttribute(emberPos, 3));
+emberGeo.setAttribute('aSize', new THREE.BufferAttribute(emberSize, 1));
+emberGeo.setAttribute('aSeed', new THREE.BufferAttribute(emberSeed, 1));
+
+const emberVert = `
+attribute float aSize;
+attribute float aSeed;
+uniform float uTime;
+uniform float uBeat;
+varying float vAlpha;
+varying float vHeat;
+void main() {
+  vec3 pos = position;
+  float riseSpeed = 0.3 + aSeed * 0.5;
+  pos.y = mod(pos.y + uTime * riseSpeed + 5.0, 20.0) - 5.0;
+  float t = uTime * 0.4 + aSeed * 30.0;
+  pos.x += sin(t + aSeed * 8.0) * (0.3 + aSeed * 0.6);
+  pos.z += cos(t * 0.8 + aSeed * 5.0) * 0.4;
+  float angle = t * 0.5;
+  pos.x += sin(angle) * 0.2 * aSeed;
+  pos.z += cos(angle) * 0.2 * aSeed;
+  vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
+  gl_Position = projectionMatrix * mvPos;
+  gl_PointSize = aSize * (180.0 / -mvPos.z) * (1.0 + uBeat * 0.2);
+  float heightFade = smoothstep(15.0, 5.0, pos.y) * smoothstep(-4.0, -2.0, pos.y);
+  vAlpha = (0.15 + 0.2 * sin(t * 2.0 + aSeed * 15.0)) * heightFade;
+  vHeat = aSeed;
+}`;
+
+const emberFrag = `
+varying float vAlpha;
+varying float vHeat;
+void main() {
+  float d = length(gl_PointCoord - 0.5);
+  if(d > 0.5) discard;
+  float alpha = smoothstep(0.5, 0.0, d) * vAlpha;
+  vec3 col = mix(vec3(1.0, 0.3, 0.05), vec3(1.0, 0.7, 0.2), vHeat * 0.5);
+  col = mix(col, vec3(1.0, 0.9, 0.6), smoothstep(0.3, 0.0, d) * 0.3);
+  gl_FragColor = vec4(col, alpha);
+}`;
+
+const emberMat = new THREE.ShaderMaterial({
+  uniforms: { uTime: { value: 0 }, uBeat: { value: 0 } },
+  vertexShader: emberVert,
+  fragmentShader: emberFrag,
+  transparent: true,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false
+});
+const embers = new THREE.Points(emberGeo, emberMat);
+scene.add(embers);
+
+const bgCount = 120;
+const bgGeo = new THREE.BufferGeometry();
+const bgPos = new Float32Array(bgCount * 3);
+const bgSize = new Float32Array(bgCount);
+for (let i = 0; i < bgCount; i++) {
+  const theta = Math.random() * Math.PI * 2;
+  const phi = Math.acos(Math.random() * 2.0 - 1.0);
+  const r = 60 + Math.random() * 80;
+  bgPos[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+  bgPos[i * 3 + 1] = r * Math.cos(phi);
+  bgPos[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+  const s = Math.random();
+  bgSize[i] = s < 0.7 ? Math.random() * 0.3 + 0.05 : Math.random() * 1.2 + 0.5;
+}
+bgGeo.setAttribute('position', new THREE.BufferAttribute(bgPos, 3));
+bgGeo.setAttribute('aSize', new THREE.BufferAttribute(bgSize, 1));
+
+const bgVert = `
+attribute float aSize;
+uniform float uTime;
+varying float vTwinkle;
+void main() {
+  vTwinkle = 0.03 + 0.07 * sin(uTime * 0.3 + position.x * 1.5 + position.z);
+  vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+  gl_Position = projectionMatrix * mvPos;
+  gl_PointSize = aSize * (300.0 / -mvPos.z);
+}`;
+
+const bgFrag = `
+varying float vTwinkle;
+void main() {
+  float d = length(gl_PointCoord - 0.5);
+  if(d > 0.5) discard;
+  float alpha = smoothstep(0.5, 0.0, d) * vTwinkle;
+  gl_FragColor = vec4(0.8, 0.5, 0.3, alpha);
+}`;
+
+const bgMat = new THREE.ShaderMaterial({
+  uniforms: { uTime: { value: 0 } },
+  vertexShader: bgVert,
+  fragmentShader: bgFrag,
+  transparent: true,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false
+});
+const bgStars = new THREE.Points(bgGeo, bgMat);
+scene.add(bgStars);
+
+const ringGeo = new THREE.TorusGeometry(2.5, 0.3, 16, 64);
+const ringMat = new THREE.ShaderMaterial({
+  uniforms: { uTime: { value: 0 }, uBeat: { value: 0 } },
+  vertexShader: `
+    uniform float uTime;
+    uniform float uBeat;
+    varying vec3 vNormal;
+    varying vec3 vViewPos;
+    void main() {
+      vec3 pos = position;
+      pos *= 1.0 + uBeat * 0.2 + sin(uTime * 0.5) * 0.05;
+      vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
+      vViewPos = mvPos.xyz;
+      vNormal = normalize(normalMatrix * normal);
+      gl_Position = projectionMatrix * mvPos;
+    }
+  `,
+  fragmentShader: `
+    uniform float uTime;
+    uniform float uBeat;
+    varying vec3 vNormal;
+    varying vec3 vViewPos;
+    void main() {
+      vec3 viewDir = normalize(-vViewPos);
+      float fresnel = pow(1.0 - abs(dot(viewDir, normalize(vNormal))), 2.5);
+      vec3 col = mix(vec3(0.8, 0.2, 0.0), vec3(1.0, 0.6, 0.1), fresnel);
+      col += vec3(1.0, 0.8, 0.3) * fresnel * 0.5;
+      col += uBeat * vec3(1.0, 0.5, 0.1) * 0.3;
+      float alpha = fresnel * 0.7 + 0.1;
+             gl_FragColor = vec4(col * 1.0, alpha);
+    }
+  `,
+  transparent: true,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  side: THREE.DoubleSide
+});
+const ring = new THREE.Mesh(ringGeo, ringMat);
+ring.rotation.x = Math.PI / 2.5;
+scene.add(ring);
+
+const ring2Geo = new THREE.TorusGeometry(3.2, 0.15, 12, 64);
+const ring2Mat = new THREE.ShaderMaterial({
+  uniforms: { uTime: { value: 0 }, uBeat: { value: 0 } },
+  vertexShader: `
+    uniform float uTime;
+    uniform float uBeat;
+    varying vec3 vNormal;
+    varying vec3 vViewPos;
+    void main() {
+      vec3 pos = position;
+      pos *= 1.0 + uBeat * 0.15 + cos(uTime * 0.4) * 0.04;
+      vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
+      vViewPos = mvPos.xyz;
+      vNormal = normalize(normalMatrix * normal);
+      gl_Position = projectionMatrix * mvPos;
+    }
+  `,
+  fragmentShader: `
+    uniform float uTime;
+    uniform float uBeat;
+    varying vec3 vNormal;
+    varying vec3 vViewPos;
+    void main() {
+      vec3 viewDir = normalize(-vViewPos);
+      float fresnel = pow(1.0 - abs(dot(viewDir, normalize(vNormal))), 3.0);
+      vec3 col = mix(vec3(0.5, 0.05, 0.3), vec3(1.0, 0.4, 0.1), fresnel);
+      col += vec3(0.8, 0.3, 0.6) * fresnel * 0.4;
+      col += uBeat * vec3(0.8, 0.3, 0.5) * 0.25;
+      float alpha = fresnel * 0.6 + 0.05;
+             gl_FragColor = vec4(col * 0.85, alpha);
+    }
+  `,
+  transparent: true,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  side: THREE.DoubleSide
+});
+const ring2 = new THREE.Mesh(ring2Geo, ring2Mat);
+ring2.rotation.x = Math.PI / 3.2;
+ring2.rotation.z = 0.4;
+scene.add(ring2);
+
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+});
+
+document.addEventListener('click', () => { if (audioCtx.state === 'suspended') audioCtx.resume(); }, { once: true });
+document.addEventListener('keydown', () => { if (audioCtx.state === 'suspended') audioCtx.resume(); }, { once: true });
+
+const clock = new THREE.Clock();
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+
+  if (t - beatTime >= beatInterval) {
+    beatTime = t;
+    triggerBeat();
+  }
+
+  const beatPhase = Math.max(0, (t - beatTime) / beatInterval);
+  const beatPulse = Math.exp(-beatPhase * 2.5);
+
+  coreMat.uniforms.uTime.value = t;
+  coreMat.uniforms.uBeat.value = beatPulse;
+  flareMats.forEach(mat => {
+    mat.uniforms.uTime.value = t;
+    mat.uniforms.uBeat.value = beatPulse;
+  });
+  emberMat.uniforms.uTime.value = t;
+  emberMat.uniforms.uBeat.value = beatPulse;
+  bgMat.uniforms.uTime.value = t;
+  ringMat.uniforms.uTime.value = t;
+  ringMat.uniforms.uBeat.value = beatPulse;
+  ring2Mat.uniforms.uTime.value = t;
+  ring2Mat.uniforms.uBeat.value = beatPulse;
+
+  flareGroup.rotation.y = t * 0.05;
+  flareGroup.rotation.x = Math.sin(t * 0.02) * 0.1;
+
+  ring.rotation.x = Math.PI / 2.5 + Math.sin(t * 0.1) * 0.2;
+  ring.rotation.z = t * 0.03;
+  ring2.rotation.x = Math.PI / 3.2 + Math.cos(t * 0.08) * 0.15;
+  ring2.rotation.z = 0.4 + t * 0.04;
+
+  core.rotation.y = t * 0.2;
+  core.rotation.x = Math.sin(t * 0.15) * 0.1;
+
+  const camAngle = t * 0.12;
+  const camRadius = 11 + Math.sin(t * 0.08) * 3.5;
+  camera.position.x = Math.sin(camAngle) * camRadius;
+  camera.position.y = 1.0 + Math.sin(t * 0.05) * 2.2;
+  camera.position.z = Math.cos(camAngle) * camRadius;
+  const lookX = Math.sin(t * 0.04) * 0.8;
+  const lookY = 0.5 + Math.cos(t * 0.06) * 0.6;
+  camera.lookAt(lookX, lookY, 0);
+
+  composer.render();
+}
+
+animate();
+</script>
+</body>
+</html>
