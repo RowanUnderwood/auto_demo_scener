@@ -30,6 +30,17 @@ DEFAULTS: dict = {
         "video_check_enabled": False,
         "video_max_tokens": 16384,
     },
+    "strata": {
+        "base_url": "http://192.168.2.192:8080",
+        "api_key": "",
+        "model": "",
+        "max_tokens": 8192,
+        "temperature": 0.9,
+        "request_timeout_seconds": 300,
+        "context_ceiling_tokens": 131072,
+        "surprise_me": False,
+        "thinking_effort": "low",
+    },
     "display": {
         "fullscreen": True,
         "demo_runtime_seconds": 60,

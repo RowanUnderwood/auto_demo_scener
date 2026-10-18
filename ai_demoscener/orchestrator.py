@@ -75,7 +75,7 @@ class Orchestrator:
 
     def _active_provider_cfg(self, cfg: dict) -> tuple[str, dict]:
         provider = cfg.get("llm_provider", "lm_studio")
-        if provider not in ("lm_studio", "ninfer"):
+        if provider not in ("lm_studio", "ninfer", "strata"):
             provider = "lm_studio"
         return provider, cfg[provider]
 
@@ -167,7 +167,7 @@ class Orchestrator:
     def _probe_lm(self, cfg: dict) -> None:
         provider, lm = self._active_provider_cfg(cfg)
         try:
-            lm_client.list_models(lm["base_url"])
+            lm_client.list_models(lm["base_url"], api_key=lm.get("api_key", ""))
             if self._lm_unavailable:
                 log.info("%s reachable again — resuming generate mode", provider)
                 self._push_status(f"{provider} reconnected — resuming generate mode")
@@ -193,7 +193,8 @@ class Orchestrator:
         model = lm_cfg["model"]
         if lm_cfg.get("surprise_me"):
             try:
-                available = lm_client.list_models(lm_cfg["base_url"], exclude_embedding=True)
+                available = lm_client.list_models(lm_cfg["base_url"], exclude_embedding=True,
+                                                  api_key=lm_cfg.get("api_key", ""))
                 if available:
                     model = random.choice(available)
                     self._broadcast({"type": "model_selected", "model": model})
@@ -639,7 +640,8 @@ class Orchestrator:
         provider, lm = self._active_provider_cfg(cfg)
         tokens: list[str] = []
         start = time.time()
-        extra_params = {"reasoning_effort": lm["thinking_effort"]} if provider == "ninfer" else None
+        extra_params = ({"reasoning_effort": lm["thinking_effort"]}
+                        if provider in ("ninfer", "strata") else None)
         max_tokens = max_tokens_override if max_tokens_override is not None else lm["max_tokens"]
 
         try:
@@ -651,6 +653,7 @@ class Orchestrator:
                 temperature=lm["temperature"],
                 timeout=lm["request_timeout_seconds"],
                 extra_params=extra_params,
+                api_key=lm.get("api_key", ""),
             ):
                 if self._skip.is_set():
                     log.info("Aborting LLM stream: skip requested")
@@ -720,10 +723,11 @@ class Orchestrator:
             return None
         provider, lm = self._active_provider_cfg(cfg)
         use_model = model or lm["model"]
-        if provider == "ninfer":
+        if provider in ("ninfer", "strata"):
             # Title/description generation is cheap and low-stakes — always use minimal
             # thinking effort here regardless of the user's configured setting, mirroring
-            # the /no_think convention used on the lm_studio branch below.
+            # the /no_think convention used on the lm_studio branch below. Strata takes the same
+            # "none" value (its levels are none/low/medium/high).
             messages = [
                 {"role": "system", "content": prompt},
                 {"role": "user", "content": html[:6000]},
@@ -746,6 +750,7 @@ class Orchestrator:
                 temperature=0.7,
                 timeout=120,
                 extra_params=extra_params,
+                api_key=lm.get("api_key", ""),
             )
             if not text or not text.strip():
                 log.warning("Title generation: empty response (model=%s)", use_model)

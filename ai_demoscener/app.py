@@ -158,10 +158,11 @@ def api_set_config():
 def api_models():
     cfg = cfg_mod.load()
     provider = request.args.get("provider") or cfg.get("llm_provider", "lm_studio")
-    if provider not in ("lm_studio", "ninfer"):
+    if provider not in ("lm_studio", "ninfer", "strata"):
         provider = "lm_studio"
     try:
-        models = lm_client.list_models(cfg[provider]["base_url"])
+        models = lm_client.list_models(cfg[provider]["base_url"],
+                                       api_key=cfg[provider].get("api_key", ""))
         return jsonify({"models": models})
     except lm_client.LMClientError as e:
         return jsonify({"error": str(e)}), 502
@@ -431,7 +432,8 @@ def api_generate_title_cards():
             available: set = set()
             try:
                 _, provider_cfg = orc._active_provider_cfg(cfg)
-                available = set(lm_client.list_models(provider_cfg["base_url"]))
+                available = set(lm_client.list_models(
+                    provider_cfg["base_url"], api_key=provider_cfg.get("api_key", "")))
             except Exception:
                 pass
             # Sort so demos from the same model are processed together,

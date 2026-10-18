@@ -60,6 +60,18 @@ function populateForm(c) {
   setChecked('ninferVideoCheck', c.ninfer?.video_check_enabled ?? false);
   populateModelDropdown('ninferModel', [c.ninfer?.model ?? ''], c.ninfer?.model ?? '');
 
+  setVal('strataUrl',       c.strata?.base_url ?? '');
+  setVal('strataApiKey',    c.strata?.api_key ?? '');
+  setVal('strataMaxTokens', c.strata?.max_tokens ?? 8192);
+  setVal('strataTimeout',   c.strata?.request_timeout_seconds ?? 300);
+  setVal('strataCeiling',   c.strata?.context_ceiling_tokens ?? 131072);
+  set('strataTemp', c.strata?.temperature ?? 0.9, 'strataTempV');
+  setChecked('strataSurpriseMe', c.strata?.surprise_me ?? false);
+  document.getElementById('surpriseLastFieldStrata').style.display =
+    (c.strata?.surprise_me) ? '' : 'none';
+  setVal('strataThinkingEffort', c.strata?.thinking_effort ?? 'low');
+  populateModelDropdown('strataModel', [c.strata?.model ?? ''], c.strata?.model ?? '');
+
   // Display
   setVal('demoRuntime',        c.display?.demo_runtime_seconds ?? 60);
   setVal('minTyping',          c.display?.min_typing_seconds   ?? 8);
@@ -105,8 +117,7 @@ async function saveSection(section) {
       };
       break;
     case 'llmProvider':
-      cfg.llm_provider = document.getElementById('providerNinfer')?.classList.contains('active')
-        ? 'ninfer' : 'lm_studio';
+      cfg.llm_provider = activeProvider();
 
       cfg.lm_studio.base_url                 = getVal('lmUrl');
       cfg.lm_studio.model                    = getVal('lmModel');
@@ -126,6 +137,17 @@ async function saveSection(section) {
       cfg.ninfer.surprise_me             = getChecked('ninferSurpriseMe');
       cfg.ninfer.thinking_effort         = getVal('ninferThinkingEffort');
       cfg.ninfer.video_check_enabled     = getChecked('ninferVideoCheck');
+
+      cfg.strata ??= {};
+      cfg.strata.base_url                = getVal('strataUrl');
+      cfg.strata.api_key                 = getVal('strataApiKey');
+      cfg.strata.model                   = getVal('strataModel');
+      cfg.strata.max_tokens              = +getVal('strataMaxTokens');
+      cfg.strata.temperature             = +getVal('strataTemp');
+      cfg.strata.request_timeout_seconds = +getVal('strataTimeout');
+      cfg.strata.context_ceiling_tokens  = +getVal('strataCeiling');
+      cfg.strata.surprise_me             = getChecked('strataSurpriseMe');
+      cfg.strata.thinking_effort         = getVal('strataThinkingEffort');
       break;
     case 'display':
       cfg.display.demo_runtime_seconds  = +getVal('demoRuntime');
@@ -182,11 +204,24 @@ function setMode(mode, save = false) {
 }
 
 // ── LLM provider UI ───────────────────────────────────────────────────────────
+// provider id → [toggle button id, fields container id, model <select> id]
+const PROVIDERS = {
+  lm_studio: ['providerLmStudio', 'lmStudioFields', 'lmModel'],
+  ninfer:    ['providerNinfer',   'ninferFields',   'ninferModel'],
+  strata:    ['providerStrata',   'strataFields',   'strataModel'],
+};
+
+function activeProvider() {
+  return Object.keys(PROVIDERS).find(p =>
+    document.getElementById(PROVIDERS[p][0])?.classList.contains('active')) || 'lm_studio';
+}
+
 function setProvider(provider, save = false) {
-  document.getElementById('providerLmStudio').classList.toggle('active', provider === 'lm_studio');
-  document.getElementById('providerNinfer').classList.toggle('active',   provider === 'ninfer');
-  document.getElementById('lmStudioFields').style.display = provider === 'ninfer' ? 'none' : '';
-  document.getElementById('ninferFields').style.display   = provider === 'ninfer' ? '' : 'none';
+  if (!PROVIDERS[provider]) provider = 'lm_studio';
+  for (const [p, [btnId, fieldsId]] of Object.entries(PROVIDERS)) {
+    document.getElementById(btnId).classList.toggle('active', p === provider);
+    document.getElementById(fieldsId).style.display = p === provider ? '' : 'none';
+  }
   if (save) saveSection('llmProvider');
 }
 
@@ -195,8 +230,8 @@ async function refreshModels(provider) {
   const r = await fetch(`/api/models?provider=${encodeURIComponent(provider)}`);
   const data = await r.json();
   if (data.error) { alert(`${provider} error: ` + data.error); return; }
-  const selectId = provider === 'ninfer' ? 'ninferModel' : 'lmModel';
-  const selected = provider === 'ninfer' ? (currentCfg.ninfer?.model ?? '') : (currentCfg.lm_studio?.model ?? '');
+  const selectId = PROVIDERS[provider][2];
+  const selected = currentCfg[provider]?.model ?? '';
   populateModelDropdown(selectId, data.models, selected);
 }
 
@@ -358,6 +393,7 @@ function connectStatusWS() {
         // field for the currently active provider is visible anyway.
         document.getElementById('surpriseLastModel').textContent = msg.model;
         document.getElementById('surpriseLastModelNinfer').textContent = msg.model;
+        document.getElementById('surpriseLastModelStrata').textContent = msg.model;
       }
     } catch (e) {}
   };

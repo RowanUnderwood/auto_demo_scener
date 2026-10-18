@@ -17,10 +17,22 @@ class LengthFinishError(LMClientError):
     pass
 
 
+def _root(base_url: str) -> str:
+    """Normalise a base URL so `/v1/...` can be appended. Strata documents its base URL
+    with a trailing `/v1` (`http://host:8080/v1`), so accept that form as well as the bare one."""
+    url = base_url.rstrip("/")
+    return url[:-3] if url.endswith("/v1") else url
+
+
+def _headers(api_key: str) -> dict:
+    """Bearer auth for servers started with an API key (e.g. Strata `--api-key`)."""
+    return {"Authorization": f"Bearer {api_key}"} if api_key else {}
+
+
 def list_models(base_url: str, timeout: int = 10,
-                exclude_embedding: bool = False) -> list[str]:
+                exclude_embedding: bool = False, api_key: str = "") -> list[str]:
     try:
-        r = requests.get(f"{base_url}/v1/models", timeout=timeout)
+        r = requests.get(f"{_root(base_url)}/v1/models", headers=_headers(api_key), timeout=timeout)
         r.raise_for_status()
         ids = [m["id"] for m in r.json().get("data", [])]
         if exclude_embedding:
@@ -39,6 +51,7 @@ def chat_stream(
     temperature: float,
     timeout: int = 180,
     extra_params: dict | None = None,
+    api_key: str = "",
 ):
     """Yield content-delta strings from a streaming chat completion.
 
@@ -58,8 +71,9 @@ def chat_stream(
 
     try:
         with requests.post(
-            f"{base_url}/v1/chat/completions",
+            f"{_root(base_url)}/v1/chat/completions",
             json=payload,
+            headers=_headers(api_key),
             stream=True,
             timeout=timeout,
         ) as resp:
@@ -108,6 +122,7 @@ def chat(
     temperature: float = 0.7,
     timeout: int = 30,
     extra_params: dict | None = None,
+    api_key: str = "",
 ) -> str:
     """Non-streaming chat completion. Returns the full response string."""
     payload = {
@@ -121,7 +136,8 @@ def chat(
     if extra_params:
         payload.update(extra_params)
     try:
-        r = requests.post(f"{base_url}/v1/chat/completions", json=payload, timeout=timeout)
+        r = requests.post(f"{_root(base_url)}/v1/chat/completions", json=payload,
+                          headers=_headers(api_key), timeout=timeout)
         r.raise_for_status()
         content = r.json()["choices"][0]["message"]["content"]
         return content if content is not None else ""

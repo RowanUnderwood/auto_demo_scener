@@ -56,6 +56,7 @@
       <div class="mode-toggle">
         <div class="mode-btn" id="providerLmStudio" onclick="setProvider('lm_studio', true)">LM STUDIO</div>
         <div class="mode-btn" id="providerNinfer"   onclick="setProvider('ninfer', true)">NINFER</div>
+        <div class="mode-btn" id="providerStrata"   onclick="setProvider('strata', true)">STRATA</div>
       </div>
 
       <div class="section-body" id="lmStudioFields" style="padding:0.75rem 0 0">
@@ -98,6 +99,31 @@
           </select>
         </div>
         <div class="field"><label class="check-row"><input type="checkbox" id="ninferVideoCheck"> Improve demo via video check (~30s capture + vision review)</label></div>
+      </div>
+
+      <div class="section-body" id="strataFields" style="padding:0.75rem 0 0; display:none">
+        <div class="field"><label>Base URL</label><input type="url" id="strataUrl" placeholder="http://192.168.x.x:8080"></div>
+        <div class="field"><label>API key</label><input type="password" id="strataApiKey" autocomplete="off" placeholder="--api-key value (blank if none)"></div>
+        <div class="field">
+          <label>Model <button class="btn btn-sm btn-muted" onclick="refreshModels('strata')" style="margin-left:0.5rem">Refresh</button></label>
+          <select id="strataModel"></select>
+        </div>
+        <div class="field"><label>Max tokens</label><input type="number" id="strataMaxTokens" min="512" max="32768"></div>
+        <div class="field"><label>Temperature</label>
+          <div class="range-row"><input type="range" id="strataTemp" min="0" max="2" step="0.05" oninput="showW(this,'strataTempV')"><span class="range-val" id="strataTempV">0.9</span></div>
+        </div>
+        <div class="field"><label>Timeout (seconds)</label><input type="number" id="strataTimeout" min="30" max="600"></div>
+        <div class="field"><label>Context ceiling (tokens)</label><input type="number" id="strataCeiling" min="4096" max="262144"></div>
+        <div class="field"><label class="check-row"><input type="checkbox" id="strataSurpriseMe" onchange="toggleSurpriseLastField(this,'surpriseLastFieldStrata')"> Surprise me (random model each cycle)</label></div>
+        <div class="field" id="surpriseLastFieldStrata" style="display:none"><label style="font-size:0.75rem;color:var(--c-muted)">Last picked: <span id="surpriseLastModelStrata">—</span></label></div>
+        <div class="field"><label>Thinking effort</label>
+          <select id="strataThinkingEffort">
+            <option value="none">none</option>
+            <option value="low">low</option>
+            <option value="medium">medium</option>
+            <option value="high">high</option>
+          </select>
+        </div>
       </div>
     </div>
     <div style="padding:0 1rem 0.75rem"><div class="save-row"><button class="btn btn-primary" onclick="saveSection('llmProvider')">Save</button><span class="save-msg" id="llmProviderSaved"></span></div></div>

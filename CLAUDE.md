@@ -120,11 +120,11 @@ Two modes controlled by `cfg.display.jit_titling`:
 
 In replay mode, `entry_model` from `archive_index.json` is passed directly to `_generate_title_meta`; if that model is no longer available on the active provider, the LM client raises `LMClientError` which is caught and returns `None` — graceful degradation.
 
-### LLM providers (LM Studio / Ninfer)
+### LLM providers (LM Studio / Ninfer / Strata)
 
-`cfg["llm_provider"]` (`"lm_studio"` default, or `"ninfer"`) selects which of `cfg["lm_studio"]` / `cfg["ninfer"]` sub-dicts is active. `orchestrator._active_provider_cfg(cfg) -> (provider, provider_cfg)` is the single lookup point — every call site that used to read `cfg["lm_studio"]` directly (`_probe_lm`, the Surprise-Me block, `_stream`, `_generate_title_meta`, `_pick_mode`, `_csv_text_for_creative`) goes through it instead. `lm_client.list_models()`/`chat()`/`chat_stream()` are provider-agnostic (both providers expose the same OpenAI-compatible `/v1/models` and `/v1/chat/completions` shape) — only the `base_url` passed in differs.
+`cfg["llm_provider"]` (`"lm_studio"` default, `"ninfer"`, or `"strata"`) selects which of the `cfg["lm_studio"]` / `cfg["ninfer"]` / `cfg["strata"]` sub-dicts is active. `orchestrator._active_provider_cfg(cfg) -> (provider, provider_cfg)` is the single lookup point — every call site that used to read `cfg["lm_studio"]` directly (`_probe_lm`, the Surprise-Me block, `_stream`, `_generate_title_meta`, `_pick_mode`, `_csv_text_for_creative`) goes through it instead. `lm_client.list_models()`/`chat()`/`chat_stream()` are provider-agnostic (all three providers expose the same OpenAI-compatible `/v1/models` and `/v1/chat/completions` shape) — only the `base_url` and optional `api_key` passed in differ. `lm_client._root()` strips a trailing `/v1` from `base_url` (Strata documents its base URL that way), and `api_key`, when non-empty, is sent as `Authorization: Bearer <key>`. Only Strata has an `api_key` config field; every call site passes `provider_cfg.get("api_key", "")`, so it's a no-op for the other two.
 
-**Thinking effort** (`cfg["ninfer"]["thinking_effort"]`, one of `none`/`low`/`medium`/`xhigh`) is Ninfer-only: `_stream` passes it as `extra_params={"reasoning_effort": ...}` to `chat_stream`, which merges it into the request JSON via `lm_client.chat`/`chat_stream`'s `extra_params` kwarg (a no-op on LM Studio, which never sets it). `_generate_title_meta` always hardcodes `reasoning_effort="none"` on the Ninfer branch regardless of the configured value — title/description generation is cheap and low-stakes, mirroring the existing `"/no_think\n"` prompt-prefix convention already used on the LM Studio branch for the same reason.
+**Thinking effort** (`cfg["ninfer"]["thinking_effort"]`, one of `none`/`low`/`medium`/`xhigh`) applies to Ninfer and Strata (`cfg["strata"]["thinking_effort"]`, one of `none`/`low`/`medium`/`high`): `_stream` passes it as `extra_params={"reasoning_effort": ...}` to `chat_stream`, which merges it into the request JSON via `lm_client.chat`/`chat_stream`'s `extra_params` kwarg (a no-op on LM Studio, which never sets it). `_generate_title_meta` always hardcodes `reasoning_effort="none"` on the Ninfer/Strata branch regardless of the configured value — title/description generation is cheap and low-stakes, mirroring the existing `"/no_think\n"` prompt-prefix convention already used on the LM Studio branch for the same reason.
 
 **Video-improve** (`cfg["ninfer"]["video_check_enabled"]`, Ninfer-only, generate-mode only):
 
@@ -200,7 +200,7 @@ Key display defaults:
 }
 ```
 
-Provider config: `llm_provider` (`"lm_studio"` | `"ninfer"`) plus a full sibling config dict per provider (`lm_studio` unchanged; `ninfer` adds `thinking_effort`, `video_check_enabled`, `video_max_tokens` on top of the same base_url/model/max_tokens/temperature/request_timeout_seconds/context_ceiling_tokens/surprise_me fields). Both dicts are always present in `DEFAULTS` regardless of which is active, so switching providers in the config GUI never loses the other provider's settings.
+Provider config: `llm_provider` (`"lm_studio"` | `"ninfer"` | `"strata"`) plus a full sibling config dict per provider (`lm_studio` unchanged; `ninfer` adds `thinking_effort`, `video_check_enabled`, `video_max_tokens` on top of the same base_url/model/max_tokens/temperature/request_timeout_seconds/context_ceiling_tokens/surprise_me fields; `strata` adds `api_key` and `thinking_effort`, with no video-improve because Strata can't take video input). All three dicts are always present in `DEFAULTS` regardless of which is active, so switching providers in the config GUI never loses the other provider's settings.
 
 ### Modes
 
@@ -235,7 +235,7 @@ Provider config: `llm_provider` (`"lm_studio"` | `"ninfer"`) plus a full sibling
 | GET | `/api/title_cards/progress` | Poll batch progress `{running, done, total, current}` |
 | POST | `/api/title_cards/stop_generate` | Cancel batch generation |
 | POST | `/api/title_cards/clear_all` | Strip all titles/descriptions from archive_index.json |
-| GET | `/api/models?provider=` | List models for `lm_studio` or `ninfer` (defaults to the active provider) |
+| GET | `/api/models?provider=` | List models for `lm_studio`, `ninfer` or `strata` (defaults to the active provider) |
 | POST | `/api/upload_recording?record_id=` | Probe uploads a video-improve recording blob; unblocks `validator.wait_for_recording()` |
 
 ---

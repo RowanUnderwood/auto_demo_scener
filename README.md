@@ -48,7 +48,7 @@ python app.py --launch
 ## Requirements
 
 - Python 3.10+
-- An LLM provider: [LM Studio](https://lmstudio.ai/) (default) or [Ninfer](https://github.com/Neroued/ninfer) — either running on the local network with a model loaded
+- An LLM provider: [LM Studio](https://lmstudio.ai/) (default), [Ninfer](https://github.com/Neroued/ninfer) or [Strata](https://github.com/niko1221/strata) — any of them running on the local network with a model loaded
 - A modern browser with WebGL support (Chromium recommended for kiosk use)
 - **Only if using Ninfer's "improve demo via video check" feature:** `ffmpeg` on PATH (`sudo apt install ffmpeg` on Debian/Ubuntu) — used to transcode the browser's screen capture into the H.264 MP4 format the vision model expects. Not needed for anything else; the app runs fine without it as long as that checkbox is off.
 
@@ -62,10 +62,11 @@ Edit settings at `http://localhost:8080/config` while the server is running. All
 
 | Setting | Default | Description |
 |---|---|---|
-| LLM Provider | LM Studio | Choose **LM Studio** or **Ninfer** as the active backend; each keeps its own connection settings |
+| LLM Provider | LM Studio | Choose **LM Studio**, **Ninfer** or **Strata** as the active backend; each keeps its own connection settings |
 | Base URL | `http://192.168.2.192:1234` (LM Studio) | Address of the active provider |
+| API key | — | **Strata only** — the `--api-key` the Strata server was started with; sent as `Authorization: Bearer`. Leave blank if the server has no key |
 | Model | — | Which model to use; or enable **Surprise Me** for random selection each cycle |
-| Thinking effort | low | **Ninfer only** — `none`/`low`/`medium`/`xhigh`, passed as `reasoning_effort` on every generation/repair call |
+| Thinking effort | low | **Ninfer / Strata** — `none`/`low`/`medium`/`xhigh` (Ninfer) or `none`/`low`/`medium`/`high` (Strata), passed as `reasoning_effort` on every generation/repair call |
 | Improve demo via video check | off | **Ninfer only** — records ~30s at 2fps *while the demo plays normally* (no added time for this part), then sends the video + HTML to Qwen for a visual-improvement pass. The display switches to the coding view ("UPDATING BASED ON VIDEO…") while Qwen works, then re-validates and re-displays the result before archiving if it passes. Adds time only when an improvement is actually produced (LLM round-trip + a second display); requires `ffmpeg` |
 | Demo runtime | 60 s | How long each demo runs before the next cycle |
 | Mode weights | stock 2 / creative 1 / update 1 | Probability of each generation sub-mode |
@@ -87,6 +88,7 @@ Edit settings at `http://localhost:8080/config` while the server is running. All
 
 - **LM Studio** — the default; any OpenAI-compatible model it serves works.
 - **Ninfer** — a GPU-hosted OpenAI-compatible server for Qwen models ([github.com/Neroued/ninfer](https://github.com/Neroued/ninfer); requires an RTX 5090, so it runs on a separate machine from the orchestrator like LM Studio does). Selecting it unlocks the **thinking effort** dropdown and the **video-improve** checkbox above. Video-improve is scoped to generate mode only (stock/creative/update) — it doesn't touch replay mode or already-archived demos.
+- **Strata** — runs Qwen3.8-Flash-Next on a consumer GPU with an OpenAI-compatible API ([github.com/niko1221/strata](https://github.com/niko1221/strata)). To reach it from this machine, start it on the other PC with `--host 0.0.0.0 --api-key <secret>`, then enter `http://<that-pc>:8080` (a trailing `/v1` is fine too) and the same key in the config GUI. Selecting it unlocks the **API key** field and the **thinking effort** dropdown. Video-improve stays Ninfer-only, since Strata accepts images but not video.
 
 ---
 
