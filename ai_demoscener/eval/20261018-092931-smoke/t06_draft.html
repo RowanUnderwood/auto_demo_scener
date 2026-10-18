@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Thermal Bloom</title>
+<style>
+*{margin:0;padding:0;overflow:hidden}
+body{background:#030508}
+canvas{display:block}
+#label{position:fixed;bottom:22px;left:0;right:0;text-align:center;
+  font-family:ui-monospace,'SF Mono',Menlo,monospace;letter-spacing:0.35em;
+  font-size:11px;color:#7a3a1a;opacity:0.5;pointer-events:none;text-transform:uppercase}
+</style>
+</head>
+<body>
+<div id="label">Thermal Bloom</div>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.163.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.163.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+const BG = 0x030508;
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.3;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(BG);
+scene.fog = new THREE.FogExp2(BG, 0.008);
+
+const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 500);
+camera.position.set(0, -8, 38);
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.4, 0.8, 0.1);
+bloomPass.strength = 1.6;
+bloomPass.radius = 0.7;
+bloomPass.threshold = 0.1;
+composer.addPass(bloomPass);
+
+// ---- Plume particles ----
+const N = 450;
+const positions = new Float32Array(N * 3);
+const colors = new Float32Array(N * 3);
+const sizes = new Float32Array(N);
+const life = new Float32Array(N);
+const seed = new Float32Array(N);
+
+function spawnParticle(i) {
+  const a = Math.random() * Math.PI * 2;
+  const r = Math.random() * 2.5;
+  positions[i*3]   = Math.cos(a) * r;
+  positions[i*3+1] = Math.random() * 1.5;
+  positions[i*3+2] = Math.sin(a) * r;
+  life[i] = 0.5 + Math.random() * 0.5;
+  sizes[i] = 1.5 + Math.random() * 3.0;
+  seed[i] = Math.random() * 100;
+}
+
+for (let i = 0; i < N; i++) {
+  spawnParticle(i);
+  life[i] = Math.random();
+  positions[i*3+1] = Math.random() * 35;
+}
+
+const geo = new THREE.BufferGeometry();
+geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+geo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+const mat = new THREE.ShaderMaterial({
+  uniforms: { time: { value: 0 } },
+  vertexShader: `
+    attribute float size;
+    attribute vec3 color;
+    varying vec3 vColor;
+    uniform float time;
+    void main(){
+      vColor = color;
+      vec4 mv = modelViewMatrix * vec4(position,1.0);
+      float pulse = 0.8 + 0.2 * sin(time*2.0 + position.y*0.3);
+      gl_PointSize = size * pulse * (160.0 / -mv.z);
+      gl_Position = projectionMatrix * mv;
+    }`,
+  fragmentShader: `
+    varying vec3 vColor;
+    void main(){
+      float d = length(gl_PointCoord - 0.5);
+      if(d > 0.5) discard;
+      float core = exp(-d*12.0);
+      float halo = exp(-d*5.0)*0.4;
+      gl_FragColor = vec4(vColor*(core+halo)*2.0, (core+halo));
+    }`,
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending
+});
+scene.add(new THREE.Points(geo, mat));
+
+// ---- Filaments ----
+const maxDist = 7.0;
+const maxLines = N * 4;
+const linePos = new Float32Array(maxLines * 2 * 3);
+const lineCol = new Float32Array(maxLines * 2 * 3);
+const lineGeo = new THREE.BufferGeometry();
+lineGeo.setAttribute('position', new THREE.BufferAttribute(linePos, 3));
+lineGeo.setAttribute('color', new THREE.BufferAttribute(lineCol, 3));
+const lineMat = new THREE.LineBasicMaterial({
+  vertexColors: true, transparent: true, opacity: 0.6,
+  blending: THREE.AdditiveBlending, depthWrite: false, fog: true
+});
+scene.add(new THREE.LineSegments(lineGeo, lineMat));
+
+function updateLines(){
+  const p = geo.attributes.position.array;
+  const c = geo.attributes.color.array;
+  let idx = 0;
+  for (let i = 0; i < N && idx < maxLines; i++){
+    for (let j = i+1; j < N && idx < maxLines; j++){
+      const dx=p[i*3]-p[j*3], dy=p[i*3+1]-p[j*3+1], dz=p[i*3+2]-p[j*3+2];
+      const d2 = dx*dx+dy*dy+dz*dz;
+      if (d2 < maxDist*maxDist){
+        const fade = 1.0 - Math.sqrt(d2)/maxDist;
+        const f = fade*fade*0.5;
+        linePos[idx*6]=p[i*3]; linePos[idx*6+1]=p[i*3+1]; linePos[idx*6+2]=p[i*3+2];
+        linePos[idx*6+3]=p[j*3]; linePos[idx*6+4]=p[j*3+1]; linePos[idx*6+5]=p[j*3+2];
+        lineCol[idx*6]=c[i*3]*f; lineCol[idx*6+1]=c[i*3+1]*f; lineCol[idx*6+2]=c[i*3+2]*f;
+        lineCol[idx*6+3]=c[j*3]*f; lineCol[idx*6+4]=c[j*3+1]*f; lineCol[idx*6+5]=c[j*3+2]*f;
+        idx++;
+      }
+    }
+  }
+  lineGeo.setDrawRange(0, idx*2);
+  lineGeo.attributes.position.needsUpdate = true;
+  lineGeo.attributes.color.needsUpdate = true;
+}
+
+// ---- Thermal rings (ripples) ----
+const ringGeo = new THREE.TorusGeometry(1.0, 0.04, 8, 48);
+const ripples = [];
+
+function spawnRipple(){
+  const a = Math.random() * Math.PI * 2;
+  const r = 1.5 + Math.random() * 2.0;
+  const m = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({
+    color: 0xff6a20, side: THREE.DoubleSide, transparent: true, opacity: 0,
+    blending: THREE.AdditiveBlending, depthWrite: false
+  }));
+  m.position.set(Math.cos(a)*r, 0.5, Math.sin(a)*r);
+  m.rotation.x = Math.PI * 0.5 + (Math.random()-0.5)*0.3;
+  m.rotation.y = (Math.random()-0.5)*0.4;
+  scene.add(m);
+  ripples.push({ m, life: 1.0, decay: 0.008 + Math.random()*0.015, rise: 0.04 + Math.random()*0.06 });
+}
+
+function updateRipples(){
+  for (let i = ripples.length-1; i >= 0; i--){
+    const r = ripples[i];
+    r.m.position.y += r.rise;
+    r.life -= r.decay;
+    r.m.scale.setScalar(0.3 + (1.0 - r.life) * 9.0);
+    r.m.material.opacity = Math.max(0, r.life) * 0.5;
+    r.m.material.color.setHSL(0.06 + (1.0-r.life)*0.15, 0.9, 0.4 + r.life*0.2);
+    if (r.life <= 0){
+      scene.remove(r.m); r.m.material.dispose(); ripples.splice(i,1);
+    }
+  }
+}
+
+// ---- Vent glow (central emitter) ----
+const ventGeo = new THREE.SphereGeometry(1.8, 32, 32);
+const ventMat = new THREE.ShaderMaterial({
+  uniforms: { time: { value: 0 } },
+  vertexShader: `
+    varying vec3 vNormal;
+    varying vec3 vPos;
+    void main(){
+      vNormal = normalize(normalMatrix * normal);
+      vPos = position;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
+    }`,
+  fragmentShader: `
+    uniform float time;
+    varying vec3 vNormal;
+    varying vec3 vPos;
+    void main(){
+      float pulse = 0.6 + 0.4*sin(time*1.2);
+      float fresnel = pow(1.0 - abs(dot(vNormal, vec3(0,0,1))), 2.0);
+      vec3 hot = vec3(1.0, 0.4, 0.1);
+      vec3 cool = vec3(0.3, 0.6, 1.0);
+      vec3 col = mix(hot, cool, fresnel*0.4);
+      float intensity = (0.5 + fresnel*0.8) * pulse;
+      gl_FragColor = vec4(col * intensity * 2.5, intensity*0.7);
+    }`,
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending
+});
+const vent = new THREE.Mesh(ventGeo, ventMat);
+vent.position.set(0, -0.5, 0);
+scene.add(vent);
+
+// ---- Ambient dust (background particles) ----
+const DUST_N = 200;
+const dustPos = new Float32Array(DUST_N * 3);
+const dustCol = new Float32Array(DUST_N * 3);
+const dustSizes = new Float32Array(DUST_N);
+for (let i = 0; i < DUST_N; i++){
+  dustPos[i*3]   = (Math.random()-0.5)*80;
+  dustPos[i*3+1] = Math.random()*50 - 5;
+  dustPos[i*3+2] = (Math.random()-0.5)*60;
+  dustSizes[i] = 0.5 + Math.random()*1.2;
+  const b = 0.15 + Math.random()*0.1;
+  dustCol[i*3]=b*0.6; dustCol[i*3+1]=b*0.8; dustCol[i*3+2]=b;
+}
+const dustGeo = new THREE.BufferGeometry();
+dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
+dustGeo.setAttribute('color', new THREE.BufferAttribute(dustCol, 3));
+dustGeo.setAttribute('size', new THREE.BufferAttribute(dustSizes, 1));
+const dustMat = new THREE.ShaderMaterial({
+  uniforms: { time: { value: 0 } },
+  vertexShader: `
+    attribute float size;
+    attribute vec3 color;
+    varying vec3 vColor;
+    uniform float time;
+    void main(){
+      vColor = color;
+      vec3 p = position;
+      p.x += sin(time*0.1 + position.z*0.05)*2.0;
+      p.y += cos(time*0.08 + position.x*0.04)*1.5;
+      vec4 mv = modelViewMatrix * vec4(p,1.0);
+      gl_PointSize = size * (100.0 / -mv.z);
+      gl_Position = projectionMatrix * mv;
+    }`,
+  fragmentShader: `
+    varying vec3 vColor;
+    void main(){
+      float d = length(gl_PointCoord - 0.5);
+      if(d > 0.5) discard;
+      float a = exp(-d*8.0)*0.4;
+      gl_FragColor = vec4(vColor, a);
+    }`,
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending
+});
+scene.add(new THREE.Points(dustGeo, dustMat));
+
+// ---- Curl noise flow ----
+const S = 0.06;
+function curl(x, y, z, t, out){
+  const e = 0.1;
+  // Compute curl of a noise-like vector field
+  const n1 = Math.sin(y*S + t*0.3)*Math.cos(z*S*1.1 - t*0.2);
+  const n2 = Math.sin(z*S + t*0.25)*Math.cos(x*S*1.3 + t*0.15);
+  const n3 = Math.sin(x*S + t*0.2)*Math.cos(y*S*0.9 - t*0.35);
+  out.x = (n1 - Math.sin(y*S + t*0.3 + e)*Math.cos(z*S*1.1 - t*0.2)) / e;
+  out.y = (n2 - Math.sin(z*S + t*0.25 + e)*Math.cos(x*S*1.3 + t*0.15)) / e;
+  out.z = (n3 - Math.sin(x*S + t*0.2 + e)*Math.cos(y*S*0.9 - t*0.35)) / e;
+  // Scale down
+  out.x *= 0.3; out.y *= 0.2; out.z *= 0.3;
+}
+
+const clock = new THREE.Clock();
+const v = new THREE.Vector3();
+const col = new THREE.Color();
+
+function animate(){
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+  const p = geo.attributes.position.array;
+  const c = geo.attributes.color.array;
+
+  for (let i = 0; i < N; i++){
+    const x=p[i*3], y=p[i*3+1], z=p[i*3+2];
+    curl(x, y, z, t, v);
+    
+    // Upward drift with turbulence
+    p[i*3]   += v.x * 0.12 + Math.sin(t*0.5 + seed[i]*0.1)*0.01;
+    p[i*3+1] += 0.12 + v.y * 0.08;
+    p[i*3+2] += v.z * 0.12 + Math.cos(t*0.4 + seed[i]*0.1)*0.01;
+    
+    // Life decay
+    life[i] -= 0.003;
+    
+    // Recycle if too high or dead
+    if (life[i] <= 0 || p[i*3+1] > 38){
+      spawnParticle(i);
+    }
+    
+    // Color based on height: hot at bottom → cool at top
+    const h = Math.min(1.0, p[i*3+1] / 35.0);
+    const hue = 0.05 + h * 0.5; // orange → cyan
+    const sat = 0.9 - h * 0.2;
+    const lum = 0.3 + (1.0 - h) * 0.25 + 0.1 * Math.sin(t*1.5 + seed[i]);
+    col.setHSL(hue, sat, Math.min(0.65, Math.max(0.15, lum)));
+    
+    // Fade with life
+    const fade = Math.min(1.0, life[i] * 3.0) * Math.min(1.0, (1.0 - life[i]) * 5.0 + 0.3);
+    c[i*3]=col.r*fade; c[i*3+1]=col.g*fade; c[i*3+2]=col.b*fade;
+  }
+
+  geo.attributes.position.needsUpdate = true;
+  geo.attributes.color.needsUpdate = true;
+  mat.uniforms.time.value = t;
+  ventMat.uniforms.time.value = t;
+  dustMat.uniforms.time.value = t;
+  updateLines();
+
+  if (Math.random() < 0.04) spawnRipple();
+  updateRipples();
+
+  // Vent pulsation
+  const vp = 1.0 + 0.15 * Math.sin(t * 1.2);
+  vent.scale.setScalar(vp);
+
+  // Camera: slow orbit looking up
+  const ca = t * 0.04;
+  camera.position.x = Math.sin(ca) * 32;
+  camera.position.y = -6 + Math.sin(t*0.03)*3;
+  camera.position.z = Math.cos(ca) * 32;
+  camera.lookAt(0, 12, 0);
+
+  composer.render();
+}
+animate();
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>

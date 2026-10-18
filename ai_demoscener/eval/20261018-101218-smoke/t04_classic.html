@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+*{margin:0;padding:0}
+body{overflow:hidden;background:#0a0a0a}
+canvas{display:block}
+</style>
+</head>
+<body>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const COLS=10,ROWS=20;
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x0d0d0d);
+
+const fH=24,fW=fH*(COLS/ROWS);
+const camera=new THREE.OrthographicCamera(-fW/2,fW/2,fH/2,-fH/2,0.1,100);
+camera.position.set(0,0,50);
+camera.lookAt(0,0,0);
+
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth,innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.AmbientLight(0xffffff,0.5));
+const dl=new THREE.DirectionalLight(0xffffff,1.0);
+dl.position.set(3,5,8);scene.add(dl);
+
+const bGeo=new THREE.EdgesGeometry(new THREE.BoxGeometry(COLS+0.3,ROWS+0.3,1));
+scene.add(new THREE.LineSegments(bGeo,new THREE.LineBasicMaterial({color:0x555555})));
+
+const gPts=[];
+for(let c=0;c<=COLS;c++){gPts.push(new THREE.Vector3(c-COLS/2,ROWS/2,-0.5),new THREE.Vector3(c-COLS/2,-ROWS/2,-0.5));}
+for(let r=0;r<=ROWS;r++){gPts.push(new THREE.Vector3(-COLS/2,ROWS/2-r,-0.5),new THREE.Vector3(COLS/2,ROWS/2-r,-0.5));}
+scene.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(gPts),new THREE.LineBasicMaterial({color:0x1a1a1a})));
+
+let grid=Array.from({length:ROWS},()=>new Array(COLS).fill(0));
+let colors=Array.from({length:ROWS},()=>new Array(COLS).fill(0));
+let meshes=Array.from({length:ROWS},()=>new Array(COLS).fill(null));
+const boxGeo=new THREE.BoxGeometry(0.96,0.96,0.96);
+
+function wp(r,c){return new THREE.Vector3(c-COLS/2+0.5,ROWS/2-0.5-r,0);}
+
+function setCell(r,c,col){
+  grid[r][c]=1;colors[r][c]=col;
+  const m=new THREE.Mesh(boxGeo,new THREE.MeshStandardMaterial({color:col,roughness:0.35,metalness:0.05}));
+  m.position.copy(wp(r,c));scene.add(m);meshes[r][c]=m;
+}
+function removeCell(r,c){
+  if(!meshes[r][c])return;
+  scene.remove(meshes[r][c]);meshes[r][c].material.dispose();
+  meshes[r][c]=null;grid[r][c]=0;colors[r][c]=0;
+}
+function clearAll(){for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++)removeCell(r,c);}
+
+const PIECES=[
+  {m:[[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]],c:0x00e5ff},
+  {m:[[1,1],[1,1]],c:0xffea00},
+  {m:[[0,1,0],[1,1,1],[0,0,0]],c:0xb537f2},
+  {m:[[0,1,1],[1,1,0],[0,0,0]],c:0x39e566},
+  {m:[[1,1,0],[0,1,1],[0,0,0]],c:0xff4444},
+  {m:[[1,0,0],[1,1,1],[0,0,0]],c:0x3366ff},
+  {m:[[0,0,1],[1,1,1],[0,0,0]],c:0xff9933},
+];
+
+function rotCW(m){
+  const n=m.length,r=Array.from({length:n},()=>new Array(n).fill(0));
+  for(let i=0;i<n;i++)for(let j=0;j<n;j++)r[j][n-1-i]=m[i][j];
+  return r;
+}
+function getRots(base){
+  const r=[base];
+  for(let i=1;i<4;i++)r.push(rotCW(r[i-1]));
+  return r;
+}
+function getCells(mat){
+  const c=[];
+  for(let r=0;r<mat.length;r++)for(let j=0;j<mat[r].length;j++)if(mat[r][j])c.push([r,j]);
+  return c;
+}
+function valid(g,cls,tr,lc){
+  for(const[dr,dc]of cls){
+    const r=tr+dr,c=lc+dc;
+    if(c<0||c>=COLS||r>=ROWS)return false;
+    if(r>=0&&g[r][c])return false;
+  }
+  return true;
+}
+function drop(g,cls,tr,lc){
+  let r=tr;
+  while(valid(g,cls,r+1,lc))r++;
+  return r;
+}
+function score(g){
+  const h=new Array(COLS).fill(0);
+  let holes=0,lines=0;
+  for(let c=0;c<COLS;c++){
+    let f=false;
+    for(let r=0;r<ROWS;r++){
+      if(g[r][c]){if(!f)h[c]=ROWS-r;f=true;}
+      else if(f)holes++;
+    }
+  }
+  for(let r=0;r<ROWS;r++)if(g[r].every(v=>v))lines++;
+  let agg=0,bump=0;
+  for(let c=0;c<COLS;c++){agg+=h[c];if(c>0)bump+=Math.abs(h[c]-h[c-1]);}
+  return -agg-4*holes+2*lines-bump;
+}
+
+function findBest(){
+  const p=PIECES[Math.floor(Math.random()*PIECES.length)];
+  const rots=getRots(p.m);
+  let best=null,bestS=-Infinity;
+  for(let ri=0;ri<4;ri++){
+    const mat=rots[ri],cls=getCells(mat),w=mat[0].length;
+    for(let col=0;col<=COLS-w;col++){
+      if(!valid(grid,cls,0,col))continue;
+      const row=drop(grid,cls,0,col);
+      const tg=grid.map(r=>[...r]);
+      for(const[dr,dc]of cls)tg[row+dr][col+dc]=1;
+      const s=score(tg);
+      if(s>bestS){bestS=s;best={ri,col,row,cells:cls,color:p.c};}
+    }
+  }
+  return best;
+}
+
+let pieceGroup=null,curBest=null;
+let animT=0,flashRows=[],flashT=0,delayT=0;
+const ANIM_DUR=0.35,FLASH_DUR=0.2,DELAY_DUR=0.12;
+let gameState='delay';
+let spawnRow=0;
+
+function spawn(){
+  const best=findBest();
+  if(!best){
+    clearAll();
+    grid=Array.from({length:ROWS},()=>new Array(COLS).fill(0));
+    colors=Array.from({length:ROWS},()=>new Array(COLS).fill(0));
+    meshes=Array.from({length:ROWS},()=>new Array(COLS).fill(null));
+    gameState='delay';delayT=0;
+    setTimeout(spawn,400);
+    return;
+  }
+  curBest=best;
+
+  if(pieceGroup){
+    scene.remove(pieceGroup);
+    pieceGroup.traverse(o=>{if(o.isMesh)o.material.dispose();});
+    pieceGroup=null;
+  }
+
+  pieceGroup=new THREE.Group();
+  const mat=new THREE.MeshStandardMaterial({color:best.color,roughness:0.3,metalness:0.1});
+  const maxDr=Math.max(...best.cells.map(c=>c[0]));
+  spawnRow=-maxDr-1;
+  for(const[dr,dc]of best.cells){
+    const m=new THREE.Mesh(boxGeo,mat);
+    m.position.copy(wp(spawnRow+dr,best.col+dc));
+    pieceGroup.add(m);
+  }
+  scene.add(pieceGroup);
+  animT=0;
+  gameState='animate';
+}
+
+function lockPiece(){
+  if(pieceGroup){
+    scene.remove(pieceGroup);
+    pieceGroup.traverse(o=>{if(o.isMesh)o.material.dispose();});
+    pieceGroup=null;
+  }
+  for(const[dr,dc]of curBest.cells){
+    setCell(curBest.row+dr,curBest.col+dc,curBest.color);
+  }
+  flashRows=[];
+  for(let r=0;r<ROWS;r++){
+    if(grid[r].every(v=>v))flashRows.push(r);
+  }
+  if(flashRows.length>0){
+    gameState='flash';flashT=0;
+  }else{
+    gameState='delay';delayT=0;
+  }
+}
+
+function doFlash(){
+  for(const r of flashRows){
+    for(let c=0;c<COLS;c++){
+      if(meshes[r][c]){
+        meshes[r][c].material.emissive.setHex(0xffffff);
+        meshes[r][c].material.emissiveIntensity=1.0;
+      }
+    }
+  }
+}
+
+function collapseRows(){
+  for(const r of flashRows){
+    for(let c=0;c<COLS;c++)removeCell(r,c);
+  }
+  flashRows.sort((a,b)=>a-b);
+  for(const r of flashRows){
+    for(let c=0;c<COLS;c++){
+      let src=r;
+      while(src>0&&grid[src-1][c]){src--;}
+      if(src===r)continue;
+      if(grid[src-1][c]){
+        grid[r][c]=grid[src-1][c];
+        colors[r][c]=colors[src-1][c];
+        if(meshes[src-1][c]){
+          meshes[r][c]=meshes[src-1][c];
+          meshes[r][c].position.copy(wp(r,c));
+          meshes[src-1][c]=null;
+        }
+        grid[src-1][c]=0;colors[src-1][c]=0;
+      }else{
+        grid[r][c]=0;colors[r][c]=0;
+      }
+    }
+  }
+  gameState='delay';delayT=0;
+}
+
+const clock=new THREE.Clock();
+
+function animate(){
+  requestAnimationFrame(animate);
+  const dt=Math.min(clock.getDelta(),0.05);
+
+  switch(gameState){
+    case 'delay':
+      delayT+=dt;
+      if(delayT>=DELAY_DUR)spawn();
+      break;
+    case 'animate':
+      animT+=dt;
+      const t=Math.min(animT/ANIM_DUR,1);
+      const ease=t*t*(3-2*t);
+      if(pieceGroup){
+        const targetRow=curBest.row;
+        const fromRow=spawnRow;
+        const curRow=fromRow+(targetRow-fromRow)*ease;
+        let i=0;
+        for(const[dr,dc]of curBest.cells){
+          const m=pieceGroup.children[i];
+          if(m)m.position.copy(wp(curRow+dr,curBest.col+dc));
+          i++;
+        }
+      }
+      if(t>=1)lockPiece();
+      break;
+    case 'flash':
+      flashT+=dt;
+      if(flashT===0||flashT-dt<0)doFlash();
+      if(flashT>=FLASH_DUR)collapseRows();
+      break;
+  }
+
+  renderer.render(scene,camera);
+}
+
+window.addEventListener('resize',()=>{
+  const w=innerWidth,h=innerHeight;
+  const aspect=w/h;
+  const hf=fH/2,ww=hf*aspect;
+  camera.left=-ww;camera.right=ww;camera.top=hf;camera.bottom=-hf;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w,h);
+});
+
+animate();
+</script>
+</body>
+</html>

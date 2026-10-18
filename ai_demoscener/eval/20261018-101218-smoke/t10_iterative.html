@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+    body { margin: 0; overflow: hidden; background: #0d0d1a; }
+    canvas { display: block; }
+</style>
+</head>
+<body>
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+
+const COLS = 10, ROWS = 20;
+const COLORS = [0x000000, 0x00f0f0, 0xf0f000, 0xa000f0, 0x00f000, 0xf00000, 0x0000f0, 0xf08000];
+const TETROMINOES = [
+    { id: 1, cells: [[0,0],[1,0],[2,0],[3,0]] },
+    { id: 2, cells: [[0,0],[1,0],[0,1],[1,1]] },
+    { id: 3, cells: [[1,0],[0,1],[1,1],[2,1]] },
+    { id: 4, cells: [[1,0],[2,0],[0,1],[1,1]] },
+    { id: 5, cells: [[0,0],[1,0],[1,1],[2,1]] },
+    { id: 6, cells: [[0,0],[0,1],[1,1],[2,1]] },
+    { id: 7, cells: [[2,0],[0,1],[1,1],[2,1]] },
+];
+
+const board = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+
+const scene = new THREE.Scene();
+const aspect = window.innerWidth / window.innerHeight;
+const fs = 22;
+const camera = new THREE.OrthographicCamera(-fs * aspect / 2, fs * aspect / 2, fs / 2, -fs / 2, 0.1, 100);
+camera.position.set(0, 0, 10);
+camera.lookAt(0, 0, 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
+document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+const dLight = new THREE.DirectionalLight(0xffffff, 0.7);
+dLight.position.set(5, 10, 8);
+scene.add(dLight);
+const dLight2 = new THREE.DirectionalLight(0x4466aa, 0.3);
+dLight2.position.set(-5, -3, 5);
+scene.add(dLight2);
+
+const cellGeo = new THREE.BoxGeometry(0.94, 0.94, 0.94);
+const cellMeshes = Array.from({ length: ROWS }, () => Array(COLS));
+for (let y = 0; y < ROWS; y++) {
+    for (let x = 0; x < COLS; x++) {
+        const mat = new THREE.MeshLambertMaterial({ color: 0x000000 });
+        const mesh = new THREE.Mesh(cellGeo, mat);
+        mesh.position.set(x - (COLS - 1) / 2, (ROWS - 1) / 2 - y, 0);
+        mesh.visible = false;
+        scene.add(mesh);
+        cellMeshes[y][x] = mesh;
+    }
+}
+
+// Grid lines
+const gridMat = new THREE.LineBasicMaterial({ color: 0x1a1a3a, transparent: true, opacity: 0.5 });
+const gridPts = [];
+for (let x = 0; x <= COLS; x++) {
+    gridPts.push(new THREE.Vector3(x - COLS / 2, ROWS / 2, -0.01), new THREE.Vector3(x - COLS / 2, -ROWS / 2, -0.01));
+}
+for (let y = 0; y <= ROWS; y++) {
+    gridPts.push(new THREE.Vector3(-COLS / 2, y - ROWS / 2, -0.01), new THREE.Vector3(COLS / 2, y - ROWS / 2, -0.01));
+}
+const gridGeo = new THREE.BufferGeometry().setFromPoints(gridPts);
+scene.add(new THREE.LineSegments(gridGeo, gridMat));
+
+// Background
+const bgMesh = new THREE.Mesh(
+    new THREE.BoxGeometry(COLS + 0.2, ROWS + 0.2, 0.3),
+    new THREE.MeshLambertMaterial({ color: 0x080818 })
+);
+bgMesh.position.set(0, 0, -0.3);
+scene.add(bgMesh);
+
+function rotateCW(cells) {
+    const maxY = Math.max(...cells.map(c => c[1]));
+    const rot = cells.map(([x, y]) => [maxY - y, x]);
+    const minX = Math.min(...rot.map(c => c[0]));
+    const minY = Math.min(...rot.map(c => c[1]));
+    return rot.map(([x, y]) => [x - minX, y - minY]);
+}
+
+function getRotations(cells) {
+    const r = [cells];
+    for (let i = 1; i < 4; i++) r.push(rotateCW(r[i - 1]));
+    return r;
+}
+
+function findRestingY(cells, px, b) {
+    for (const [cx] of cells) {
+        if (px + cx < 0 || px + cx >= COLS) return null;
+    }
+    const maxCy = Math.max(...cells.map(c => c[1]));
+    let py = -maxCy;
+    for (const [cx, cy] of cells) {
+        const by = py + cy;
+        if (by >= 0 && b[by][px + cx] !== 0) return null;
+    }
+    while (true) {
+        let ok = true;
+        for (const [cx, cy] of cells) {
+            const by = py + 1 + cy;
+            if (by >= ROWS) { ok = false; break; }
+            if (by >= 0 && b[by][px + cx] !== 0) { ok = false; break; }
+        }
+        if (!ok) break;
+        py++;
+    }
+    return py;
+}
+
+function scoreBoard(b) {
+    const heights = new Array(COLS).fill(0);
+    let aggH = 0, holes = 0, lines = 0;
+    for (let x = 0; x < COLS; x++) {
+        for (let y = 0; y < ROWS; y++) {
+            if (b[y][x] !== 0) { heights[x] = ROWS - y; break; }
+        }
+        aggH += heights[x];
+    }
+    for (let x = 0; x < COLS; x++) {
+        let filled = false;
+        for (let y = 0; y < ROWS; y++) {
+            if (b[y][x] !== 0) filled = true;
+            else if (filled) holes++;
+        }
+    }
+    let bump = 0;
+    for (let x = 0; x < COLS - 1; x++) bump += Math.abs(heights[x] - heights[x + 1]);
+    for (let y = 0; y < ROWS; y++) if (b[y].every(c => c !== 0)) lines++;
+    return -aggH - 4 * holes + lines * 2 - bump;
+}
+
+function findBestMove(pieceId) {
+    const piece = TETROMINOES.find(p => p.id === pieceId);
+    const rots = getRotations(piece.cells);
+    let bestScore = -Infinity, best = null;
+    for (let r = 0; r < 4; r++) {
+        const cells = rots[r];
+        for (let px = 0; px < COLS; px++) {
+            const py = findRestingY(cells, px, board);
+            if (py === null) continue;
+            let valid = true;
+            const tb = board.map(row => [...row]);
+            for (const [cx, cy] of cells) {
+                const by = py + cy;
+                if (by < 0) { valid = false; break; }
+                tb[by][px + cx] = pieceId;
+            }
+            if (!valid) continue;
+            const s = scoreBoard(tb);
+            if (s > bestScore) { bestScore = s; best = { rot: r, px, py, cells }; }
+        }
+    }
+    return best;
+}
+
+// Game state
+let currentPieceId = 0;
+let pieceMeshes = [];
+let gameState = 'idle';
+let animStart = 0;
+const ANIM_DUR = 450;
+let startPos = [], endPos = [];
+let clearRows = [];
+let flashStart = 0;
+const FLASH_DUR = 300;
+let gameOver = false;
+let score = 0;
+
+function boardTo3D(bx, by) {
+    return new THREE.Vector3(bx - (COLS - 1) / 2, (ROWS - 1) / 2 - by, 0);
+}
+
+function matchPositions(starts, ends) {
+    const n = starts.length;
+    const pairs = [];
+    for (let i = 0; i < n; i++)
+        for (let j = 0; j < n; j++)
+            pairs.push({ i, j, d: starts[i].distanceTo(ends[j]) });
+    pairs.sort((a, b) => a.d - b.d);
+    const usedI = new Array(n).fill(false);
+    const usedJ = new Array(n).fill(false);
+    const assign = new Array(n).fill(-1);
+    for (const p of pairs) {
+        if (!usedI[p.i] && !usedJ[p.j]) {
+            assign[p.i] = p.j;
+            usedI[p.i] = true;
+            usedJ[p.j] = true;
+        }
+    }
+    return assign;
+}
+
+function spawnPiece() {
+    if (gameOver) return;
+    const id = Math.floor(Math.random() * 7) + 1;
+    currentPieceId = id;
+    const piece = TETROMINOES.find(p => p.id === id);
+    const spawnPx = 3, spawnPy = -2;
+
+    pieceMeshes.forEach(m => { scene.remove(m); m.geometry.dispose(); m.material.dispose(); });
+    pieceMeshes = [];
+    const color = COLORS[id];
+    for (const [cx, cy] of piece.cells) {
+        const mat = new THREE.MeshLambertMaterial({ color: color, emissive: new THREE.Color(color), emissiveIntensity: 0.15 });
+        const mesh = new THREE.Mesh(cellGeo, mat);
+        mesh.position.copy(boardTo3D(spawnPx + cx, spawnPy + cy));
+        scene.add(mesh);
+        pieceMeshes.push(mesh);
+    }
+
+    const move = findBestMove(id);
+    if (!move) { gameOver = true; return; }
+
+    const targetCells = move.cells;
+    const ends = targetCells.map(([cx, cy]) => boardTo3D(move.px + cx, move.py + cy));
+    const starts = pieceMeshes.map(m => m.position.clone());
+    const assign = matchPositions(starts, ends);
+
+    startPos = starts;
+    endPos = ends.map((_, i) => ends[assign[i]]);
+
+    gameState = 'animating';
+    animStart = performance.now();
+}
+
+function lockPiece() {
+    for (let i = 0; i < pieceMeshes.length; i++) {
+        const pos = pieceMeshes[i].position;
+        const bx = Math.round(pos.x + (COLS - 1) / 2);
+        const by = Math.round((ROWS - 1) / 2 - pos.y);
+        if (bx >= 0 && bx < COLS && by >= 0 && by < ROWS) {
+            board[by][bx] = currentPieceId;
+            cellMeshes[by][bx].visible = true;
+            cellMeshes[by][bx].material.color.setHex(COLORS[currentPieceId]);
+            cellMeshes[by][bx].material.emissive = new THREE.Color(COLORS[currentPieceId]);
+            cellMeshes[by][bx].material.emissiveIntensity = 0.15;
+        }
+    }
+    pieceMeshes.forEach(m => { scene.remove(m); m.geometry.dispose(); m.material.dispose(); });
+    pieceMeshes = [];
+
+    // Check lines
+    clearRows = [];
+    for (let y = 0; y < ROWS; y++) {
+        if (board[y].every(c => c !== 0)) clearRows.push(y);
+    }
+
+    if (clearRows.length > 0) {
+        gameState = 'clearing';
+        flashStart = performance.now();
+    } else {
+        spawnPiece();
+    }
+}
+
+function doLineClear() {
+    for (const y of clearRows) {
+        for (let x = 0; x < COLS; x++) {
+            board[y][x] = 0;
+            cellMeshes[y][x].visible = false;
+        }
+    }
+    clearRows.sort((a, b) => a - b);
+    for (const y of clearRows) {
+        for (let yy = y; yy > 0; yy--) {
+            for (let x = 0; x < COLS; x++) {
+                board[yy][x] = board[yy - 1][x];
+                cellMeshes[yy][x].visible = board[yy][x] !== 0;
+                if (board[yy][x] !== 0) {
+                    cellMeshes[yy][x].material.color.setHex(COLORS[board[yy][x]]);
+                    cellMeshes[yy][x].material.emissive = new THREE.Color(COLORS[board[yy][x]]);
+                    cellMeshes[yy][x].material.emissiveIntensity = 0.15;
+                }
+            }
+        }
+    }
+    score += clearRows.length * 100;
+    clearRows = [];
+    spawnPiece();
+}
+
+function easeInOutCubic(t) {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+function animate() {
+    requestAnimationFrame(animate);
+
+    if (gameState === 'animating') {
+        const elapsed = performance.now() - animStart;
+        let t = Math.min(elapsed / ANIM_DUR, 1);
+        const e = easeInOutCubic(t);
+        for (let i = 0; i < pieceMeshes.length; i++) {
+            pieceMeshes[i].position.lerpVectors(startPos[i], endPos[i], e);
+        }
+        if (t >= 1) {
+            lockPiece();
+        }
+    }
+
+    if (gameState === 'clearing') {
+        const elapsed = performance.now() - flashStart;
+        let t = Math.min(elapsed / FLASH_DUR, 1);
+        const flash = Math.abs(Math.sin(t * Math.PI * 3)) * (1 - t);
+        for (const y of clearRows) {
+            for (let x = 0; x < COLS; x++) {
+                if (cellMeshes[y][x].visible) {
+                    cellMeshes[y][x].material.emissiveIntensity = 0.15 + flash * 2;
+                    cellMeshes[y][x].material.color.setRGB(
+                        Math.min(1, 0.9 + flash),
+                        Math.min(1, 0.9 + flash),
+                        Math.min(1, 0.9 + flash)
+                    );
+                }
+            }
+        }
+        if (t >= 1) {
+            doLineClear();
+        }
+    }
+
+    renderer.render(scene, camera);
+}
+
+window.addEventListener('resize', () => {
+    const a = window.innerWidth / window.innerHeight;
+    camera.left = -fs * a / 2;
+    camera.right = fs * a / 2;
+    camera.top = fs / 2;
+    camera.bottom = -fs / 2;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+spawnPiece();
+animate();
+</script>
+</body>
+</html>

@@ -1,0 +1,74 @@
+{
+ "t02:iterative_visual": {
+  "choice": "B",
+  "brief_A": true,
+  "brief_B": true,
+  "ts": "2026-10-18T10:56:19"
+ },
+ "t03:iterative_visual": {
+  "choice": "both_bad",
+  "brief_A": true,
+  "brief_B": true,
+  "ts": "2026-10-18T10:56:26"
+ },
+ "t04:classic_matched": {
+  "choice": "both_bad",
+  "brief_A": true,
+  "brief_B": true,
+  "ts": "2026-10-18T10:56:42"
+ },
+ "t04:iterative": {
+  "choice": "both_bad",
+  "brief_A": false,
+  "brief_B": false,
+  "ts": "2026-10-18T10:56:50"
+ },
+ "t04:iterative_visual": {
+  "choice": "A",
+  "brief_A": true,
+  "brief_B": true,
+  "ts": "2026-10-18T10:56:55"
+ },
+ "t05:iterative_visual": {
+  "choice": "A",
+  "brief_A": true,
+  "brief_B": false,
+  "ts": "2026-10-18T10:57:03"
+ },
+ "t06:classic_matched": {
+  "choice": "tie",
+  "brief_A": true,
+  "brief_B": true,
+  "ts": "2026-10-18T10:57:19"
+ },
+ "t06:iterative_visual": {
+  "choice": "tie",
+  "brief_A": true,
+  "brief_B": true,
+  "ts": "2026-10-18T10:57:38"
+ },
+ "t07:iterative_visual": {
+  "choice": "B",
+  "brief_A": true,
+  "brief_B": true,
+  "ts": "2026-10-18T10:57:43"
+ },
+ "t08:iterative_visual": {
+  "choice": "B",
+  "brief_A": true,
+  "brief_B": true,
+  "ts": "2026-10-18T10:57:51"
+ },
+ "t09:iterative_visual": {
+  "choice": "both_bad",
+  "brief_A": true,
+  "brief_B": true,
+  "ts": "2026-10-18T10:58:12"
+ },
+ "t10:classic_matched": {
+  "choice": "B",
+  "brief_A": null,
+  "brief_B": true,
+  "ts": "2026-10-18T10:58:21"
+ }
+}

@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Synaptic Cascade</title>
+<style>
+* { margin: 0; padding: 0; }
+body { overflow: hidden; background: #000; }
+canvas { display: block; }
+</style>
+</head>
+<body>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x010106);
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 200);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+const NODE_COUNT = 600;
+const SPHERE_RADIUS = 5;
+const basePositions = new Float32Array(NODE_COUNT * 3);
+const activations = new Float32Array(NODE_COUNT);
+const phases = new Float32Array(NODE_COUNT);
+
+for (let i = 0; i < NODE_COUNT; i++) {
+    const phi = Math.acos(1 - 2 * (i + 0.5) / NODE_COUNT);
+    const theta = Math.PI * (1 + Math.sqrt(5)) * i;
+    const r = SPHERE_RADIUS * (1.0 + 0.5 * Math.random());
+    basePositions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+    basePositions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+    basePositions[i * 3 + 2] = r * Math.cos(phi);
+    phases[i] = Math.random() * Math.PI * 2;
+}
+
+const MAX_NEIGHBORS = 6;
+const uniqueConnections = [];
+const connSet = new Set();
+for (let i = 0; i < NODE_COUNT; i++) {
+    const dists = [];
+    for (let j = 0; j < NODE_COUNT; j++) {
+        if (i === j) continue;
+        const dx = basePositions[i * 3] - basePositions[j * 3];
+        const dy = basePositions[i * 3 + 1] - basePositions[j * 3 + 1];
+        const dz = basePositions[i * 3 + 2] - basePositions[j * 3 + 2];
+        dists.push({ j, d: dx * dx + dy * dy + dz * dz });
+    }
+    dists.sort((a, b) => a.d - b.d);
+    for (let k = 0; k < MAX_NEIGHBORS; k++) {
+        const a = Math.min(i, dists[k].j);
+        const b = Math.max(i, dists[k].j);
+        const key = a * 10000 + b;
+        if (!connSet.has(key)) {
+            connSet.add(key);
+            uniqueConnections.push([a, b]);
+        }
+    }
+}
+
+const lineCount = uniqueConnections.length;
+
+// Node points with custom shader
+const nodeGeo = new THREE.BufferGeometry();
+const nodePositions = new Float32Array(NODE_COUNT * 3);
+const nodeColors = new Float32Array(NODE_COUNT * 3);
+const nodeSizes = new Float32Array(NODE_COUNT);
+nodeGeo.setAttribute('position', new THREE.BufferAttribute(nodePositions, 3));
+nodeGeo.setAttribute('aColor', new THREE.BufferAttribute(nodeColors, 3));
+nodeGeo.setAttribute('aSize', new THREE.BufferAttribute(nodeSizes, 1));
+
+const nodeMat = new THREE.ShaderMaterial({
+    vertexShader: `
+        attribute vec3 aColor;
+        attribute float aSize;
+        varying vec3 vColor;
+        void main() {
+            vColor = aColor;
+            vec4 mv = modelViewMatrix * vec4(position, 1.0);
+            gl_PointSize = aSize * (150.0 / -mv.z);
+            gl_Position = projectionMatrix * mv;
+        }
+    `,
+    fragmentShader: `
+        varying vec3 vColor;
+        void main() {
+            float d = length(gl_PointCoord - 0.5);
+            if (d > 0.5) discard;
+            float glow = 1.0 - smoothstep(0.0, 0.5, d);
+            glow = pow(glow, 2.0);
+            gl_FragColor = vec4(vColor * glow * 0.4, glow * 0.35);
+        }
+    `,
+    blending: THREE.AdditiveBlending,
+    transparent: true,
+    depthWrite: false
+});
+const nodePoints = new THREE.Points(nodeGeo, nodeMat);
+scene.add(nodePoints);
+
+// Connection lines
+const linePositions = new Float32Array(lineCount * 6);
+const lineColors = new Float32Array(lineCount * 6);
+const lineGeo = new THREE.BufferGeometry();
+lineGeo.setAttribute('position', new THREE.BufferAttribute(linePositions, 3));
+lineGeo.setAttribute('color', new THREE.BufferAttribute(lineColors, 3));
+const lineMat = new THREE.LineBasicMaterial({
+    blending: THREE.AdditiveBlending,
+    transparent: true,
+    vertexColors: true,
+    depthWrite: false
+});
+const lines = new THREE.LineSegments(lineGeo, lineMat);
+scene.add(lines);
+
+// Background dust
+const DUST_COUNT = 300;
+const dustGeo = new THREE.BufferGeometry();
+const dustPos = new Float32Array(DUST_COUNT * 3);
+for (let i = 0; i < DUST_COUNT; i++) {
+    dustPos[i * 3] = (Math.random() - 0.5) * 40;
+    dustPos[i * 3 + 1] = (Math.random() - 0.5) * 40;
+    dustPos[i * 3 + 2] = (Math.random() - 0.5) * 40;
+}
+dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
+const dustMat = new THREE.PointsMaterial({ color: 0x1a1a3a, size: 0.05, sizeAttenuation: true, transparent: true, opacity: 0.6 });
+scene.add(new THREE.Points(dustGeo, dustMat));
+
+let time = 0;
+const DECAY = 0.88;
+
+// Travelling wave system (directional pulse sweeping through the network)
+let waveDir = new THREE.Vector3(1, 0.5, 0.3).normalize();
+let wavePhase = -20;
+const waveSpeed = 10.0;
+const waveInterval = 1.8;
+let lastWaveTime = 0;
+const PROPAGATION = 0.12;
+const threshold = 0.25;
+
+function animate() {
+    requestAnimationFrame(animate);
+    time += 0.016;
+
+    // Fire new wave periodically
+    if (time - lastWaveTime > waveInterval) {
+        lastWaveTime = time;
+        waveDir.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
+        wavePhase = -15;
+    }
+    wavePhase += waveSpeed * 0.016;
+
+    // Decay
+    for (let i = 0; i < NODE_COUNT; i++) {
+        activations[i] *= DECAY;
+        if (activations[i] < 0.001) activations[i] = 0;
+    }
+
+    // Propagate
+    const incoming = new Float32Array(NODE_COUNT);
+    for (let ci = 0; ci < lineCount; ci++) {
+        const [a, b] = uniqueConnections[ci];
+        if (activations[a] > threshold) incoming[b] += activations[a] * PROPAGATION;
+        if (activations[b] > threshold) incoming[a] += activations[b] * PROPAGATION;
+    }
+    for (let i = 0; i < NODE_COUNT; i++) {
+        activations[i] = Math.min(1.0, activations[i] + incoming[i]);
+    }
+
+    // Random impulses (more frequent during "bursts")
+    const burst = Math.max(0, Math.sin(time * 0.4)) > 0.7 ? 5 : 0;
+    const impulseCount = 1 + burst + (Math.random() < 0.2 ? 2 : 0);
+    for (let k = 0; k < impulseCount; k++) {
+        const idx = Math.floor(Math.random() * NODE_COUNT);
+        activations[idx] = 1.0;
+    }
+
+    // Heartbeat pulse
+    const heartbeat = Math.pow(Math.max(0, Math.sin(time * 2.0)), 8.0);
+    const breathe = 1.0 + 0.1 * Math.sin(time * 0.6) + 0.05 * heartbeat;
+
+    // Update nodes
+    for (let i = 0; i < NODE_COUNT; i++) {
+        const bx = basePositions[i * 3];
+        const by = basePositions[i * 3 + 1];
+        const bz = basePositions[i * 3 + 2];
+        const drift = 0.9 * Math.sin(time * 1.2 + phases[i]);
+        const s = breathe;
+        nodePositions[i * 3] = bx * s + drift * Math.cos(bz * 0.5);
+        nodePositions[i * 3 + 1] = by * s + drift * Math.sin(bx * 0.5);
+        nodePositions[i * 3 + 2] = bz * s + drift * Math.cos(by * 0.5);
+
+        const a = activations[i];
+        // Wave boost: distance from this node to the travelling wave front
+        const proj = bx * waveDir.x + by * waveDir.y + bz * waveDir.z;
+        const waveDist = Math.abs(proj - wavePhase);
+        const waveBoost = Math.max(0, 1.0 - waveDist / 3.0);
+        const total = Math.min(1.0, a + waveBoost);
+        // Deep violet (rest) -> magenta (mid) -> bright cyan-white (peak)
+        const r = 0.02 + total * 0.3 + heartbeat * 0.02;
+        const g = 0.01 + total * total * 0.25;
+        const b = 0.06 + total * 0.3;
+        nodeColors[i * 3] = r;
+        nodeColors[i * 3 + 1] = g;
+        nodeColors[i * 3 + 2] = b;
+        nodeSizes[i] = 1.5 + total * 4.0 + heartbeat * 0.2;
+    }
+    nodeGeo.attributes.position.needsUpdate = true;
+    nodeGeo.attributes.aColor.needsUpdate = true;
+    nodeGeo.attributes.aSize.needsUpdate = true;
+
+    // Update lines
+    for (let ci = 0; ci < lineCount; ci++) {
+        const [a, b] = uniqueConnections[ci];
+        linePositions[ci * 6] = nodePositions[a * 3];
+        linePositions[ci * 6 + 1] = nodePositions[a * 3 + 1];
+        linePositions[ci * 6 + 2] = nodePositions[a * 3 + 2];
+        linePositions[ci * 6 + 3] = nodePositions[b * 3];
+        linePositions[ci * 6 + 4] = nodePositions[b * 3 + 1];
+        linePositions[ci * 6 + 5] = nodePositions[b * 3 + 2];
+
+        const ma = Math.max(activations[a], activations[b]);
+        const mi = Math.min(activations[a], activations[b]);
+        const bright = ma * 0.5 + mi * 0.2;
+        // Wave boost for lines: use midpoint projection
+        const pa = basePositions[a*3] * waveDir.x + basePositions[a*3+1] * waveDir.y + basePositions[a*3+2] * waveDir.z;
+        const pb = basePositions[b*3] * waveDir.x + basePositions[b*3+1] * waveDir.y + basePositions[b*3+2] * waveDir.z;
+        const waveMid = Math.max(0, 1.0 - Math.abs((pa + pb) * 0.5 - wavePhase) / 3.0);
+        const lineBright = Math.min(1.0, bright + waveMid * 0.6);
+        const lr = lineBright * 0.35 + heartbeat * 0.03;
+        const lg = lineBright * 0.12;
+        const lb = lineBright * 0.55 + heartbeat * 0.03;
+        lineColors[ci * 6] = lr;
+        lineColors[ci * 6 + 1] = lg;
+        lineColors[ci * 6 + 2] = lb;
+        lineColors[ci * 6 + 3] = lr;
+        lineColors[ci * 6 + 4] = lg;
+        lineColors[ci * 6 + 5] = lb;
+    }
+    lineGeo.attributes.position.needsUpdate = true;
+    lineGeo.attributes.color.needsUpdate = true;
+
+    // Camera orbit
+    camera.position.x = 18 * Math.sin(time * 0.15);
+    camera.position.z = 18 * Math.cos(time * 0.15);
+    camera.position.y = 3.0 * Math.sin(time * 0.1) + 1.0;
+    camera.lookAt(0, 0, 0);
+
+    renderer.render(scene, camera);
+}
+
+animate();
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>

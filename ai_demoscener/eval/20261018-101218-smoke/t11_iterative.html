@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+*{margin:0;padding:0}
+body{overflow:hidden;background:#000}
+canvas{display:block}
+#title{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);font-family:'Courier New',monospace;font-size:12px;color:rgba(0,255,220,0.5);letter-spacing:4px;text-transform:uppercase;pointer-events:none;text-shadow:0 0 8px rgba(0,255,220,0.3)}
+</style>
+</head>
+<body>
+<div id="title">B I O L U M I N E S C E N T &nbsp; R E E F</div>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const renderer = new THREE.WebGLRenderer({antialias:false});
+renderer.setSize(window.innerWidth,window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,1.5));
+document.body.appendChild(renderer.domElement);
+
+const camera = new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+const scene = new THREE.Scene();
+
+const uniforms = {
+  uTime:{value:0},
+  uResolution:{value:new THREE.Vector2(window.innerWidth,window.innerHeight)}
+};
+
+const material = new THREE.ShaderMaterial({
+  uniforms,
+  vertexShader:`
+    void main(){gl_Position=vec4(position.xy,0.0,1.0);}
+  `,
+  fragmentShader:`
+    uniform float uTime;
+    uniform vec2 uResolution;
+    #define PI 3.14159265359
+    #define STEPS 60
+    #define K 0.55
+
+    float hash21(vec2 p){
+      p=fract(p*vec2(123.34,456.21));
+      p+=dot(p,p+45.32);
+      return fract(p.x*p.y);
+    }
+    float noise(vec2 p){
+      vec2 i=floor(p),f=fract(p);
+      f=f*f*(3.0-2.0*f);
+      return mix(
+        mix(hash21(i),hash21(i+vec2(1,0)),f.x),
+        mix(hash21(i+vec2(0,1)),hash21(i+vec2(1,1)),f.x),f.y
+      );
+    }
+    float fbm(vec2 p){
+      float v=0.0,a=0.5;
+      for(int i=0;i<5;i++){v+=a*noise(p);p*=2.13;a*=0.5;}
+      return v;
+    }
+    float smin(float a,float b,float k){
+      float h=clamp(0.5+0.5*(b-a)/k,0.0,1.0);
+      return mix(b,a,h)-k*h*(1.0-h);
+    }
+
+    // Jellyfish bell SDF with tentacle modulation
+    float sdJelly(vec3 p,vec3 c,float r,float t,float seed){
+      vec3 q=p-c;
+      // Bell: wider at top, pinched at bottom
+      float bell=smoothstep(-0.2,0.6,q.y/r)*0.25;
+      // Pulsing contraction
+      float pulse=sin(t*1.2+seed*6.28)*0.12;
+      // Radial tentacle waves at the rim
+      float ang=atan(q.z,q.x);
+      float tent=sin(ang*10.0+t*3.0+seed*4.0)*0.04*smoothstep(0.0,-0.5,q.y/r);
+      float d=length(q)-r*(1.0+bell+pulse+tent);
+      // Inner glow void
+      d=max(d,length(q)-r*0.3*(1.0+pulse*0.5));
+      return d;
+    }
+
+    float map(vec3 p){
+      float t=uTime;
+      float d=100.0;
+
+      vec3 c1=vec3(0.0,sin(t*0.25)*0.3,cos(t*0.2)*0.3)+vec3(sin(t*0.08),0.1*cos(t*0.12),0.0)*0.4;
+      vec3 c2=vec3(0.9*sin(t*0.18),0.4*cos(t*0.22),0.6*sin(t*0.14));
+      vec3 c3=vec3(-0.8*cos(t*0.2),-0.3*sin(t*0.3),0.5*cos(t*0.25));
+      vec3 c4=vec3(0.6*sin(t*0.35+1.5),-0.5*cos(t*0.25+2.5),-0.4*sin(t*0.3+3.5));
+      vec3 c5=vec3(-0.5*cos(t*0.22+4.5),0.6*sin(t*0.28+5.5),0.3*cos(t*0.18+6.5));
+      vec3 c6=vec3(0.3*sin(t*0.32+7.5),-0.4*cos(t*0.24+8.5),-0.6*sin(t*0.2+9.5));
+
+      d=smin(d,sdJelly(p,c1,0.5+0.08*sin(t*0.4),t,0.0),K);
+      d=smin(d,sdJelly(p,c2,0.38+0.06*sin(t*0.5+1.0),t,1.0),K*0.8);
+      d=smin(d,sdJelly(p,c3,0.42+0.07*sin(t*0.45+2.0),t,2.0),K*0.9);
+      d=smin(d,sdJelly(p,c4,0.32+0.05*sin(t*0.55+3.0),t,3.0),K*0.7);
+      d=smin(d,sdJelly(p,c5,0.36+0.06*sin(t*0.5+4.0),t,4.0),K*0.8);
+      d=smin(d,sdJelly(p,c6,0.3+0.04*sin(t*0.6+5.0),t,5.0),K*0.65);
+
+      // Seafloor with gentle undulation
+      float flr=p.y+2.8+0.4*noise(p.xz*0.4+t*0.05);
+      d=smin(d,flr,0.4);
+      return d;
+    }
+
+    vec3 calcNormal(vec3 p){
+      float e=0.002;
+      vec2 e2=vec2(e,0.0);
+      return normalize(
+        e2.xyy*map(p+e2.xyy)+
+        e2.yyx*map(p+e2.yyx)+
+        e2.yxy*map(p+e2.yxy)+
+        e2.xxx*map(p+e2.xxx)
+      );
+    }
+
+    vec3 pal(float t){return 0.5+0.5*cos(PI*2.0*(t+vec3(0.0,0.33,0.67)));}
+
+    void main(){
+      vec2 uv=(gl_FragCoord.xy-0.5*uResolution)/min(uResolution.x,uResolution.y);
+
+      vec3 ro=vec3(0.0,0.0,5.5);
+      vec3 rd=normalize(vec3(uv,-2.0));
+
+      float t=0.0;float hit=-1.0;
+      for(int i=0;i<STEPS;i++){
+        float d=map(ro+rd*t);
+        if(d<0.0015){hit=t;break;}
+        t+=max(d*0.85,0.005);
+        if(t>22.0)break;
+      }
+
+      vec3 col;
+      float hgt=uv.y*0.5+0.5;
+
+      if(hit>0.0){
+        vec3 p=ro+rd*hit;
+        vec3 n=calcNormal(p);
+        vec3 L1=normalize(vec3(0.4,1.0,0.2));
+        vec3 L2=normalize(vec3(-0.6,-0.3,0.5));
+        float diff=max(dot(n,L1),0.0)*0.7+max(dot(n,L2),0.0)*0.3;
+        float spec=pow(max(dot(reflect(-L1,n),-rd),0.0),40.0);
+        float rim=pow(1.0-max(dot(n,-rd),0.0),3.5);
+        float irid=dot(n,rd)+p.y*0.4+uTime*0.08;
+
+        vec3 iridCol=pal(irid*0.25);
+        float spots=smoothstep(0.65,0.9,fbm(p.xz*6.0+uTime*0.15));
+        float spots2=smoothstep(0.7,0.95,fbm(p.xz*12.0-uTime*0.1));
+
+        vec3 bodyCol=vec3(0.03,0.08,0.15);
+        vec3 bioCol=vec3(0.0,1.0,0.85);
+        vec3 magCol=vec3(1.0,0.15,0.6);
+        vec3 amber=vec3(1.0,0.55,0.05);
+
+        col=bodyCol*(0.4+diff*0.8);
+        col+=iridCol*rim*0.45;
+        col+=spec*vec3(0.9,1.0,1.0)*0.6;
+        col+=bioCol*spots*(0.6+0.4*sin(uTime*2.5+p.x*4.0));
+        col+=magCol*spots2*0.3*(0.5+0.5*sin(uTime*1.8+p.z*5.0));
+        col+=amber*spots*0.15*smoothstep(0.5,-1.0,p.y);
+
+        // Tentacle glow (brighter at the rim of the bell)
+        float rimGlow=pow(1.0-abs(dot(n,normalize(L1))),4.0)*rim;
+        col+=vec3(0.2,0.9,1.0)*rimGlow*0.3;
+
+        float fog=1.0-exp(-hit*0.06);
+        col=mix(col,vec3(0.005,0.03,0.07),fog);
+      } else {
+        // Deep ocean background
+        vec3 top=vec3(0.0,0.01,0.04);
+        vec3 bot=vec3(0.01,0.06,0.12);
+        col=mix(bot,top,hgt);
+
+        // Volumetric god rays
+        float rays=0.0;
+        for(int i=0;i<4;i++){
+          float fi=float(i);
+          vec2 ruv=uv*2.5+vec2(fi*4.3,0.0);
+          rays+=fbm(ruv+vec2(0.0,uTime*0.12+fi*1.7))*0.35;
+        }
+        rays=pow(max(rays,0.0),3.5)*smoothstep(0.1,1.0,hgt)*0.4;
+        col+=vec3(0.08,0.25,0.35)*rays;
+
+        // Plankton particles
+        vec2 puv=uv*60.0;
+        float ph=hash21(floor(puv+vec2(0.0,uTime*0.4)));
+        float py=fract(uTime*0.2+ph*7.0);
+        float px2=hash21(floor(puv)+3.3);
+        float dot_=smoothstep(0.997,1.0,ph)*smoothstep(0.0,0.3,py)*smoothstep(1.0,0.7,py);
+        col+=vec3(0.2,0.7,0.8)*dot_*0.4;
+
+        // Distant caustic shimmer
+        float caust=fbm(uv*8.0+uTime*0.08);
+        caust=smoothstep(0.55,0.75,caust)*smoothstep(0.0,0.4,hgt)*0.15;
+        col+=vec3(0.1,0.3,0.4)*caust;
+      }
+
+      // Vignette
+      col*=1.0-0.35*length(uv);
+
+      // Filmic tone
+      col=col/(1.0+col*0.3);
+      col=pow(col,vec3(0.85));
+
+      // Subtle color grade
+      col.r*=0.95;col.b*=1.05;
+
+      gl_FragColor=vec4(col,1.0);
+    }
+  `
+});
+
+const quad=new THREE.Mesh(new THREE.PlaneGeometry(2,2),material);
+scene.add(quad);
+
+function onResize(){
+  const w=window.innerWidth,h=window.innerHeight;
+  renderer.setSize(w,h);
+  uniforms.uResolution.value.set(w,h);
+}
+window.addEventListener('resize',onResize);
+
+const clock=new THREE.Clock();
+function animate(){
+  requestAnimationFrame(animate);
+  uniforms.uTime.value=clock.getElapsedTime();
+  renderer.render(scene,camera);
+}
+animate();
+</script>
+</body>
+</html>

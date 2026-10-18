@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+*{margin:0;padding:0}
+body{overflow:hidden;background:#0a0a0a}
+canvas{display:block}
+</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const COLS=10,ROWS=20;
+let grid=Array.from({length:ROWS},()=>Array(COLS).fill(0));
+let cellMeshes=Array.from({length:ROWS},()=>Array(COLS).fill(null));
+
+function cellPos3D(row,col){
+    return{ x:col-4.5, y:19-row-0.5, z:0 };
+}
+
+const PIECES=[
+    {cells:[[0,0],[0,1],[0,2],[0,3]],color:0x00e5e5},
+    {cells:[[0,0],[0,1],[1,0],[1,1]],color:0xe5e500},
+    {cells:[[0,1],[1,0],[1,1],[1,2]],color:0x9b30ff},
+    {cells:[[0,1],[0,2],[1,0],[1,1]],color:0x00e500},
+    {cells:[[0,0],[0,1],[1,1],[1,2]],color:0xe50000},
+    {cells:[[0,0],[1,0],[1,1],[1,2]],color:0x0000e5},
+    {cells:[[0,2],[1,0],[1,1],[1,2]],color:0xe58000},
+];
+
+function rotateCW(cells){
+    let rot=cells.map(([r,c])=>[c,-r]);
+    let minR=Math.min(...rot.map(p=>p[0]));
+    let minC=Math.min(...rot.map(p=>p[1]));
+    return rot.map(([r,c])=>[r-minR,c-minC]);
+}
+
+function getRotations(cells){
+    let rots=[cells.map(c=>[...c])];
+    for(let i=1;i<4;i++) rots.push(rotateCW(rots[i-1]));
+    return rots;
+}
+
+const PIECE_ROTS=PIECES.map(p=>getRotations(p.cells));
+
+// Scene
+const scene=new THREE.Scene();
+const camera=new THREE.OrthographicCamera(-7,7,12,-8,0.1,100);
+camera.position.set(0,9,10);
+camera.lookAt(0,9,0);
+
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(window.innerWidth,window.innerHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
+document.body.appendChild(renderer.domElement);
+
+const ambientLight=new THREE.AmbientLight(0xffffff,0.6);
+scene.add(ambientLight);
+const dirLight=new THREE.DirectionalLight(0xffffff,0.5);
+dirLight.position.set(5,10,10);
+scene.add(dirLight);
+
+// Well walls
+const wallMat=new THREE.MeshBasicMaterial({color:0x333344});
+const wallGeo=new THREE.BoxGeometry(0.3,ROWS+1,1);
+const wallL=new THREE.Mesh(wallGeo,wallMat);
+wallL.position.set(-5.15,9.5,0);
+scene.add(wallL);
+const wallR=new THREE.Mesh(wallGeo,wallMat);
+wallR.position.set(5.15,9.5,0);
+scene.add(wallR);
+const floorGeo=new THREE.BoxGeometry(10.6,0.3,1);
+const wallB=new THREE.Mesh(floorGeo,wallMat);
+wallB.position.set(0,-0.85,0);
+scene.add(wallB);
+
+// Grid lines
+const gridMat=new THREE.LineBasicMaterial({color:0x222233,transparent:true,opacity:0.5});
+const gridPoints=[];
+for(let c=0;c<=COLS;c++){
+    gridPoints.push(new THREE.Vector3(c-5,-1,0.01),new THREE.Vector3(c-5,ROWS,0.01));
+}
+for(let r=0;r<=ROWS;r++){
+    gridPoints.push(new THREE.Vector3(-5,ROWS-r-0.5,0.01),new THREE.Vector3(5,ROWS-r-0.5,0.01));
+}
+const gridGeo=new THREE.BufferGeometry().setFromPoints(gridPoints);
+scene.add(new THREE.LineSegments(gridGeo,gridMat));
+
+const boxGeo=new THREE.BoxGeometry(0.96,0.96,0.96);
+const materials=PIECES.map(p=>new THREE.MeshPhongMaterial({color:p.color,emissive:p.color,emissiveIntensity:0.15}));
+
+function createCellMesh(type,row,col){
+    const pos=cellPos3D(row,col);
+    const mesh=new THREE.Mesh(boxGeo,materials[type-1]);
+    mesh.position.set(pos.x,pos.y,pos.z);
+    scene.add(mesh);
+    return mesh;
+}
+
+function removeCellMesh(row,col){
+    if(cellMeshes[row][col]){
+        scene.remove(cellMeshes[row][col]);
+        cellMeshes[row][col]=null;
+    }
+}
+
+// Piece state
+let activePiece=null;
+let animState='idle'; // idle, animating, clearing
+let animStart=0, animDuration=350;
+let animFrom={x:0,y:0}, animTo={x:0,y:0};
+let clearRows=[], clearStart=0, clearDuration=200;
+let nextPieceType=0;
+let bag=[];
+
+function shuffleBag(){
+    bag=[0,1,2,3,4,5,6];
+    for(let i=bag.length-1;i>0;i--){
+        let j=Math.floor(Math.random()*(i+1));
+        [bag[i],bag[j]]=[bag[j],bag[i]];
+    }
+}
+
+function getNextPiece(){
+    if(bag.length===0) shuffleBag();
+    return bag.pop();
+}
+
+function isValidPlacement(cells,px,py){
+    for(let[r,c]of cells){
+        let gr=py+r, gc=px+c;
+        if(gr<0||gr>=ROWS||gc<0||gc>=COLS) return false;
+        if(grid[gr][gc]!==0) return false;
+    }
+    return true;
+}
+
+function findRestingRow(cells,px){
+    let maxR=Math.max(...cells.map(c=>c[0]));
+    let maxC=Math.max(...cells.map(c=>c[1]));
+    let minC=Math.min(...cells.map(c=>c[1]));
+    if(px+minC<0||px+maxC>=COLS) return -1;
+    let best=-1;
+    for(let py=0;py<=ROWS-1-maxR;py++){
+        if(isValidPlacement(cells,px,py)) best=py;
+    }
+    return best;
+}
+
+function scoreBoard(g){
+    // Clear lines
+    let cleared=0;
+    for(let r=ROWS-1;r>=0;r--){
+        if(g[r].every(v=>v!==0)){
+            cleared++;
+            g.splice(r,1);
+            g.unshift(Array(COLS).fill(0));
+            r++;
+        }
+    }
+    // Column heights
+    let heights=[];
+    for(let c=0;c<COLS;c++){
+        let h=0;
+        for(let r=0;r<ROWS;r++){
+            if(g[r][c]!==0) h++;
+        }
+        heights.push(h);
+    }
+    // Aggregate height
+    let aggHeight=heights.reduce((a,b)=>a+b,0);
+    // Holes
+    let holes=0;
+    for(let c=0;c<COLS;c++){
+        let seenFilled=false;
+        for(let r=0;r<ROWS;r++){
+            if(g[r][c]!==0) seenFilled=true;
+            else if(seenFilled) holes++;
+        }
+    }
+    // Bumpiness
+    let bumpiness=0;
+    for(let c=0;c<COLS-1;c++){
+        bumpiness+=Math.abs(heights[c]-heights[c+1]);
+    }
+    return -aggHeight - 4*holes + cleared*2 - bumpiness;
+}
+
+function findBestPlacement(pieceType){
+    let rots=PIECE_ROTS[pieceType];
+    let bestScore=-Infinity;
+    let best={rot:0,px:0,py:0};
+    for(let ri=0;ri<4;ri++){
+        let cells=rots[ri];
+        let maxC=Math.max(...cells.map(c=>c[1]));
+        let minC=Math.min(...cells.map(c=>c[1]));
+        for(let px=0;px<=COLS-1-maxC;px++){
+            let py=findRestingRow(cells,px);
+            if(py<0) continue;
+            // Score
+            let g=grid.map(row=>[...row]);
+            for(let[r,c]of cells){
+                g[py+r][px+c]=pieceType+1;
+            }
+            let s=scoreBoard(g);
+            if(s>bestScore){
+                bestScore=s;
+                best={rot:ri,px:px,py:py};
+            }
+        }
+    }
+    return best;
+}
+
+function spawnPiece(){
+    let type=getNextPiece();
+    let best=findBestPlacement(type);
+    let cells=PIECE_ROTS[type][best.rot];
+    let pieceCells=cells.map(([r,c])=>({gr:best.py+r,gc:best.px+c,dr:r,dc:c}));
+
+    let meshes=[];
+    for(let pc of pieceCells){
+        let pos=cellPos3D(pc.gr,pc.gc);
+        let mesh=new THREE.Mesh(boxGeo,materials[type]);
+        // Start at top
+        let spawnX=pc.gc-4.5;
+        let spawnY=19.5;
+        mesh.position.set(spawnX,spawnY,0);
+        scene.add(mesh);
+        meshes.push(mesh);
+    }
+
+    activePiece={type,cells:pieceCells,meshes,
+        targetX:p=>p.gc-4.5,
+        targetY:p=>19-p.gr-0.5
+    };
+
+    animFrom={x:0,y:0};
+    animTo={x:0,y:0};
+    // Calculate animation offsets
+    for(let i=0;i<meshes.length;i++){
+        let pc=pieceCells[i];
+        let targetX=pc.gc-4.5;
+        let targetY=19-pc.gr-0.5;
+        meshes[i].position.x=targetX; // x is already correct from spawn
+        meshes[i].position.y=19.5;
+    }
+    // Actually let me redo: spawn at top center
+    let spawnColOffset=4-Math.floor(Math.max(...cells.map(c=>c[1]))/2);
+    // Simpler: just animate y from 19.5 to target y, and x from spawn x to target x
+    for(let i=0;i<meshes.length;i++){
+        let pc=pieceCells[i];
+        let targetX=pc.gc-4.5;
+        let targetY=19-pc.gr-0.5;
+        let spawnX=4.5; // center top
+        meshes[i].position.set(spawnX,19.5,0);
+        animFrom={sx:spawnX,sy:19.5};
+        animTo={tx:targetX,ty:targetY};
+        activePiece.animData=activePiece.animData||[];
+        activePiece.animData.push({sx:spawnX,sy:19.5,tx:targetX,ty:targetY});
+    }
+
+    animState='animating';
+    animStart=performance.now();
+}
+
+function lockPiece(){
+    let p=activePiece;
+    for(let i=0;i<p.cells.length;i++){
+        let pc=p.cells[i];
+        grid[pc.gr][pc.gc]=p.type+1;
+        cellMeshes[pc.gr][pc.gc]=p.meshes[i];
+    }
+    p.meshes.forEach(m=>scene.remove(m));
+    activePiece=null;
+}
+
+function findClearedRows(){
+    let rows=[];
+    for(let r=0;r<ROWS;r++){
+        if(grid[r].every(v=>v!==0)) rows.push(r);
+    }
+    return rows;
+}
+
+function startClearing(){
+    clearRows=findClearedRows();
+    if(clearRows.length===0){
+        spawnPiece();
+        return;
+    }
+    // Flash: make meshes emissive/bright
+    for(let r of clearRows){
+        for(let c=0;c<COLS;c++){
+            if(cellMeshes[r][c]){
+                cellMeshes[r][c].material=new THREE.MeshPhongMaterial({color:0xffffff,emissive:0xffffff,emissiveIntensity:0.8});
+            }
+        }
+    }
+    animState='clearing';
+    clearStart=performance.now();
+}
+
+function finishClearing(){
+    for(let r of clearRows){
+        for(let c=0;c<COLS;c++){
+            removeCellMesh(r,c);
+        }
+    }
+    // Collapse
+    for(let r of clearRows){
+        grid.splice(r,1);
+        grid.unshift(Array(COLS).fill(0));
+        for(let c=0;c<COLS;c++){
+            cellMeshes.splice(r,1);
+            cellMeshes.unshift(Array(COLS).fill(0));
+        }
+        // Reposition meshes
+        for(let rr=0;rr<ROWS;rr++){
+            for(let cc=0;cc<COLS;cc++){
+                if(cellMeshes[rr][cc]){
+                    let pos=cellPos3D(rr,cc);
+                    cellMeshes[rr][cc].position.set(pos.x,pos.y,pos.z);
+                }
+            }
+        }
+    }
+    clearRows=[];
+    spawnPiece();
+}
+
+// Check game over
+function checkGameOver(){
+    for(let c=0;c<COLS;c++){
+        if(grid[0][c]!==0) return true;
+    }
+    return false;
+}
+
+function resetGame(){
+    for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++) removeCellMesh(r,c);
+    grid=Array.from({length:ROWS},()=>Array(COLS).fill(0));
+    cellMeshes=Array.from({length:ROWS},()=>Array(COLS).fill(null));
+    if(activePiece){
+        activePiece.meshes.forEach(m=>scene.remove(m));
+        activePiece=null;
+    }
+    bag=[];
+    spawnPiece();
+}
+
+// Animation loop
+function animate(now){
+    requestAnimationFrame(animate);
+
+    if(animState==='animating'&&activePiece){
+        let t=(now-animStart)/animDuration;
+        if(t>=1){
+            t=1;
+            // Snap to final position
+            for(let i=0;i<activePiece.meshes.length;i++){
+                let d=activePiece.animData[i];
+                activePiece.meshes[i].position.set(d.tx,d.ty,0);
+            }
+            lockPiece();
+            startClearing();
+        } else {
+            // Ease out
+            let e=1-Math.pow(1-t,3);
+            for(let i=0;i<activePiece.meshes.length;i++){
+                let d=activePiece.animData[i];
+                activePiece.meshes[i].position.set(
+                    d.sx+(d.tx-d.sx)*e,
+                    d.sy+(d.ty-d.sy)*e,
+                    0
+                );
+            }
+        }
+    }
+
+    if(animState==='clearing'){
+        let t=(now-clearStart)/clearDuration;
+        if(t>=1){
+            finishClearing();
+        } else {
+            // Pulse
+            let pulse=0.5+0.5*Math.sin(t*Math.PI*3);
+            for(let r of clearRows){
+                for(let c=0;c<COLS;c++){
+                    if(cellMeshes[r][c]){
+                        cellMeshes[r][c].material.emissiveIntensity=0.3+0.7*pulse;
+                    }
+                }
+            }
+        }
+    }
+
+    renderer.render(scene,camera);
+}
+
+// Init
+shuffleBag();
+spawnPiece();
+requestAnimationFrame(animate);
+
+window.addEventListener('resize',()=>{
+    const aspect=window.innerWidth/window.innerHeight;
+    const h=12;
+    camera.left=-h*aspect/2;
+    camera.right=h*aspect/2;
+    camera.top=h/2+9;
+    camera.bottom=-h/2+9;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth,window.innerHeight);
+});
+window.dispatchEvent(new Event('resize'));
+</script>
+</body>
+</html>

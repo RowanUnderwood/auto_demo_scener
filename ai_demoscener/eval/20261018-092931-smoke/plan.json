@@ -1,0 +1,116 @@
+{
+ "run_id": "20261018-092931-smoke",
+ "name": "smoke",
+ "created": "2026-10-18T09:29:31",
+ "provider": "ninfer",
+ "model": "qwen3.8-27b",
+ "arms": [
+  {
+   "name": "classic",
+   "overrides": {
+    "generation_strategy": "classic"
+   }
+  },
+  {
+   "name": "iterative",
+   "overrides": {
+    "generation_strategy": "iterative",
+    "iterative": {
+     "visual_review": false
+    }
+   }
+  }
+ ],
+ "trials": [
+  {
+   "mode": "stock",
+   "effect": "Plasma",
+   "category": "shader effect",
+   "id": "t01",
+   "repeat": 1
+  },
+  {
+   "mode": "stock",
+   "effect": "Solar System",
+   "category": "3D scene",
+   "id": "t02",
+   "repeat": 1
+  },
+  {
+   "mode": "stock",
+   "effect": "Boids Flocking",
+   "category": "motion-heavy",
+   "id": "t03",
+   "repeat": 1
+  },
+  {
+   "mode": "stock",
+   "effect": "Auto-Play Tetris",
+   "category": "complex stateful",
+   "id": "t04",
+   "repeat": 1
+  },
+  {
+   "mode": "creative",
+   "effect": "creative",
+   "category": "creative",
+   "id": "t05",
+   "repeat": 1
+  },
+  {
+   "mode": "update",
+   "effect": "update",
+   "category": "archive update",
+   "source": "2026-05-17_creative_c6f4_v2.html",
+   "id": "t06",
+   "repeat": 1
+  },
+  {
+   "mode": "stock",
+   "effect": "Plasma",
+   "category": "shader effect",
+   "id": "t07",
+   "repeat": 2
+  },
+  {
+   "mode": "stock",
+   "effect": "Solar System",
+   "category": "3D scene",
+   "id": "t08",
+   "repeat": 2
+  },
+  {
+   "mode": "stock",
+   "effect": "Boids Flocking",
+   "category": "motion-heavy",
+   "id": "t09",
+   "repeat": 2
+  },
+  {
+   "mode": "stock",
+   "effect": "Auto-Play Tetris",
+   "category": "complex stateful",
+   "id": "t10",
+   "repeat": 2
+  },
+  {
+   "mode": "creative",
+   "effect": "creative",
+   "category": "creative",
+   "id": "t11",
+   "repeat": 2
+  },
+  {
+   "mode": "update",
+   "effect": "update",
+   "category": "archive update",
+   "source": "2026-05-10_lens_flare_ec6e_v4.html",
+   "id": "t12",
+   "repeat": 2
+  }
+ ],
+ "next": 12,
+ "status": "done",
+ "resume_boot_mode": "replay",
+ "notes": []
+}

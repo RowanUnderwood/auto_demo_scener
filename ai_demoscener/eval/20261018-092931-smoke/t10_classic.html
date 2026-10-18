@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+*{margin:0;padding:0}
+body{overflow:hidden;background:#0a0a0f}
+</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const COLS=10,ROWS=20;
+const ANIM_DUR=0.35,FLASH_DUR=0.22;
+
+const PIECES=[
+{name:'I',matrix:[[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]],color:0x00f0f0},
+{name:'O',matrix:[[1,1],[1,1]],color:0xf0f000},
+{name:'T',matrix:[[0,1,0],[1,1,1],[0,0,0]],color:0xa000f0},
+{name:'S',matrix:[[0,1,1],[1,1,0],[0,0,0]],color:0x00f000},
+{name:'Z',matrix:[[1,1,0],[0,1,1],[0,0,0]],color:0xf00000},
+{name:'J',matrix:[[1,0,0],[1,1,1],[0,0,0]],color:0x0000f0},
+{name:'L',matrix:[[0,0,1],[1,1,1],[0,0,0]],color:0xf0a000}
+];
+
+let grid=Array.from({length:ROWS},()=>Array(COLS).fill(null));
+let cellMeshes=Array.from({length:ROWS},()=>Array(COLS).fill(null));
+let bag=[];
+let state='idle';
+let currentPiece=null;
+let flashRows=[];
+let flashStart=0;
+let score=0;
+
+// Three.js setup
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x0a0a0f);
+
+const aspect=window.innerWidth/window.innerHeight;
+const frust=22;
+const camera=new THREE.OrthographicCamera(-frust*aspect/2,frust*aspect/2,frust/2,-frust/2,0.1,100);
+camera.position.set(0,0,10);
+camera.lookAt(0,0,0);
+
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(window.innerWidth,window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.AmbientLight(0xffffff,0.45));
+const dl=new THREE.DirectionalLight(0xffffff,0.7);
+dl.position.set(4,6,10);
+scene.add(dl);
+const dl2=new THREE.DirectionalLight(0x8888ff,0.25);
+dl2.position.set(-4,-3,8);
+scene.add(dl2);
+
+// Well boundary
+const wellGeo=new THREE.BoxGeometry(COLS+0.15,ROWS+0.15,1.2);
+const wellEdges=new THREE.EdgesGeometry(wellGeo);
+const wellLine=new THREE.LineSegments(wellEdges,new THREE.LineBasicMaterial({color:0x3a3a55}));
+scene.add(wellLine);
+
+// Subtle background cells
+const bgCellGeo=new THREE.BoxGeometry(0.99,0.99,0.02);
+const bgCellMat=new THREE.MeshBasicMaterial({color:0x151520,wireframe:true,transparent:true,opacity:0.25});
+const bgGroup=new THREE.Group();
+for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){
+const m=new THREE.Mesh(bgCellGeo,bgCellMat);
+m.position.set(c-(COLS-1)/2,(ROWS-1)/2-r,0);
+bgGroup.add(m);
+}
+scene.add(bgGroup);
+
+function g2d(row,col){return new THREE.Vector3(col-(COLS-1)/2,(ROWS-1)/2-row,0)}
+
+function makeCell(color){
+const geo=new THREE.BoxGeometry(0.94,0.94,0.94);
+const mat=new THREE.MeshStandardMaterial({color,roughness:0.3,metalness:0.2,emissive:color,emissiveIntensity:0.08});
+return new THREE.Mesh(geo,mat);
+}
+
+function rotateCW(m){
+const n=m.length;
+const r=Array.from({length:n},()=>Array(n).fill(0));
+for(let i=0;i<n;i++)for(let j=0;j<n;j++)r[j][n-1-i]=m[i][j];
+return r;
+}
+function getRots(base){
+const rots=[base];
+for(let i=1;i<4;i++)rots.push(rotateCW(rots[i-1]));
+return rots;
+}
+function getCells(mat){
+const cells=[];
+for(let i=0;i<mat.length;i++)for(let j=0;j<mat[i].length;j++)if(mat[i][j])cells.push([i,j]);
+return cells;
+}
+function valid(mat,row,col){
+for(const[i,j]of getCells(mat)){
+const r=row+i,c=col+j;
+if(c<0||c>=COLS)return false;
+if(r>=ROWS)return false;
+if(r>=0&&grid[r][c]!==null)return false;
+}
+return true;
+}
+function restRow(mat,col){
+let row=-mat.length;
+while(valid(mat,row+1,col))row++;
+const cells=getCells(mat);
+const maxI=Math.max(...cells.map(c=>c[0]));
+return(row+maxI<0)?null:row;
+}
+function scoreG(g){
+const h=new Array(COLS).fill(0);
+let holes=0;
+for(let c=0;c<COLS;c++){
+let filled=false;
+for(let r=0;r<ROWS;r++){
+if(g[r][c]!==null){if(!filled){filled=true;h[c]=ROWS-r;}}
+else if(filled)holes++;
+}
+}
+const agg=h.reduce((a,b)=>a+b,0);
+let lines=0;
+for(let r=0;r<ROWS;r++)if(g[r].every(x=>x!==null))lines++;
+let bump=0;
+for(let c=1;c<COLS;c++)bump+=Math.abs(h[c]-h[c-1]);
+return-agg-4*holes+lines*2-bump;
+}
+function findBest(piece){
+const rots=getRots(piece.matrix);
+let best=-Infinity,res=null;
+for(let r=0;r<4;r++){
+const mat=rots[r];
+const cells=getCells(mat);
+const maxJ=Math.max(...cells.map(c=>c[1]));
+for(let col=0;col<=COLS-1-maxJ;col++){
+const row=restRow(mat,col);
+if(row===null)continue;
+const tg=grid.map(r=>[...r]);
+for(const[i,j]of cells)tg[row+i][col+j]=1;
+const s=scoreG(tg);
+if(s>best){best=s;res={rot:r,col,row};}
+}
+}
+return res;
+}
+
+function getPiece(){
+if(bag.length===0){
+bag=[...PIECES];
+for(let i=bag.length-1;i>0;i--){
+const j=Math.floor(Math.random()*(i+1));
+[bag[i],bag[j]]=[bag[j],bag[i]];
+}
+}
+return bag.pop();
+}
+
+function addStaticCell(r,c,color){
+grid[r][c]=color;
+const mesh=makeCell(color);
+mesh.position.copy(g2d(r,c));
+scene.add(mesh);
+cellMeshes[r][c]=mesh;
+}
+
+function collapseRows(removed){
+const removedSet=new Set(removed);
+const newGrid=Array.from({length:ROWS},()=>Array(COLS).fill(null));
+const newMeshes=Array.from({length:ROWS},()=>Array(COLS).fill(null));
+let wr=ROWS-1;
+for(let r=ROWS-1;r>=0;r--){
+if(removedSet.has(r))continue;
+for(let c=0;c<COLS;c++){
+if(grid[r][c]!==null){
+newGrid[wr][c]=grid[r][c];
+newMeshes[wr][c]=cellMeshes[r][c];
+if(cellMeshes[r][c])cellMeshes[r][c].position.y=(ROWS-1)/2-wr;
+}
+}
+wr--;
+}
+grid=newGrid;
+cellMeshes=newMeshes;
+}
+
+function spawn(){
+const piece=getPiece();
+const mat=piece.matrix;
+const cells=getCells(mat);
+const spawnCol=Math.floor((COLS-mat.length)/2);
+const spawnRow=-3;
+
+const meshes=[];
+const startPos=[];
+for(const[i,j]of cells){
+const mesh=makeCell(piece.color);
+const pos=g2d(spawnRow+i,spawnCol+j);
+mesh.position.copy(pos);
+scene.add(mesh);
+meshes.push(mesh);
+startPos.push(pos.clone());
+}
+
+const best=findBest(piece);
+if(!best){
+// Game over: reset
+for(const m of meshes)scene.remove(m);
+for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){
+if(cellMeshes[r][c]){scene.remove(cellMeshes[r][c]);cellMeshes[r][c]=null;}
+}
+grid=Array.from({length:ROWS},()=>Array(COLS).fill(null));
+score=0;
+setTimeout(spawn,400);
+return;
+}
+
+const tMat=getRots(piece.matrix)[best.rot];
+const tCells=getCells(tMat);
+const targetPos=tCells.map(([i,j])=>g2d(best.row+i,best.col+j));
+
+currentPiece={piece,meshes,startPos,targetPos,rot:best.rot,col:best.col,row:best.row,
+animStart:performance.now()/1000,duration:ANIM_DUR};
+state='animating';
+}
+
+function lockPiece(){
+const{piece,targetPos,rot,col,row}=currentPiece;
+const tMat=getRots(piece.matrix)[rot];
+const cells=getCells(tMat);
+
+for(const m of currentPiece.meshes)scene.remove(m);
+
+for(const[i,j]of cells){
+addStaticCell(row+i,col+j,piece.color);
+}
+
+flashRows=[];
+for(let r=0;r<ROWS;r++){
+if(grid[r].every(x=>x!==null))flashRows.push(r);
+}
+
+if(flashRows.length>0){
+score+=flashRows.length*flashRows.length*100;
+state='flashing';
+flashStart=performance.now()/1000;
+// Flash: make cells bright white
+for(const r of flashRows){
+for(let c=0;c<COLS;c++){
+const m=cellMeshes[r][c];
+if(m){m.material.color.set(0xffffff);m.material.emissive.set(0xffffff);m.material.emissiveIntensity=0.8;}
+}
+}
+}else{
+spawn();
+}
+}
+
+function endFlash(){
+collapseRows(flashRows);
+flashRows=[];
+spawn();
+}
+
+// Animation loop
+function animate(){
+requestAnimationFrame(animate);
+const now=performance.now()/1000;
+
+if(state==='animating'&&currentPiece){
+const t=Math.min((now-currentPiece.animStart)/currentPiece.duration,1);
+// Ease out cubic
+const e=1-Math.pow(1-t,3);
+for(let i=0;i<currentPiece.meshes.length;i++){
+const m=currentPiece.meshes[i];
+m.position.lerpVectors(currentPiece.startPos[i],currentPiece.targetPos[i],e);
+}
+if(t>=1){
+lockPiece();
+}
+}
+
+if(state==='flashing'){
+const t=(now-flashStart)/FLASH_DUR;
+if(t>=1){
+endFlash();
+}
+}
+
+renderer.render(scene,camera);
+}
+
+window.addEventListener('resize',()=>{
+const a=window.innerWidth/window.innerHeight;
+camera.left=-frust*a/2;
+camera.right=frust*a/2;
+camera.top=frust/2;
+camera.bottom=-frust/2;
+camera.updateProjectionMatrix();
+renderer.setSize(window.innerWidth,window.innerHeight);
+});
+
+spawn();
+animate();
+</script>
+</body>
+</html>

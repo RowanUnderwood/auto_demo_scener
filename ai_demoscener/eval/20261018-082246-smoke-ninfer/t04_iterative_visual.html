@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body { margin: 0; overflow: hidden; background: #111; }
+  #hud { position: absolute; top: 10px; left: 10px; color: #fff; font: 20px monospace; pointer-events: none; }
+</style>
+</head>
+<body>
+<div id="hud">Score: 0</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const W = 10, H = 20;
+const scene = new THREE.Scene();
+const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
+camera.position.set(0, 0, 30);
+camera.lookAt(0, 0, 0);
+function updateCamera() {
+  const a = window.innerWidth / window.innerHeight;
+  let fh = 22, fw = fh * a;
+  if (fw < 12) { fw = 12; fh = fw / a; }
+  camera.left = -fw / 2; camera.right = fw / 2;
+  camera.top = fh / 2; camera.bottom = -fh / 2;
+  camera.updateProjectionMatrix();
+}
+updateCamera();
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+const dir = new THREE.DirectionalLight(0xffffff, 0.9);
+dir.position.set(5, 10, 8);
+scene.add(dir);
+
+// Well background with grid
+const bgCanvas = document.createElement('canvas');
+bgCanvas.width = 100; bgCanvas.height = 200;
+const bgCtx = bgCanvas.getContext('2d');
+bgCtx.fillStyle = '#1a1a2e';
+bgCtx.fillRect(0, 0, 100, 200);
+bgCtx.strokeStyle = '#2a2a4e';
+bgCtx.lineWidth = 1;
+for (let i = 0; i <= 10; i++) { bgCtx.beginPath(); bgCtx.moveTo(i * 10, 0); bgCtx.lineTo(i * 10, 200); bgCtx.stroke(); }
+for (let i = 0; i <= 20; i++) { bgCtx.beginPath(); bgCtx.moveTo(0, i * 10); bgCtx.lineTo(100, i * 10); bgCtx.stroke(); }
+const bgTex = new THREE.CanvasTexture(bgCanvas);
+const bgMesh = new THREE.Mesh(new THREE.PlaneGeometry(W, H), new THREE.MeshBasicMaterial({ map: bgTex }));
+bgMesh.position.z = -0.15;
+scene.add(bgMesh);
+
+// Bright border frame
+const bMat = new THREE.MeshBasicMaterial({ color: 0x00ccff });
+const bT = new THREE.Mesh(new THREE.BoxGeometry(W + 0.6, 0.3, 0.2), bMat);
+bT.position.set(0, H / 2 + 0.15, 0);
+const bB = new THREE.Mesh(new THREE.BoxGeometry(W + 0.6, 0.3, 0.2), bMat);
+bB.position.set(0, -H / 2 - 0.15, 0);
+const bL = new THREE.Mesh(new THREE.BoxGeometry(0.3, H, 0.2), bMat);
+bL.position.set(-W / 2 - 0.15, 0, 0);
+const bR = new THREE.Mesh(new THREE.BoxGeometry(0.3, H, 0.2), bMat);
+bR.position.set(W / 2 + 0.15, 0, 0);
+scene.add(bT, bB, bL, bR);
+
+let grid = Array.from({ length: H }, () => Array(W).fill(null));
+let meshes = Array.from({ length: H }, () => Array(W).fill(null));
+
+const COLORS = { I: 0x00e5ff, O: 0xffe500, T: 0xaa00ff, S: 0x00e500, Z: 0xff0000, J: 0x0040ff, L: 0xff8000 };
+const cellGeo = new THREE.BoxGeometry(0.96, 0.96, 0.96);
+const ghostMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.2 });
+
+const PIECES = {
+  I: [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]],
+  O: [[1,1],[1,1]],
+  T: [[0,1,0],[1,1,1],[0,0,0]],
+  S: [[0,1,1],[1,1,0],[0,0,0]],
+  Z: [[1,1,0],[0,1,1],[0,0,0]],
+  J: [[1,0,0],[1,1,1],[0,0,0]],
+  L: [[0,0,1],[1,1,1],[0,0,0]]
+};
+
+function rot90(m) {
+  const n = m.length;
+  const r = Array.from({ length: n }, () => Array(n).fill(0));
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) r[j][n - 1 - i] = m[i][j];
+  return r;
+}
+
+function getRotations(p) {
+  const rots = [p];
+  let c = p;
+  for (let i = 0; i < 3; i++) { c = rot90(c); rots.push(c); }
+  return rots;
+}
+
+function fits(piece, col, row) {
+  const ph = piece.length, pw = piece[0].length;
+  for (let dy = 0; dy < ph; dy++) for (let dx = 0; dx < pw; dx++) {
+    if (piece[dy][dx]) {
+      const gx = col + dx, gy = row + dy;
+      if (gx < 0 || gx >= W || gy < 0 || gy >= H || grid[gy][gx] !== null) return false;
+    }
+  }
+  return true;
+}
+
+function dropRow(piece, col, row) {
+  let r = row;
+  while (fits(piece, col, r + 1)) r++;
+  return r;
+}
+
+function scoreGrid(g) {
+  const heights = Array(W).fill(0);
+  for (let x = 0; x < W; x++) {
+    for (let y = 0; y < H; y++) {
+      if (g[y][x] !== null) { heights[x] = H - y; break; }
+    }
+  }
+  const aggH = heights.reduce((a, b) => a + b, 0);
+  let holes = 0;
+  for (let x = 0; x < W; x++) {
+    let filled = false;
+    for (let y = 0; y < H; y++) {
+      if (g[y][x] !== null) filled = true;
+      else if (filled) holes++;
+    }
+  }
+  let lines = 0;
+  for (let y = 0; y < H; y++) {
+    if (g[y].every(c => c !== null)) lines++;
+  }
+  let bump = 0;
+  for (let x = 0; x < W - 1; x++) bump += Math.abs(heights[x] - heights[x + 1]);
+  return -aggH - 4 * holes + lines * 2 - bump;
+}
+
+function findBest() {
+  const type = currentType;
+  const rots = getRotations(PIECES[type]);
+  let best = null, bestScore = -Infinity;
+  for (const rot of rots) {
+    const pw = rot[0].length;
+    for (let col = 0; col <= W - pw; col++) {
+      if (!fits(rot, col, 0)) continue;
+      const restRow = dropRow(rot, col, 0);
+      const tg = grid.map(r => r.slice());
+      const ph = rot.length;
+      for (let dy = 0; dy < ph; dy++) for (let dx = 0; dx < pw; dx++) {
+        if (rot[dy][dx]) tg[restRow + dy][col + dx] = type;
+      }
+      const s = scoreGrid(tg);
+      if (s > bestScore) { bestScore = s; best = { piece: rot, col, row: restRow }; }
+    }
+  }
+  return best;
+}
+
+function g2v(gx, gy) {
+  return new THREE.Vector3(gx - W / 2 + 0.5, H / 2 - 0.5 - gy, 0);
+}
+
+function makeCell(color, gx, gy) {
+  const mat = new THREE.MeshLambertMaterial({ color });
+  const m = new THREE.Mesh(cellGeo, mat);
+  m.position.copy(g2v(gx, gy));
+  scene.add(m);
+  return m;
+}
+
+let currentType = null;
+let curMeshes = [], ghostMeshes = [], animFromV, animToV;
+let state = 'idle';
+let animStart = 0, animDur = 0.15;
+let animFrom, animTo;
+let clearRows = [], clearStart = 0, clearDur = 0.15;
+let score = 0, nextTimer = 0;
+
+function getCells(piece, col, row) {
+  const cells = [];
+  const ph = piece.length, pw = piece[0].length;
+  for (let dy = 0; dy < ph; dy++) for (let dx = 0; dx < pw; dx++)
+    if (piece[dy][dx]) cells.push({ gx: col + dx, gy: row + dy });
+  return cells;
+}
+
+function clearAll() {
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    if (meshes[y][x]) { scene.remove(meshes[y][x]); meshes[y][x].material.dispose(); meshes[y][x] = null; }
+    grid[y][x] = null;
+  }
+  score = 0;
+  document.getElementById('hud').textContent = 'Score: 0';
+}
+
+function spawn() {
+  const types = Object.keys(PIECES);
+  currentType = types[Math.floor(Math.random() * types.length)];
+  const best = findBest();
+  if (!best) { clearAll(); spawn(); return; }
+  const spCol = Math.floor((W - PIECES[currentType][0].length) / 2);
+  animFrom = { piece: PIECES[currentType], col: spCol, row: 0 };
+  animTo = best;
+  animFromV = getCells(animFrom.piece, animFrom.col, animFrom.row).map(c => g2v(c.gx, c.gy));
+  animToV = getCells(animTo.piece, animTo.col, animTo.row).map(c => g2v(c.gx, c.gy));
+  const col = COLORS[currentType];
+  curMeshes = animFromV.map(v => {
+    const m = new THREE.Mesh(cellGeo, new THREE.MeshLambertMaterial({ color: col }));
+    m.position.copy(v);
+    scene.add(m);
+    return m;
+  });
+  ghostMeshes = animToV.map(v => {
+    const m = new THREE.Mesh(cellGeo, ghostMat);
+    m.position.copy(v);
+    scene.add(m);
+    return m;
+  });
+  state = 'animating';
+  animStart = performance.now() / 1000;
+}
+
+function collapse(clearedSet) {
+  for (let x = 0; x < W; x++) {
+    let writeY = H - 1;
+    for (let y = H - 1; y >= 0; y--) {
+      if (!clearedSet.has(y)) {
+        if (writeY !== y) {
+          grid[writeY][x] = grid[y][x];
+          if (meshes[y][x]) {
+            meshes[writeY][x] = meshes[y][x];
+            meshes[writeY][x].position.y = g2v(0, writeY).y;
+            meshes[y][x] = null;
+          }
+        }
+        writeY--;
+      }
+    }
+    for (let y = writeY; y >= 0; y--) { grid[y][x] = null; meshes[y][x] = null; }
+  }
+}
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+function smooth(t) { return t * t * (3 - 2 * t); }
+
+let lastT = performance.now() / 1000;
+
+function tick() {
+  requestAnimationFrame(tick);
+  const now = performance.now() / 1000;
+  const dt = now - lastT;
+  lastT = now;
+
+  if (state === 'animating') {
+    const t = Math.min((now - animStart) / animDur, 1);
+    const st = smooth(t);
+    for (let i = 0; i < curMeshes.length; i++) {
+      curMeshes[i].position.set(
+        lerp(animFromV[i].x, animToV[i].x, st),
+        lerp(animFromV[i].y, animToV[i].y, st), 0
+      );
+    }
+    if (t >= 1) {
+      curMeshes.forEach(m => { scene.remove(m); m.material.dispose(); });
+      curMeshes = [];
+      ghostMeshes.forEach(m => { scene.remove(m); });
+      ghostMeshes = [];
+      const ph = animTo.piece.length, pw = animTo.piece[0].length;
+      for (let dy = 0; dy < ph; dy++) for (let dx = 0; dx < pw; dx++) {
+        if (animTo.piece[dy][dx]) {
+          const gx = animTo.col + dx, gy = animTo.row + dy;
+          grid[gy][gx] = currentType;
+          meshes[gy][gx] = makeCell(COLORS[currentType], gx, gy);
+        }
+      }
+      clearRows = [];
+      for (let y = 0; y < H; y++) if (grid[y].every(c => c !== null)) clearRows.push(y);
+      if (clearRows.length > 0) {
+        state = 'clearing';
+        clearStart = now;
+        score += clearRows.length * 10;
+        document.getElementById('hud').textContent = 'Score: ' + score;
+      } else {
+        state = 'idle';
+        nextTimer = now + 0.03;
+      }
+    }
+  }
+
+  if (state === 'clearing') {
+    const t = Math.min((now - clearStart) / clearDur, 1);
+    clearRows.forEach(y => {
+      for (let x = 0; x < W; x++) {
+        if (meshes[y][x]) {
+          meshes[y][x].material.color.set(0xffffff);
+          const s = 1 + 0.4 * Math.sin(t * Math.PI);
+          meshes[y][x].scale.set(s, s, s);
+        }
+      }
+    });
+    if (t >= 1) {
+      const set = new Set(clearRows);
+      clearRows.forEach(y => {
+        for (let x = 0; x < W; x++) {
+          if (meshes[y][x]) { scene.remove(meshes[y][x]); meshes[y][x].material.dispose(); meshes[y][x] = null; }
+          grid[y][x] = null;
+        }
+      });
+      collapse(set);
+      state = 'idle';
+      nextTimer = now + 0.03;
+    }
+  }
+
+  if (state === 'idle' && now >= nextTimer) {
+    nextTimer = 0;
+    spawn();
+  }
+
+  renderer.render(scene, camera);
+}
+
+window.addEventListener('resize', () => {
+  updateCamera();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// Pre-fill bottom rows for visual density
+for (let y = H - 6; y < H; y++) {
+  for (let x = 0; x < W; x++) {
+    const type = Object.keys(PIECES)[Math.floor(Math.random() * 7)];
+    grid[y][x] = type;
+    meshes[y][x] = makeCell(COLORS[type], x, y);
+  }
+}
+spawn();
+tick();
+</script>
+</body>
+</html>

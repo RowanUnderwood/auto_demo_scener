@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+    body { margin: 0; overflow: hidden; background: #000; }
+    canvas { display: block; }
+</style>
+</head>
+<body>
+<script type="importmap">
+{
+    "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 300);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x020812);
+document.body.appendChild(renderer.domElement);
+
+// --- Generate branching neural structure ---
+const neurons = [];
+const connections = [];
+
+function randomUnitVec() {
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2 * Math.random() - 1);
+    return new THREE.Vector3(
+        Math.sin(phi) * Math.cos(theta),
+        Math.sin(phi) * Math.sin(theta),
+        Math.cos(phi)
+    );
+}
+
+function growBranch(pos, dir, depth, maxDepth) {
+    if (depth > maxDepth) return -1;
+    const idx = neurons.length;
+    neurons.push({ pos: pos.clone(), depth });
+
+    const len = 3.2 * Math.pow(0.62, depth);
+    const count = depth === 0 ? 7 : (depth < 2 ? 3 : 2);
+
+    for (let i = 0; i < count; i++) {
+        const spread = 0.5 + depth * 0.25;
+        const axis = randomUnitVec();
+        const angle = spread * (0.4 + Math.random() * 0.6);
+        const q = new THREE.Quaternion().setFromAxisAngle(axis, angle);
+        const newDir = dir.clone().applyQuaternion(q);
+
+        const newPos = pos.clone().add(newDir.multiplyScalar(len));
+        const childIdx = growBranch(newPos, newDir, depth + 1, maxDepth);
+        if (childIdx >= 0) {
+            connections.push([idx, childIdx]);
+        }
+    }
+    return idx;
+}
+
+growBranch(new THREE.Vector3(0, 0, 0), randomUnitVec(), 0, 5);
+
+// Cross-connections between nearby same-depth neurons
+for (let i = 1; i < neurons.length; i++) {
+    for (let j = i + 1; j < neurons.length; j++) {
+        if (neurons[i].depth === neurons[j].depth && neurons[i].depth >= 2) {
+            const d = neurons[i].pos.distanceTo(neurons[j].pos);
+            if (d < 2.0 && Math.random() < 0.35) {
+                connections.push([i, j]);
+            }
+        }
+    }
+}
+
+// Deduplicate
+const connSet = new Set();
+const finalConns = [];
+for (const [a, b] of connections) {
+    const key = a < b ? a * 100000 + b : b * 100000 + a;
+    if (!connSet.has(key)) {
+        connSet.add(key);
+        finalConns.push([a, b]);
+    }
+}
+
+const N = neurons.length;
+const C = finalConns.length;
+
+// Base positions (for sway)
+const basePos = new Float32Array(N * 3);
+for (let i = 0; i < N; i++) {
+    basePos[i * 3] = neurons[i].pos.x;
+    basePos[i * 3 + 1] = neurons[i].pos.y;
+    basePos[i * 3 + 2] = neurons[i].pos.z;
+}
+
+// --- Neuron points ---
+const neuronGeo = new THREE.BufferGeometry();
+const nPos = new Float32Array(N * 3);
+const nCol = new Float32Array(N * 3);
+for (let i = 0; i < N; i++) {
+    nPos[i * 3] = basePos[i * 3];
+    nPos[i * 3 + 1] = basePos[i * 3 + 1];
+    nPos[i * 3 + 2] = basePos[i * 3 + 2];
+    const t = neurons[i].depth / 5;
+    nCol[i * 3] = 0.15 + t * 0.55;
+    nCol[i * 3 + 1] = 0.55 - t * 0.25;
+    nCol[i * 3 + 2] = 0.95 - t * 0.4;
+}
+neuronGeo.setAttribute('position', new THREE.BufferAttribute(nPos, 3));
+neuronGeo.setAttribute('color', new THREE.BufferAttribute(nCol, 3));
+const neuronMat = new THREE.PointsMaterial({
+    size: 0.18, vertexColors: true, blending: THREE.AdditiveBlending,
+    transparent: true, depthWrite: false, sizeAttenuation: true
+});
+scene.add(new THREE.Points(neuronGeo, neuronMat));
+
+// --- Connection lines ---
+const connGeo = new THREE.BufferGeometry();
+const cPos = new Float32Array(C * 6);
+const cCol = new Float32Array(C * 6);
+for (let i = 0; i < C; i++) {
+    const [a, b] = finalConns[i];
+    cPos[i * 6] = basePos[a * 3];
+    cPos[i * 6 + 1] = basePos[a * 3 + 1];
+    cPos[i * 6 + 2] = basePos[a * 3 + 2];
+    cPos[i * 6 + 3] = basePos[b * 3];
+    cPos[i * 6 + 4] = basePos[b * 3 + 1];
+    cPos[i * 6 + 5] = basePos[b * 3 + 2];
+    const t = neurons[a].depth / 5;
+    cCol[i * 6] = 0.04 + t * 0.15;
+    cCol[i * 6 + 1] = 0.2 + t * 0.1;
+    cCol[i * 6 + 2] = 0.35 + t * 0.15;
+    cCol[i * 6 + 3] = 0.04 + t * 0.15;
+    cCol[i * 6 + 4] = 0.2 + t * 0.1;
+    cCol[i * 6 + 5] = 0.35 + t * 0.15;
+}
+connGeo.setAttribute('position', new THREE.BufferAttribute(cPos, 3));
+connGeo.setAttribute('color', new THREE.BufferAttribute(cCol, 3));
+const connMat = new THREE.LineBasicMaterial({
+    vertexColors: true, blending: THREE.AdditiveBlending,
+    transparent: true, opacity: 0.45, depthWrite: false
+});
+scene.add(new THREE.LineSegments(connGeo, connMat));
+
+// --- Central glow sprite ---
+const glowCanvas = document.createElement('canvas');
+glowCanvas.width = 128; glowCanvas.height = 128;
+const gctx = glowCanvas.getContext('2d');
+const grad = gctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+grad.addColorStop(0, 'rgba(80,200,255,0.6)');
+grad.addColorStop(0.3, 'rgba(40,120,255,0.2)');
+grad.addColorStop(1, 'rgba(0,0,0,0)');
+gctx.fillStyle = grad;
+gctx.fillRect(0, 0, 128, 128);
+const glowTex = new THREE.CanvasTexture(glowCanvas);
+const glowSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: glowTex, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false
+}));
+glowSprite.scale.set(8, 8, 1);
+scene.add(glowSprite);
+
+// --- Signal particles ---
+const MAX_SIG = 300;
+const sigGeo = new THREE.BufferGeometry();
+const sPos = new Float32Array(MAX_SIG * 3);
+const sCol = new Float32Array(MAX_SIG * 3);
+for (let i = 0; i < MAX_SIG; i++) { sPos[i*3] = 9999; sPos[i*3+1] = 9999; sPos[i*3+2] = 9999; }
+sigGeo.setAttribute('position', new THREE.BufferAttribute(sPos, 3));
+sigGeo.setAttribute('color', new THREE.BufferAttribute(sCol, 3));
+const sigMat = new THREE.PointsMaterial({
+    size: 0.35, vertexColors: true, blending: THREE.AdditiveBlending,
+    transparent: true, depthWrite: false, sizeAttenuation: true
+});
+scene.add(new THREE.Points(sigGeo, sigMat));
+
+const signals = [];
+
+function spawnSignal(from, to, speed) {
+    if (signals.length >= MAX_SIG) return;
+    signals.push({ from, to, t: 0, speed: speed || (0.6 + Math.random() * 1.4) });
+}
+
+// Adjacency for cascade
+const adj = new Array(N).fill(null).map(() => []);
+for (const [a, b] of finalConns) {
+    adj[a].push(b);
+    adj[b].push(a);
+}
+
+let cascadeTimer = 3 + Math.random() * 4;
+let cascadeIntensity = 0;
+
+// --- Background stars ---
+const starN = 600;
+const sGeo = new THREE.BufferGeometry();
+const sArr = new Float32Array(starN * 3);
+for (let i = 0; i < starN; i++) {
+    const r = 60 + Math.random() * 120;
+    const th = Math.random() * Math.PI * 2;
+    const ph = Math.acos(2 * Math.random() - 1);
+    sArr[i*3] = r * Math.sin(ph) * Math.cos(th);
+    sArr[i*3+1] = r * Math.sin(ph) * Math.sin(th);
+    sArr[i*3+2] = r * Math.cos(ph);
+}
+sGeo.setAttribute('position', new THREE.BufferAttribute(sArr, 3));
+scene.add(new THREE.Points(sGeo, new THREE.PointsMaterial({ color: 0x224466, size: 0.15, sizeAttenuation: true })));
+
+// --- Animation ---
+const clock = new THREE.Clock();
+let time = 0;
+
+function animate() {
+    requestAnimationFrame(animate);
+    const dt = Math.min(clock.getDelta(), 0.05);
+    time += dt;
+
+    // Camera orbit
+    const ca = time * 0.08;
+    camera.position.set(Math.sin(ca) * 28, 4 + Math.sin(time * 0.04) * 4, Math.cos(ca) * 28);
+    camera.lookAt(0, 0, 0);
+
+    // Sway
+    const posAttr = neuronGeo.attributes.position;
+    for (let i = 0; i < N; i++) {
+        const d = neurons[i].depth;
+        const sw = (0.06 + d * 0.04) * (1.0 + cascadeIntensity * 0.5);
+        posAttr.array[i * 3] = basePos[i * 3] + Math.sin(time * 0.7 + i * 0.41) * sw;
+        posAttr.array[i * 3 + 1] = basePos[i * 3 + 1] + Math.cos(time * 0.5 + i * 0.63) * sw;
+        posAttr.array[i * 3 + 2] = basePos[i * 3 + 2] + Math.sin(time * 0.6 + i * 0.29) * sw;
+    }
+    posAttr.needsUpdate = true;
+
+    // Update connections
+    const cAttr = connGeo.attributes.position;
+    for (let i = 0; i < C; i++) {
+        const [a, b] = finalConns[i];
+        cAttr.array[i*6] = posAttr.array[a*3];
+        cAttr.array[i*6+1] = posAttr.array[a*3+1];
+        cAttr.array[i*6+2] = posAttr.array[a*3+2];
+        cAttr.array[i*6+3] = posAttr.array[b*3];
+        cAttr.array[i*6+4] = posAttr.array[b*3+1];
+        cAttr.array[i*6+5] = posAttr.array[b*3+2];
+    }
+    cAttr.needsUpdate = true;
+
+    // Cascade
+    cascadeTimer -= dt;
+    if (cascadeTimer <= 0) {
+        cascadeIntensity = 1.0;
+        cascadeTimer = 5 + Math.random() * 5;
+        const origin = Math.floor(Math.random() * N);
+        for (const nb of adj[origin]) {
+            spawnSignal(origin, nb, 1.2 + Math.random() * 0.8);
+        }
+    }
+    cascadeIntensity *= Math.pow(0.3, dt);
+    connMat.opacity = 0.35 + 0.25 * cascadeIntensity + 0.08 * Math.sin(time * 1.5);
+    glowSprite.material.opacity = 0.4 + cascadeIntensity * 0.6;
+    const gs = 6 + cascadeIntensity * 5;
+    glowSprite.scale.set(gs, gs, 1);
+
+    // Spawn ambient signals
+    if (Math.random() < 0.4 + cascadeIntensity * 2.0) {
+        const ci = Math.floor(Math.random() * C);
+        const [a, b] = finalConns[ci];
+        if (Math.random() < 0.5) spawnSignal(a, b);
+        else spawnSignal(b, a);
+    }
+
+    // Update signals
+    const spAttr = sigGeo.attributes.position;
+    const scAttr = sigGeo.attributes.color;
+    for (let i = signals.length - 1; i >= 0; i--) {
+        const s = signals[i];
+        s.t += s.speed * dt;
+        if (s.t >= 1.0) {
+            // Cascade propagation
+            if (cascadeIntensity > 0.1 && Math.random() < 0.4) {
+                const nbs = adj[s.to];
+                for (let k = 0; k < nbs.length; k++) {
+                    if (nbs[k] !== s.from && Math.random() < 0.35) {
+                        spawnSignal(s.to, nbs[k], 0.8 + Math.random());
+                    }
+                }
+            }
+            signals.splice(i, 1);
+            spAttr.array[i*3] = 9999; spAttr.array[i*3+1] = 9999; spAttr.array[i*3+2] = 9999;
+        } else {
+            const fx = posAttr.array[s.from*3], fy = posAttr.array[s.from*3+1], fz = posAttr.array[s.from*3+2];
+            const tx = posAttr.array[s.to*3], ty = posAttr.array[s.to*3+1], tz = posAttr.array[s.to*3+2];
+            spAttr.array[i*3] = fx + (tx - fx) * s.t;
+            spAttr.array[i*3+1] = fy + (ty - fy) * s.t;
+            spAttr.array[i*3+2] = fz + (tz - fz) * s.t;
+            const br = 1.0 - Math.abs(s.t - 0.5) * 1.8;
+            scAttr.array[i*3] = 1.0 * Math.max(br, 0);
+            scAttr.array[i*3+1] = 0.7 * Math.max(br, 0);
+            scAttr.array[i*3+2] = 0.2 * Math.max(br, 0);
+        }
+    }
+    for (let i = signals.length; i < MAX_SIG; i++) {
+        spAttr.array[i*3] = 9999; spAttr.array[i*3+1] = 9999; spAttr.array[i*3+2] = 9999;
+        scAttr.array[i*3] = 0; scAttr.array[i*3+1] = 0; scAttr.array[i*3+2] = 0;
+    }
+    spAttr.needsUpdate = true;
+    scAttr.needsUpdate = true;
+
+    renderer.render(scene, camera);
+}
+
+animate();
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>

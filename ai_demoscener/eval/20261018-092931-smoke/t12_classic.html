@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Molten Nebula Drift</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #0a0404; }
+        canvas { display: block; }
+        #info {
+            position: fixed; bottom: 20px; left: 20px;
+            font-family: 'Courier New', monospace; font-size: 11px;
+            color: rgba(255, 140, 60, 0.5); letter-spacing: 2px;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+<div id="info">MOLTEN NEBULA // DRIFT v2.1</div>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+</script>
+<script type="module">
+    import * as THREE from 'three';
+
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x0a0404, 0.04);
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(0, 4, 9);
+    camera.lookAt(0, 0, 0);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setClearColor(0x0a0404);
+    document.body.appendChild(renderer.domElement);
+
+    const particleCount = 12000;
+    const positions = new Float32Array(particleCount * 3);
+    const colors = new Float32Array(particleCount * 3);
+    const baseColors = new Float32Array(particleCount * 3);
+    const sizes = new Float32Array(particleCount);
+    const seeds = new Float32Array(particleCount);
+
+    for (let i = 0; i < particleCount; i++) {
+        const arm = i % 3;
+        const t = Math.random() * 4.5;
+        const angle = t + arm * (Math.PI * 2 / 3);
+        const spread = (Math.random() - 0.5) * 1.2 * t * 0.3;
+        const x = Math.cos(angle + spread * 0.1) * t;
+        const z = Math.sin(angle + spread * 0.1) * t;
+        const y = (Math.random() - 0.5) * 0.4 * (1 - t / 6);
+
+        positions[i * 3] = x;
+        positions[i * 3 + 1] = y;
+        positions[i * 3 + 2] = z;
+
+        seeds[i] = Math.random() * 100;
+
+        const heat = Math.random();
+        const color = new THREE.Color();
+        if (heat < 0.5) {
+            color.setHSL(0.05 + heat * 0.06, 0.9, 0.3 + heat * 0.3);
+        } else {
+            color.setHSL(0.85 + (heat - 0.5) * 0.1, 0.7, 0.3 + (heat - 0.5) * 0.4);
+        }
+        baseColors[i * 3] = color.r;
+        baseColors[i * 3 + 1] = color.g;
+        baseColors[i * 3 + 2] = color.b;
+        colors[i * 3] = color.r;
+        colors[i * 3 + 1] = color.g;
+        colors[i * 3 + 2] = color.b;
+
+        sizes[i] = 0.02 + Math.random() * 0.03;
+    }
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+    const vertexShader = `
+        attribute float size;
+        varying vec3 vColor;
+        varying float vDist;
+        uniform float uTime;
+        uniform vec3 uCorePos;
+        void main() {
+            vColor = color;
+            vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+            float distToCore = length(position - uCorePos);
+            vDist = distToCore;
+            float sizeMod = size * (1.0 + 0.5 * exp(-distToCore * 0.5));
+            gl_PointSize = sizeMod * (200.0 / -mvPosition.z);
+            gl_Position = projectionMatrix * mvPosition;
+        }
+    `;
+    const fragmentShader = `
+        varying vec3 vColor;
+        varying float vDist;
+        uniform float uTime;
+        void main() {
+            float d = length(gl_PointCoord - vec2(0.5));
+            if (d > 0.5) discard;
+            float alpha = smoothstep(0.5, 0.1, d);
+            float glow = exp(-vDist * 0.4) * 0.8;
+            vec3 hotColor = vec3(1.0, 0.6, 0.2);
+            vec3 finalColor = mix(vColor, hotColor, glow);
+            float brightness = 1.0 + glow * 1.5;
+            gl_FragColor = vec4(finalColor * brightness, alpha * (0.6 + glow * 0.4));
+        }
+    `;
+
+    const material = new THREE.ShaderMaterial({
+        vertexShader,
+        fragmentShader,
+        vertexColors: true,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        uniforms: {
+            uTime: { value: 0 },
+            uCorePos: { value: new THREE.Vector3() }
+        }
+    });
+
+    const points = new THREE.Points(geometry, material);
+    scene.add(points);
+
+    // Core: layered pulsing spheres
+    const coreGroup = new THREE.Group();
+    scene.add(coreGroup);
+
+    const coreMat = new THREE.MeshBasicMaterial({ color: 0xffdd88 });
+    const coreMesh = new THREE.Mesh(new THREE.SphereGeometry(0.08, 32, 32), coreMat);
+    coreGroup.add(coreMesh);
+
+    for (let i = 1; i <= 4; i++) {
+        const ringMat = new THREE.MeshBasicMaterial({
+            color: new THREE.Color().setHSL(0.08 - i * 0.02, 0.9, 0.5 - i * 0.05),
+            transparent: true,
+            opacity: 0.4 - i * 0.08,
+            blending: THREE.AdditiveBlending,
+            side: THREE.DoubleSide
+        });
+        const ringGeo = new THREE.TorusGeometry(0.15 + i * 0.12, 0.01 + i * 0.005, 8, 64);
+        const ring = new THREE.Mesh(ringGeo, ringMat);
+        ring.rotation.x = Math.random() * Math.PI;
+        ring.rotation.y = Math.random() * Math.PI;
+        coreGroup.add(ring);
+        ring.userData.rotSpeed = (Math.random() - 0.5) * 0.02;
+        ring.userData.rotAxis = new THREE.Vector3(Math.random(), Math.random(), Math.random()).normalize();
+    }
+
+    // Trail system: ribbon-like trails behind the core
+    const trailLength = 60;
+    const trailSegments = 5;
+    const trailPositions = new Float32Array(trailLength * trailSegments * 3);
+    const trailColors = new Float32Array(trailLength * trailSegments * 3);
+    const trailIndices = [];
+
+    for (let i = 0; i < trailLength - 1; i++) {
+        for (let j = 0; j < trailSegments - 1; j++) {
+            const a = i * trailSegments + j;
+            const b = a + 1;
+            const c = a + trailSegments;
+            const d = c + 1;
+            trailIndices.push(a, b, c, b, d, c);
+        }
+    }
+
+    const trailGeometry = new THREE.BufferGeometry();
+    trailGeometry.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
+    trailGeometry.setAttribute('color', new THREE.BufferAttribute(trailColors, 3));
+    trailGeometry.setIndex(trailIndices);
+
+    const trailMaterial = new THREE.MeshBasicMaterial({
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.3,
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide,
+        depthWrite: false
+    });
+    const trailMesh = new THREE.Mesh(trailGeometry, trailMaterial);
+    scene.add(trailMesh);
+
+    const trailHistory = [];
+    const corePositions = new THREE.Vector3();
+
+    // Ambient dust
+    const dustCount = 500;
+    const dustPos = new Float32Array(dustCount * 3);
+    for (let i = 0; i < dustCount; i++) {
+        dustPos[i * 3] = (Math.random() - 0.5) * 30;
+        dustPos[i * 3 + 1] = (Math.random() - 0.5) * 15;
+        dustPos[i * 3 + 2] = (Math.random() - 0.5) * 30;
+    }
+    const dustGeo = new THREE.BufferGeometry();
+    dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
+    const dustMat = new THREE.PointsMaterial({
+        size: 0.02,
+        color: 0x331108,
+        transparent: true,
+        opacity: 0.4,
+        blending: THREE.AdditiveBlending
+    });
+    const dust = new THREE.Points(dustGeo, dustMat);
+    scene.add(dust);
+
+    // Light beams - curved (approximated with line segments)
+    const beamCount = 8;
+    const beamPoints = 20;
+    const beams = [];
+    for (let b = 0; b < beamCount; b++) {
+        const beamGeo = new THREE.BufferGeometry();
+        const beamPos = new Float32Array(beamPoints * 3);
+        beamGeo.setAttribute('position', new THREE.BufferAttribute(beamPos, 3));
+        const beamMat = new THREE.LineBasicMaterial({
+            color: new THREE.Color().setHSL(0.05 + b * 0.03, 0.9, 0.4),
+            transparent: true,
+            opacity: 0.15,
+            blending: THREE.AdditiveBlending
+        });
+        const beam = new THREE.Line(beamGeo, beamMat);
+        scene.add(beam);
+        beams.push({ mesh: beam, geo: beamGeo, offset: b / beamCount * Math.PI * 2 });
+    }
+
+    const clock = new THREE.Clock();
+
+    function animate() {
+        requestAnimationFrame(animate);
+        const time = clock.getElapsedTime();
+        const dt = Math.min(clock.getDelta(), 0.05);
+
+        // Core orbit - Lissajous-like path
+        corePositions.set(
+            Math.sin(time * 0.4) * 2.5 + Math.sin(time * 1.3) * 0.5,
+            Math.sin(time * 0.6) * 0.8 + Math.cos(time * 0.9) * 0.3,
+            Math.cos(time * 0.35) * 2.5 + Math.cos(time * 1.1) * 0.4
+        );
+        coreGroup.position.copy(corePositions);
+
+        // Pulse the core
+        const pulse = 1 + Math.sin(time * 3) * 0.2 + Math.sin(time * 7) * 0.05;
+        coreMesh.scale.setScalar(pulse);
+
+        // Rotate rings
+        coreGroup.children.forEach(child => {
+            if (child.userData.rotSpeed) {
+                child.rotateOnAxis(child.userData.rotAxis, child.userData.rotSpeed);
+            }
+        });
+
+        // Update shader uniforms
+        material.uniforms.uTime.value = time;
+        material.uniforms.uCorePos.value.copy(corePositions);
+
+        // Rotate the galaxy slowly
+        points.rotation.y = time * 0.05;
+
+        // Update trail
+        trailHistory.unshift(corePositions.clone());
+        if (trailHistory.length > trailLength) trailHistory.pop();
+
+        const camRight = new THREE.Vector3();
+        const camUp = new THREE.Vector3();
+        camera.matrix.extractBasis(camRight, camUp, new THREE.Vector3());
+
+        for (let i = 0; i < trailLength; i++) {
+            const p = trailHistory[i] || corePositions;
+            const fade = 1 - i / trailLength;
+            for (let j = 0; j < trailSegments; j++) {
+                const spread = (j - (trailSegments - 1) / 2) * 0.04 * fade;
+                const idx = (i * trailSegments + j) * 3;
+                trailPositions[idx] = p.x + camRight.x * spread + camUp.x * spread * 0.5;
+                trailPositions[idx + 1] = p.y + camRight.y * spread + camUp.y * spread * 0.5;
+                trailPositions[idx + 2] = p.z + camRight.z * spread + camUp.z * spread * 0.5;
+
+                const heat = fade * 0.8;
+                trailColors[idx] = 1.0 * heat;
+                trailColors[idx + 1] = 0.4 * heat;
+                trailColors[idx + 2] = 0.1 * heat;
+            }
+        }
+        trailGeometry.attributes.position.needsUpdate = true;
+        trailGeometry.attributes.color.needsUpdate = true;
+
+        // Update beams (curved paths from core outward)
+        for (let b = 0; b < beamCount; b++) {
+            const beam = beams[b];
+            const angle = time * 0.3 + beam.offset;
+            const target = new THREE.Vector3(
+                Math.cos(angle) * 6,
+                Math.sin(time * 0.5 + b) * 2,
+                Math.sin(angle) * 6
+            );
+
+            for (let p = 0; p < beamPoints; p++) {
+                const t = p / (beamPoints - 1);
+                const smooth = t * t * (3 - 2 * t);
+                const pos = new THREE.Vector3().lerpVectors(corePositions, target, smooth);
+                pos.x += Math.sin(time * 2 + p * 0.5 + b) * 0.2 * t;
+                pos.y += Math.cos(time * 1.5 + p * 0.3) * 0.15 * t;
+                beam.geo.attributes.position.array[p * 3] = pos.x;
+                beam.geo.attributes.position.array[p * 3 + 1] = pos.y;
+                beam.geo.attributes.position.array[p * 3 + 2] = pos.z;
+            }
+            beam.geo.attributes.position.needsUpdate = true;
+            beam.mesh.material.opacity = 0.1 + Math.sin(time * 2 + b) * 0.05;
+        }
+
+        // Camera orbit
+        const camAngle = time * 0.1;
+        camera.position.x = Math.sin(camAngle) * 10;
+        camera.position.z = Math.cos(camAngle) * 10;
+        camera.position.y = 3 + Math.sin(time * 0.2) * 1.5;
+        camera.lookAt(0, 0, 0);
+
+        // Dust drift
+        dust.rotation.y = time * 0.01;
+        dust.rotation.x = Math.sin(time * 0.05) * 0.02;
+
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+</script>
+</body>
+</html>

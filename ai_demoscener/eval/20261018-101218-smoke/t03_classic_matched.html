@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { margin: 0; overflow: hidden; background: #0a0a2e; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const COUNT = 200;
+const BOUNDS = 10;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 200);
+camera.position.set(0, 12, 28);
+camera.lookAt(0, 0, 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(devicePixelRatio);
+document.body.appendChild(renderer.domElement);
+
+scene.background = new THREE.Color(0x0a0a2e);
+
+// Wireframe cube
+const edges = new THREE.EdgesGeometry(new THREE.BoxGeometry(BOUNDS * 2, BOUNDS * 2, BOUNDS * 2));
+scene.add(new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x1a1a5e, transparent: true, opacity: 0.4 })));
+
+// Instanced boid mesh
+const coneGeom = new THREE.ConeGeometry(0.15, 0.6, 6);
+const coneMat = new THREE.MeshBasicMaterial();
+const mesh = new THREE.InstancedMesh(coneGeom, coneMat, COUNT);
+mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+scene.add(mesh);
+
+// State
+const pos = new Float32Array(COUNT * 3);
+const vel = new Float32Array(COUNT * 3);
+
+for (let i = 0; i < COUNT; i++) {
+  pos[i*3]   = (Math.random() - 0.5) * BOUNDS * 1.8;
+  pos[i*3+1] = (Math.random() - 0.5) * BOUNDS * 1.8;
+  pos[i*3+2] = (Math.random() - 0.5) * BOUNDS * 1.8;
+  vel[i*3]   = (Math.random() - 0.5) * 3;
+  vel[i*3+1] = (Math.random() - 0.5) * 3;
+  vel[i*3+2] = (Math.random() - 0.5) * 3;
+}
+
+// Tuning
+const SEP_SQ = 1.0, ALI_SQ = 9.0, COH_SQ = 25.0;
+const W_SEP = 1.8, W_ALI = 1.0, W_COH = 0.6;
+const MAX_SPEED = 4.0, MIN_SPEED = 1.0, MAX_FORCE = 0.4;
+const DT = 1.0;
+
+const dummy = new THREE.Object3D();
+const UP = new THREE.Vector3(0, 1, 0);
+const tv = new THREE.Vector3();
+const col = new THREE.Color();
+const COL_SLOW = new THREE.Color(0x1a0a5e);
+const COL_FAST = new THREE.Color(0x00eeff);
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  for (let i = 0; i < COUNT; i++) {
+    const ix = i * 3;
+    const px = pos[ix], py = pos[ix+1], pz = pos[ix+2];
+    const vx = vel[ix], vy = vel[ix+1], vz = vel[ix+2];
+
+    let sx=0, sy=0, sz=0, sc=0;
+    let ax_=0, ay_=0, az_=0, ac=0;
+    let cx=0, cy=0, cz=0, cc=0;
+
+    for (let j = 0; j < COUNT; j++) {
+      if (j === i) continue;
+      const jx = j * 3;
+      const dx = pos[jx] - px, dy = pos[jx+1] - py, dz = pos[jx+2] - pz;
+      const d2 = dx*dx + dy*dy + dz*dz;
+
+      if (d2 < SEP_SQ && d2 > 1e-6) {
+        const inv = 1.0 / d2;
+        sx -= dx * inv; sy -= dy * inv; sz -= dz * inv; sc++;
+      }
+      if (d2 < ALI_SQ) {
+        ax_ += vel[jx]; ay_ += vel[jx+1]; az_ += vel[jx+2]; ac++;
+      }
+      if (d2 < COH_SQ) {
+        cx += pos[jx]; cy += pos[jx+1]; cz += pos[jx+2]; cc++;
+      }
+    }
+
+    let fx = 0, fy = 0, fz = 0;
+    if (sc > 0) { fx += sx * W_SEP; fy += sy * W_SEP; fz += sz * W_SEP; }
+    if (ac > 0) { fx += (ax_/ac - vx) * W_ALI; fy += (ay_/ac - vy) * W_ALI; fz += (az_/ac - vz) * W_ALI; }
+    if (cc > 0) { fx += (cx/cc - px) * W_COH * 0.08; fy += (cy/cc - py) * W_COH * 0.08; fz += (cz/cc - pz) * W_COH * 0.08; }
+
+    // Clamp force magnitude
+    const f2 = fx*fx + fy*fy + fz*fz;
+    if (f2 > MAX_FORCE * MAX_FORCE) {
+      const s = MAX_FORCE / Math.sqrt(f2);
+      fx *= s; fy *= s; fz *= s;
+    }
+
+    vel[ix]   += fx * DT;
+    vel[ix+1] += fy * DT;
+    vel[ix+2] += fz * DT;
+
+    // Clamp speed
+    const s2 = vel[ix]*vel[ix] + vel[ix+1]*vel[ix+1] + vel[ix+2]*vel[ix+2];
+    if (s2 > MAX_SPEED * MAX_SPEED) {
+      const s = MAX_SPEED / Math.sqrt(s2);
+      vel[ix] *= s; vel[ix+1] *= s; vel[ix+2] *= s;
+    } else if (s2 > 0 && s2 < MIN_SPEED * MIN_SPEED) {
+      const s = MIN_SPEED / Math.sqrt(s2);
+      vel[ix] *= s; vel[ix+1] *= s; vel[ix+2] *= s;
+    }
+
+    // Integrate position
+    pos[ix]   += vel[ix]   * DT;
+    pos[ix+1] += vel[ix+1] * DT;
+    pos[ix+2] += vel[ix+2] * DT;
+
+    // Wrap
+    if (pos[ix]   >  BOUNDS) pos[ix]   -= BOUNDS * 2;
+    if (pos[ix]   < -BOUNDS) pos[ix]   += BOUNDS * 2;
+    if (pos[ix+1] >  BOUNDS) pos[ix+1] -= BOUNDS * 2;
+    if (pos[ix+1] < -BOUNDS) pos[ix+1] += BOUNDS * 2;
+    if (pos[ix+2] >  BOUNDS) pos[ix+2] -= BOUNDS * 2;
+    if (pos[ix+2] < -BOUNDS) pos[ix+2] += BOUNDS * 2;
+
+    // Update instance matrix
+    dummy.position.set(pos[ix], pos[ix+1], pos[ix+2]);
+    tv.set(vel[ix], vel[ix+1], vel[ix+2]).normalize();
+    dummy.quaternion.setFromUnitVectors(UP, tv);
+    dummy.updateMatrix();
+    mesh.setMatrixAt(i, dummy.matrix);
+
+    // Color by speed
+    const speed = Math.sqrt(vel[ix]*vel[ix] + vel[ix+1]*vel[ix+1] + vel[ix+2]*vel[ix+2]);
+    const t = Math.max(0, Math.min(1, (speed - MIN_SPEED) / (MAX_SPEED - MIN_SPEED)));
+    col.copy(COL_SLOW).lerp(COL_FAST, t);
+    mesh.setColorAt(i, col);
+  }
+
+  mesh.instanceMatrix.needsUpdate = true;
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+
+  renderer.render(scene, camera);
+}
+
+animate();
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Boids</title>
+<style>
+body { margin: 0; overflow: hidden; }
+canvas { display: block; }
+</style>
+</head>
+<body>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const COUNT = 200;
+const BOUNDS = 10;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x080820);
+
+const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 200);
+camera.position.set(0, 5, 28);
+camera.lookAt(0, 0, 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+// Wireframe bounds cube
+const boxGeo = new THREE.BoxGeometry(BOUNDS * 2, BOUNDS * 2, BOUNDS * 2);
+const edges = new THREE.EdgesGeometry(boxGeo);
+const wire = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x1a1a50, transparent: true, opacity: 0.4 }));
+scene.add(wire);
+
+// Boid geometry: small cone pointing along +Y
+const coneGeo = new THREE.ConeGeometry(0.12, 0.5, 5);
+const coneMat = new THREE.MeshBasicMaterial();
+const mesh = new THREE.InstancedMesh(coneGeo, coneMat, COUNT);
+mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+scene.add(mesh);
+
+// State
+const pos = new Float32Array(COUNT * 3);
+const vel = new Float32Array(COUNT * 3);
+
+for (let i = 0; i < COUNT; i++) {
+  pos[i * 3]     = (Math.random() - 0.5) * BOUNDS * 1.8;
+  pos[i * 3 + 1] = (Math.random() - 0.5) * BOUNDS * 1.8;
+  pos[i * 3 + 2] = (Math.random() - 0.5) * BOUNDS * 1.8;
+  vel[i * 3]     = (Math.random() - 0.5) * 3;
+  vel[i * 3 + 1] = (Math.random() - 0.5) * 3;
+  vel[i * 3 + 2] = (Math.random() - 0.5) * 3;
+}
+
+// Parameters
+const SEP_R2 = 1.0;
+const ALI_R2 = 9.0;
+const COH_R2 = 25.0;
+const W_SEP = 0.06;
+const W_ALI = 0.04;
+const W_COH = 0.025;
+const MAX_SPEED = 4.0;
+const MAX_SPEED2 = MAX_SPEED * MAX_SPEED;
+const MIN_SPEED = 0.4;
+const MIN_SPEED2 = MIN_SPEED * MIN_SPEED;
+
+// Reusable temporaries
+const _m = new THREE.Matrix4();
+const _q = new THREE.Quaternion();
+const _p = new THREE.Vector3();
+const _s = new THREE.Vector3(1, 1, 1);
+const _v = new THREE.Vector3();
+const _up = new THREE.Vector3(0, 1, 0);
+const _c = new THREE.Color();
+const C_SLOW = new THREE.Color(0x120850);
+const C_FAST = new THREE.Color(0x00e5ff);
+
+function tick() {
+  requestAnimationFrame(tick);
+
+  for (let i = 0; i < COUNT; i++) {
+    const ix = i * 3;
+    const px = pos[ix], py = pos[ix + 1], pz = pos[ix + 2];
+
+    let sx = 0, sy = 0, sz = 0;
+    let ax = 0, ay = 0, az = 0;
+    let cx = 0, cy = 0, cz = 0;
+    let ns = 0, na = 0, nc = 0;
+
+    for (let j = 0; j < COUNT; j++) {
+      if (j === i) continue;
+      const jx = j * 3;
+      const dx = px - pos[jx];
+      const dy = py - pos[jx + 1];
+      const dz = pz - pos[jx + 2];
+      const d2 = dx * dx + dy * dy + dz * dz;
+
+      if (d2 < SEP_R2) {
+        if (d2 > 1e-6) {
+          const inv = 1.0 / d2;
+          sx += dx * inv;
+          sy += dy * inv;
+          sz += dz * inv;
+        }
+        ns++;
+      }
+      if (d2 < ALI_R2) {
+        ax += vel[jx];
+        ay += vel[jx + 1];
+        az += vel[jx + 2];
+        na++;
+      }
+      if (d2 < COH_R2) {
+        cx += pos[jx];
+        cy += pos[jx + 1];
+        cz += pos[jx + 2];
+        nc++;
+      }
+    }
+
+    let fx = 0, fy = 0, fz = 0;
+
+    if (ns > 0) {
+      fx += sx * W_SEP;
+      fy += sy * W_SEP;
+      fz += sz * W_SEP;
+    }
+    if (na > 0) {
+      fx += (ax / na - vel[ix])     * W_ALI;
+      fy += (ay / na - vel[ix + 1]) * W_ALI;
+      fz += (az / na - vel[ix + 2]) * W_ALI;
+    }
+    if (nc > 0) {
+      fx += (cx / nc - px) * W_COH;
+      fy += (cy / nc - py) * W_COH;
+      fz += (cz / nc - pz) * W_COH;
+    }
+
+    vel[ix]     += fx;
+    vel[ix + 1] += fy;
+    vel[ix + 2] += fz;
+
+    // Speed clamp
+    const s2 = vel[ix] * vel[ix] + vel[ix + 1] * vel[ix + 1] + vel[ix + 2] * vel[ix + 2];
+    if (s2 > MAX_SPEED2) {
+      const sc = MAX_SPEED / Math.sqrt(s2);
+      vel[ix] *= sc; vel[ix + 1] *= sc; vel[ix + 2] *= sc;
+    } else if (s2 < MIN_SPEED2 && s2 > 1e-8) {
+      const sc = MIN_SPEED / Math.sqrt(s2);
+      vel[ix] *= sc; vel[ix + 1] *= sc; vel[ix + 2] *= sc;
+    }
+
+    // Integrate
+    pos[ix]     += vel[ix];
+    pos[ix + 1] += vel[ix + 1];
+    pos[ix + 2] += vel[ix + 2];
+
+    // Wrap
+    if (pos[ix] >  BOUNDS) pos[ix] -= BOUNDS * 2;
+    if (pos[ix] < -BOUNDS) pos[ix] += BOUNDS * 2;
+    if (pos[ix+1] >  BOUNDS) pos[ix+1] -= BOUNDS * 2;
+    if (pos[ix+1] < -BOUNDS) pos[ix+1] += BOUNDS * 2;
+    if (pos[ix+2] >  BOUNDS) pos[ix+2] -= BOUNDS * 2;
+    if (pos[ix+2] < -BOUNDS) pos[ix+2] += BOUNDS * 2;
+
+    // Orientation
+    _p.set(pos[ix], pos[ix + 1], pos[ix + 2]);
+    _v.set(vel[ix], vel[ix + 1], vel[ix + 2]);
+    if (_v.lengthSq() > 1e-8) {
+      _v.normalize();
+      _q.setFromUnitVectors(_up, _v);
+    } else {
+      _q.identity();
+    }
+    _m.compose(_p, _q, _s);
+    mesh.setMatrixAt(i, _m);
+
+    // Color by speed
+    const spd = Math.sqrt(s2 > MAX_SPEED2 ? MAX_SPEED2 : (s2 < MIN_SPEED2 ? MIN_SPEED2 : s2));
+    const t = (spd - MIN_SPEED) / (MAX_SPEED - MIN_SPEED);
+    _c.copy(C_SLOW).lerp(C_FAST, Math.max(0, Math.min(1, t)));
+    mesh.setColorAt(i, _c);
+  }
+
+  mesh.instanceMatrix.needsUpdate = true;
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+
+  renderer.render(scene, camera);
+}
+
+tick();
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

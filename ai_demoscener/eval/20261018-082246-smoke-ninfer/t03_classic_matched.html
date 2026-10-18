@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>body{margin:0;overflow:hidden;background:#080820}</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const N = 200;
+const BOUNDS = 10;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 200);
+camera.position.set(0, 8, 32);
+camera.lookAt(0, 0, 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setClearColor(0x080820);
+document.body.appendChild(renderer.domElement);
+
+// Faint wireframe cube showing wrap bounds
+const boxGeo = new THREE.BoxGeometry(BOUNDS * 2, BOUNDS * 2, BOUNDS * 2);
+const boxMat = new THREE.MeshBasicMaterial({ color: 0x1a1a5e, wireframe: true, transparent: true, opacity: 0.25 });
+scene.add(new THREE.Mesh(boxGeo, boxMat));
+
+// Boid state
+const pos = new Float32Array(N * 3);
+const vel = new Float32Array(N * 3);
+for (let i = 0; i < N; i++) {
+    pos[i * 3]     = (Math.random() - 0.5) * BOUNDS * 1.6;
+    pos[i * 3 + 1] = (Math.random() - 0.5) * BOUNDS * 1.6;
+    pos[i * 3 + 2] = (Math.random() - 0.5) * BOUNDS * 1.6;
+    vel[i * 3]     = (Math.random() - 0.5) * 2;
+    vel[i * 3 + 1] = (Math.random() - 0.5) * 2;
+    vel[i * 3 + 2] = (Math.random() - 0.5) * 2;
+}
+
+// InstancedMesh
+const coneGeo = new THREE.ConeGeometry(0.12, 0.45, 5);
+const coneMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+const mesh = new THREE.InstancedMesh(coneGeo, coneMat, N);
+scene.add(mesh);
+
+const dummy = new THREE.Object3D();
+const color = new THREE.Color();
+const up = new THREE.Vector3(0, 1, 0);
+const dir = new THREE.Vector3();
+
+// Steering constants
+const SEP_SQ = 1.0;
+const ALI_SQ = 9.0;
+const COH_SQ = 25.0;
+const W_SEP = 0.04;
+const W_ALI = 0.04;
+const W_COH = 0.015;
+const MAX_SPD = 1.8;
+const MIN_SPD = 0.4;
+
+// Color palette: deep indigo -> bright cyan
+const cSlow = { r: 0.15, g: 0.05, b: 0.50 };
+const cFast = { r: 0.00, g: 1.00, b: 1.00 };
+
+function animate() {
+    requestAnimationFrame(animate);
+
+    // Steering
+    for (let i = 0; i < N; i++) {
+        const px = pos[i * 3], py = pos[i * 3 + 1], pz = pos[i * 3 + 2];
+        let sepX = 0, sepY = 0, sepZ = 0;
+        let aliX = 0, aliY = 0, aliZ = 0;
+        let cohX = 0, cohY = 0, cohZ = 0;
+        let aliN = 0, cohN = 0;
+
+        for (let j = 0; j < N; j++) {
+            if (i === j) continue;
+            const dx = pos[j * 3] - px;
+            const dy = pos[j * 3 + 1] - py;
+            const dz = pos[j * 3 + 2] - pz;
+            const dSq = dx * dx + dy * dy + dz * dz;
+
+            if (dSq < SEP_SQ && dSq > 1e-6) {
+                const inv = 1.0 / dSq;
+                sepX -= dx * inv;
+                sepY -= dy * inv;
+                sepZ -= dz * inv;
+            }
+            if (dSq < ALI_SQ) {
+                aliX += vel[j * 3];
+                aliY += vel[j * 3 + 1];
+                aliZ += vel[j * 3 + 2];
+                aliN++;
+            }
+            if (dSq < COH_SQ) {
+                cohX += pos[j * 3];
+                cohY += pos[j * 3 + 1];
+                cohZ += pos[j * 3 + 2];
+                cohN++;
+            }
+        }
+
+        vel[i * 3]     += sepX * W_SEP;
+        vel[i * 3 + 1] += sepY * W_SEP;
+        vel[i * 3 + 2] += sepZ * W_SEP;
+
+        if (aliN > 0) {
+            vel[i * 3]     += (aliX / aliN - vel[i * 3]) * W_ALI;
+            vel[i * 3 + 1] += (aliY / aliN - vel[i * 3 + 1]) * W_ALI;
+            vel[i * 3 + 2] += (aliZ / aliN - vel[i * 3 + 2]) * W_ALI;
+        }
+        if (cohN > 0) {
+            cohX /= cohN; cohY /= cohN; cohZ /= cohN;
+            vel[i * 3]     += (cohX - px) * W_COH;
+            vel[i * 3 + 1] += (cohY - py) * W_COH;
+            vel[i * 3 + 2] += (cohZ - pz) * W_COH;
+        }
+    }
+
+    // Integrate + wrap
+    for (let i = 0; i < N; i++) {
+        const vx = vel[i * 3], vy = vel[i * 3 + 1], vz = vel[i * 3 + 2];
+        const sSq = vx * vx + vy * vy + vz * vz;
+        if (sSq > MAX_SPD * MAX_SPD) {
+            const s = MAX_SPD / Math.sqrt(sSq);
+            vel[i * 3] *= s; vel[i * 3 + 1] *= s; vel[i * 3 + 2] *= s;
+        } else if (sSq > 0 && sSq < MIN_SPD * MIN_SPD) {
+            const s = MIN_SPD / Math.sqrt(sSq);
+            vel[i * 3] *= s; vel[i * 3 + 1] *= s; vel[i * 3 + 2] *= s;
+        }
+
+        pos[i * 3]     += vel[i * 3];
+        pos[i * 3 + 1] += vel[i * 3 + 1];
+        pos[i * 3 + 2] += vel[i * 3 + 2];
+
+        if (pos[i * 3]     >  BOUNDS) pos[i * 3]     -= BOUNDS * 2;
+        if (pos[i * 3]     < -BOUNDS) pos[i * 3]     += BOUNDS * 2;
+        if (pos[i * 3 + 1] >  BOUNDS) pos[i * 3 + 1] -= BOUNDS * 2;
+        if (pos[i * 3 + 1] < -BOUNDS) pos[i * 3 + 1] += BOUNDS * 2;
+        if (pos[i * 3 + 2] >  BOUNDS) pos[i * 3 + 2] -= BOUNDS * 2;
+        if (pos[i * 3 + 2] < -BOUNDS) pos[i * 3 + 2] += BOUNDS * 2;
+    }
+
+    // Update instance matrices and colors
+    for (let i = 0; i < N; i++) {
+        dummy.position.set(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]);
+        dir.set(vel[i * 3], vel[i * 3 + 1], vel[i * 3 + 2]).normalize();
+        dummy.quaternion.setFromUnitVectors(up, dir);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(i, dummy.matrix);
+
+        const spd = Math.sqrt(vel[i * 3] * vel[i * 3] + vel[i * 3 + 1] * vel[i * 3 + 1] + vel[i * 3 + 2] * vel[i * 3 + 2]);
+        const t = Math.min(spd / MAX_SPD, 1.0);
+        color.setRGB(
+            cSlow.r + (cFast.r - cSlow.r) * t,
+            cSlow.g + (cFast.g - cSlow.g) * t,
+            cSlow.b + (cFast.b - cSlow.b) * t
+        );
+        mesh.setColorAt(i, color);
+    }
+
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+
+    renderer.render(scene, camera);
+}
+
+animate();
+
+window.addEventListener('resize', () => {
+    camera.aspect = innerWidth / innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

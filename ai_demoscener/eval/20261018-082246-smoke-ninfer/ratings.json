@@ -1,0 +1,50 @@
+{
+ "t01:iterative_visual": {
+  "choice": "tie",
+  "brief_A": true,
+  "brief_B": true,
+  "ts": "2026-10-18T08:49:57"
+ },
+ "t02:iterative": {
+  "choice": "A",
+  "brief_A": true,
+  "brief_B": true,
+  "ts": "2026-10-18T08:50:37"
+ },
+ "t02:iterative_visual": {
+  "choice": "A",
+  "brief_A": true,
+  "brief_B": true,
+  "ts": "2026-10-18T08:50:59"
+ },
+ "t03:iterative_visual": {
+  "choice": "A",
+  "brief_A": true,
+  "brief_B": true,
+  "ts": "2026-10-18T08:51:26"
+ },
+ "t04:iterative_visual": {
+  "choice": "A",
+  "brief_A": true,
+  "brief_B": true,
+  "ts": "2026-10-18T08:51:47"
+ },
+ "t05:iterative_visual": {
+  "choice": "tie",
+  "brief_A": true,
+  "brief_B": true,
+  "ts": "2026-10-18T08:52:26"
+ },
+ "t06:iterative": {
+  "choice": "B",
+  "brief_A": true,
+  "brief_B": true,
+  "ts": "2026-10-18T08:52:42"
+ },
+ "t06:iterative_visual": {
+  "choice": "B",
+  "brief_A": true,
+  "brief_B": true,
+  "ts": "2026-10-18T08:53:17"
+ }
+}

@@ -1,0 +1,306 @@
+{
+ "run_id": "20261018-101218-smoke",
+ "name": "smoke",
+ "created": "2026-10-18T10:12:18",
+ "provider": "ninfer",
+ "model": "qwen3.8-27b",
+ "arms": [
+  {
+   "name": "classic",
+   "overrides": {
+    "generation_strategy": "classic"
+   }
+  },
+  {
+   "name": "classic_matched",
+   "overrides": {
+    "generation_strategy": "classic",
+    "validation": {
+     "max_repair_attempts": 6
+    }
+   }
+  },
+  {
+   "name": "iterative",
+   "overrides": {
+    "generation_strategy": "iterative",
+    "iterative": {
+     "visual_review": false
+    }
+   }
+  },
+  {
+   "name": "iterative_visual",
+   "overrides": {
+    "generation_strategy": "iterative",
+    "iterative": {
+     "visual_review": true
+    }
+   }
+  }
+ ],
+ "trials": [
+  {
+   "mode": "stock",
+   "effect": "Plasma",
+   "category": "shader effect",
+   "id": "t01",
+   "repeat": 1
+  },
+  {
+   "mode": "stock",
+   "effect": "Solar System",
+   "category": "3D scene",
+   "id": "t02",
+   "repeat": 1
+  },
+  {
+   "mode": "stock",
+   "effect": "Boids Flocking",
+   "category": "motion-heavy",
+   "id": "t03",
+   "repeat": 1
+  },
+  {
+   "mode": "stock",
+   "effect": "Auto-Play Tetris",
+   "category": "complex stateful",
+   "id": "t04",
+   "repeat": 1
+  },
+  {
+   "mode": "creative",
+   "effect": "creative",
+   "category": "creative",
+   "id": "t05",
+   "repeat": 1
+  },
+  {
+   "mode": "update",
+   "effect": "update",
+   "category": "archive update",
+   "source": "2026-05-10_creative_8844.html",
+   "id": "t06",
+   "repeat": 1
+  },
+  {
+   "mode": "stock",
+   "effect": "Plasma",
+   "category": "shader effect",
+   "id": "t07",
+   "repeat": 2
+  },
+  {
+   "mode": "stock",
+   "effect": "Solar System",
+   "category": "3D scene",
+   "id": "t08",
+   "repeat": 2
+  },
+  {
+   "mode": "stock",
+   "effect": "Boids Flocking",
+   "category": "motion-heavy",
+   "id": "t09",
+   "repeat": 2
+  },
+  {
+   "mode": "stock",
+   "effect": "Auto-Play Tetris",
+   "category": "complex stateful",
+   "id": "t10",
+   "repeat": 2
+  },
+  {
+   "mode": "creative",
+   "effect": "creative",
+   "category": "creative",
+   "id": "t11",
+   "repeat": 2
+  },
+  {
+   "mode": "update",
+   "effect": "update",
+   "category": "archive update",
+   "source": "2026-10-18_creative_fe94.html",
+   "id": "t12",
+   "repeat": 2
+  },
+  {
+   "mode": "stock",
+   "effect": "Plasma",
+   "category": "shader effect",
+   "id": "t13",
+   "repeat": 3
+  },
+  {
+   "mode": "stock",
+   "effect": "Solar System",
+   "category": "3D scene",
+   "id": "t14",
+   "repeat": 3
+  },
+  {
+   "mode": "stock",
+   "effect": "Boids Flocking",
+   "category": "motion-heavy",
+   "id": "t15",
+   "repeat": 3
+  },
+  {
+   "mode": "stock",
+   "effect": "Auto-Play Tetris",
+   "category": "complex stateful",
+   "id": "t16",
+   "repeat": 3
+  },
+  {
+   "mode": "creative",
+   "effect": "creative",
+   "category": "creative",
+   "id": "t17",
+   "repeat": 3
+  },
+  {
+   "mode": "update",
+   "effect": "update",
+   "category": "archive update",
+   "source": "2026-05-17_creative_4d9e.html",
+   "id": "t18",
+   "repeat": 3
+  },
+  {
+   "mode": "stock",
+   "effect": "Plasma",
+   "category": "shader effect",
+   "id": "t19",
+   "repeat": 4
+  },
+  {
+   "mode": "stock",
+   "effect": "Solar System",
+   "category": "3D scene",
+   "id": "t20",
+   "repeat": 4
+  },
+  {
+   "mode": "stock",
+   "effect": "Boids Flocking",
+   "category": "motion-heavy",
+   "id": "t21",
+   "repeat": 4
+  },
+  {
+   "mode": "stock",
+   "effect": "Auto-Play Tetris",
+   "category": "complex stateful",
+   "id": "t22",
+   "repeat": 4
+  },
+  {
+   "mode": "creative",
+   "effect": "creative",
+   "category": "creative",
+   "id": "t23",
+   "repeat": 4
+  },
+  {
+   "mode": "update",
+   "effect": "update",
+   "category": "archive update",
+   "source": "2026-10-18_creative_fe94.html",
+   "id": "t24",
+   "repeat": 4
+  },
+  {
+   "mode": "stock",
+   "effect": "Plasma",
+   "category": "shader effect",
+   "id": "t25",
+   "repeat": 5
+  },
+  {
+   "mode": "stock",
+   "effect": "Solar System",
+   "category": "3D scene",
+   "id": "t26",
+   "repeat": 5
+  },
+  {
+   "mode": "stock",
+   "effect": "Boids Flocking",
+   "category": "motion-heavy",
+   "id": "t27",
+   "repeat": 5
+  },
+  {
+   "mode": "stock",
+   "effect": "Auto-Play Tetris",
+   "category": "complex stateful",
+   "id": "t28",
+   "repeat": 5
+  },
+  {
+   "mode": "creative",
+   "effect": "creative",
+   "category": "creative",
+   "id": "t29",
+   "repeat": 5
+  },
+  {
+   "mode": "update",
+   "effect": "update",
+   "category": "archive update",
+   "source": "2026-05-15_wireframe_icosahedron_417b.html",
+   "id": "t30",
+   "repeat": 5
+  },
+  {
+   "mode": "stock",
+   "effect": "Plasma",
+   "category": "shader effect",
+   "id": "t31",
+   "repeat": 6
+  },
+  {
+   "mode": "stock",
+   "effect": "Solar System",
+   "category": "3D scene",
+   "id": "t32",
+   "repeat": 6
+  },
+  {
+   "mode": "stock",
+   "effect": "Boids Flocking",
+   "category": "motion-heavy",
+   "id": "t33",
+   "repeat": 6
+  },
+  {
+   "mode": "stock",
+   "effect": "Auto-Play Tetris",
+   "category": "complex stateful",
+   "id": "t34",
+   "repeat": 6
+  },
+  {
+   "mode": "creative",
+   "effect": "creative",
+   "category": "creative",
+   "id": "t35",
+   "repeat": 6
+  },
+  {
+   "mode": "update",
+   "effect": "update",
+   "category": "archive update",
+   "source": "2026-05-14_creative_83da_v2.html",
+   "id": "t36",
+   "repeat": 6
+  }
+ ],
+ "next": 15,
+ "status": "stopped",
+ "resume_boot_mode": "replay",
+ "notes": []
+}

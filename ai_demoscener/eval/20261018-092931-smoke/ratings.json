@@ -1,0 +1,20 @@
+{
+ "t03:iterative": {
+  "choice": "both_bad",
+  "brief_A": true,
+  "brief_B": true,
+  "ts": "2026-10-18T10:10:03"
+ },
+ "t04:iterative": {
+  "choice": "A",
+  "brief_A": true,
+  "brief_B": false,
+  "ts": "2026-10-18T10:10:12"
+ },
+ "t11:iterative": {
+  "choice": "tie",
+  "brief_A": true,
+  "brief_B": true,
+  "ts": "2026-10-18T10:11:00"
+ }
+}

@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>CRYSTALLINE BLOOM: DEEP RESONANCE</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #0a0510; font-family: 'Georgia', serif; }
+        canvas { display: block; }
+        #ui {
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            color: #c9a84c; text-align: center; pointer-events: none;
+            font-size: 11px; letter-spacing: 3px; text-transform: uppercase;
+            text-shadow: 0 0 12px rgba(201, 168, 76, 0.4);
+            line-height: 1.8;
+        }
+        #ui span { opacity: 0.5; font-size: 9px; }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <div>crystalline bloom — deep resonance</div>
+        <span>phase: harmonic · density: 0.73 · resonance: stable</span>
+    </div>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.body.appendChild(renderer.domElement);
+
+        const fragmentShader = `
+            uniform float uTime;
+            uniform vec2 uRes;
+
+            mat2 rot(float a) {
+                float c = cos(a), s = sin(a);
+                return mat2(c, -s, s, c);
+            }
+
+            float smin(float a, float b, float k) {
+                float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+                return mix(b, a, h) - k * h * (1.0 - h);
+            }
+
+            float sdSuperellipsoid(vec3 p, vec3 b, float n) {
+                vec3 q = abs(p) / b;
+                float r1 = dot(q, q);
+                float r2 = dot(q * q, q * q);
+                return b.x * (r1 - 1.0) + n * (r2 - 1.0) / 12.0;
+            }
+
+            float sdTwistedTorus(vec3 p, float R, float r, float twist) {
+                float a = atan(p.y, p.x) * twist;
+                vec2 q = vec2(length(p.xz) - R, p.y);
+                q.xz *= rot(a);
+                return length(q) - r;
+            }
+
+            float map(vec3 p) {
+                // Slow global rotation
+                p.xz *= rot(uTime * 0.08);
+                p.xy *= rot(uTime * 0.05);
+
+                // Crystalline folding — 4 iterations with varying angles
+                for(int i = 0; i < 4; i++) {
+                    float fi = float(i);
+                    p = abs(p) - vec3(0.4, 0.3, 0.5);
+                    p.xy *= rot(uTime * 0.07 + fi * 1.7);
+                    p.yz *= rot(uTime * 0.04 + fi * 0.9);
+                    p.xz *= rot(uTime * 0.03 + fi * 2.3);
+                }
+
+                // Core: breathing superellipsoid
+                float breathe = 0.6 + 0.15 * sin(uTime * 0.4);
+                float core = sdSuperellipsoid(p, vec3(breathe, breathe * 1.3, breathe), 2.0);
+
+                // Ring: twisted torus orbiting the core
+                float ring = sdTwistedTorus(p, 1.8 + 0.2 * sin(uTime * 0.3), 0.25, 2.0 + uTime * 0.1);
+
+                // Inner satellites: small spheres in orbital pattern
+                vec3 sp = p - vec3(
+                    1.2 * cos(uTime * 0.5),
+                    1.2 * sin(uTime * 0.3),
+                    1.2 * sin(uTime * 0.5)
+                );
+                float satellite = length(sp) - (0.2 + 0.05 * sin(uTime * 1.5));
+
+                // Merge all
+                float d = smin(core, ring, 0.5);
+                d = smin(d, satellite, 0.3);
+
+                return d;
+            }
+
+            vec3 getNormal(vec3 p) {
+                vec2 e = vec2(0.002, 0.0);
+                return normalize(vec3(
+                    map(p + e.xyy) - map(p - e.xyy),
+                    map(p + e.yxy) - map(p - e.yxy),
+                    map(p + e.yyx) - map(p - e.yyx)
+                ));
+            }
+
+            float calcAO(vec3 p, vec3 n) {
+                float occ = 0.0;
+                float sca = 1.0;
+                for(int i = 0; i < 5; i++) {
+                    float h = 0.02 + 0.1 * float(i);
+                    float d = map(p + n * h);
+                    occ += (h - d) * sca;
+                    sca *= 0.7;
+                }
+                return clamp(1.0 - 2.0 * occ, 0.0, 1.0);
+            }
+
+            vec3 iridescent(vec3 n, vec3 viewDir) {
+                float fresnel = pow(1.0 - max(dot(n, -viewDir), 0.0), 2.0);
+                float angle = dot(n, viewDir);
+                
+                // Iridescent palette: gold -> pink -> teal
+                vec3 col1 = vec3(0.95, 0.75, 0.3);  // warm gold
+                vec3 col2 = vec3(0.8, 0.3, 0.5);    // soft pink
+                vec3 col3 = vec3(0.2, 0.7, 0.65);   // teal
+                
+                float shift = angle * 3.0 + uTime * 0.2;
+                vec3 iri = 0.5 + 0.5 * cos(shift + vec3(0.0, 2.1, 4.2));
+                vec3 base = mix(col1, col2, smoothstep(-0.5, 0.0, angle));
+                base = mix(base, col3, smoothstep(0.0, 0.8, angle));
+                
+                return base * (0.4 + 0.6 * fresnel) + iri * fresnel * 0.5;
+            }
+
+            void main() {
+                vec2 uv = (gl_FragCoord.xy - 0.5 * uRes.xy) / min(uRes.y, uRes.x);
+                vec3 ro = vec3(0.0, 0.0, -5.5);
+                vec3 rd = normalize(vec3(uv, 1.8));
+
+                // Slow orbital camera
+                float camAngle = uTime * 0.06;
+                ro.xz *= rot(camAngle);
+                rd.xz *= rot(camAngle);
+
+                float t = 0.0;
+                float d;
+                vec3 p;
+                bool hit = false;
+
+                for(int i = 0; i < 96; i++) {
+                    p = ro + rd * t;
+                    d = map(p);
+                    if(d < 0.0015) { hit = true; break; }
+                    t += d * 0.9;
+                    if(t > 25.0) break;
+                }
+
+                // Deep indigo background with subtle gradient
+                vec3 bg = mix(vec3(0.04, 0.01, 0.1), vec3(0.02, 0.03, 0.06), uv.y + 0.5);
+                vec3 color = bg;
+
+                if(hit) {
+                    vec3 n = getNormal(p);
+                    vec3 viewDir = normalize(ro - p);
+                    
+                    // Lighting
+                    vec3 lightDir1 = normalize(vec3(sin(uTime * 0.3), 1.0, cos(uTime * 0.3)));
+                    vec3 lightDir2 = normalize(vec3(-1.0, -0.5, sin(uTime * 0.2)));
+                    
+                    float diff1 = max(dot(n, lightDir1), 0.0);
+                    float diff2 = max(dot(n, lightDir2), 0.0);
+                    float spec1 = pow(max(dot(reflect(-lightDir1, n), -viewDir), 0.0), 64.0);
+                    float spec2 = pow(max(dot(reflect(-lightDir2, n), -viewDir), 0.0), 32.0);
+                    
+                    float ao = calcAO(p, n);
+                    
+                    // Iridescent surface
+                    vec3 baseColor = iridescent(n, viewDir);
+                    
+                    // Compose
+                    color = baseColor * (0.15 + 0.6 * diff1 + 0.2 * diff2) * ao;
+                    color += vec3(1.0, 0.95, 0.8) * spec1 * 0.8;
+                    color += vec3(0.5, 0.6, 0.9) * spec2 * 0.3;
+                    
+                    // Subsurface-like glow
+                    float glow = pow(max(dot(n, -viewDir), 0.0), 3.0);
+                    color += vec3(0.3, 0.1, 0.4) * glow * 0.4;
+                    
+                    // Distance fog
+                    float fog = 1.0 - exp(-0.04 * t * t);
+                    color = mix(color, bg, fog);
+                } else {
+                    // Soft glow around the object in background
+                    float glowDist = length(p);
+                    color += vec3(0.08, 0.03, 0.12) * exp(-glowDist * 0.3) * 0.5;
+                }
+
+                // Chromatic aberration (subtle)
+                float caStrength = 0.002;
+                vec2 caOffset = uv * caStrength;
+                // Approximate with slight color separation via uv shift
+                color.r *= 1.0 + dot(uv, caOffset) * 2.0;
+                color.b *= 1.0 - dot(uv, caOffset) * 2.0;
+
+                // Soft vignette
+                float vig = smoothstep(1.8, 0.4, length(uv));
+                color *= vig;
+
+                // Film grain
+                float grain = fract(sin(dot(gl_FragCoord.xy + uTime * 100.0, vec2(12.9898, 78.233))) * 43758.5453);
+                color += (grain - 0.5) * 0.02;
+
+                // Tone mapping (ACES-like)
+                color = color * (2.51 * color + 0.02) / (color * (2.43 * color + 0.59) + 0.14);
+                color = pow(clamp(color, 0.0, 1.0), vec3(0.9));
+
+                gl_FragColor = vec4(color, 1.0);
+            }
+        `;
+
+        const vertexShader = `
+            void main() {
+                gl_Position = vec4(position, 1.0);
+            }
+        `;
+
+        const quadGeom = new THREE.PlaneGeometry(2, 2);
+        const shaderMat = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uRes: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+            },
+            vertexShader,
+            fragmentShader
+        });
+        const quad = new THREE.Mesh(quadGeom, shaderMat);
+        scene.add(quad);
+
+        // --- PARTICLES: Warm motes in slow orbit ---
+        const particleCount = 1500;
+        const pGeometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(particleCount * 3);
+        const colors = new Float32Array(particleCount * 3);
+        const meta = []; // Store orbital parameters
+
+        for (let i = 0; i < particleCount; i++) {
+            const radius = 2.5 + Math.random() * 4.0;
+            const angle = Math.random() * Math.PI * 2;
+            const y = (Math.random() - 0.5) * 3.0;
+            const speed = 0.1 + Math.random() * 0.15;
+            const phase = Math.random() * Math.PI * 2;
+            const wobble = 0.1 + Math.random() * 0.3;
+
+            meta.push({ radius, angle, y, speed, phase, wobble });
+
+            positions[i*3] = Math.cos(angle) * radius;
+            positions[i*3+1] = y;
+            positions[i*3+2] = Math.sin(angle) * radius;
+
+            // Warm white to soft gold
+            const warmth = Math.random();
+            colors[i*3] = 0.9 + 0.1 * warmth;
+            colors[i*3+1] = 0.85 + 0.05 * warmth;
+            colors[i*3+2] = 0.6 + 0.2 * (1.0 - warmth);
+        }
+
+        pGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        pGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+        const pMaterial = new THREE.PointsMaterial({
+            size: 0.015,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.5,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        });
+
+        const particleSystem = new THREE.Points(pGeometry, pMaterial);
+        scene.add(particleSystem);
+
+        camera.position.z = 0;
+
+        // --- ANIMATION ---
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const elapsed = clock.getElapsedTime();
+            const delta = clock.getDelta() || 0.016;
+
+            shaderMat.uniforms.uTime.value = elapsed;
+
+            // Animate particles in orbital paths
+            const posAttr = pGeometry.attributes.position;
+            for (let i = 0; i < particleCount; i++) {
+                const m = meta[i];
+                m.angle += m.speed * delta;
+                
+                const r = m.radius + m.wobble * Math.sin(elapsed * 0.3 + m.phase);
+                const y = m.y + 0.3 * Math.sin(elapsed * 0.2 + m.phase);
+                
+                posAttr.array[i*3] = Math.cos(m.angle) * r;
+                posAttr.array[i*3+1] = y;
+                posAttr.array[i*3+2] = Math.sin(m.angle) * r;
+            }
+            posAttr.needsUpdate = true;
+
+            // Gentle system rotation for parallax
+            particleSystem.rotation.y = elapsed * 0.02;
+            particleSystem.rotation.x = 0.05 * Math.sin(elapsed * 0.1);
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            renderer.setSize(w, h);
+            camera.aspect = w / h;
+            camera.updateProjectionMatrix();
+            shaderMat.uniforms.uRes.value.set(w, h);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Solar System</title>
+<style>
+body { margin: 0; overflow: hidden; background: #000; }
+canvas { display: block; }
+</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 500);
+camera.position.set(0, 14, 24);
+camera.lookAt(0, 0, 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
+document.body.appendChild(renderer.domElement);
+
+// Sun
+const sunGeo = new THREE.SphereGeometry(2, 32, 32);
+const sunMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+const sun = new THREE.Mesh(sunGeo, sunMat);
+scene.add(sun);
+
+const sunLight = new THREE.PointLight(0xffffff, 1.5, 200);
+sun.add(sunLight);
+
+// Stars
+const starCount = 2000;
+const starPositions = new Float32Array(starCount * 3);
+for (let i = 0; i < starCount; i++) {
+    const r = 150 + Math.random() * 100;
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2 * Math.random() - 1);
+    starPositions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+    starPositions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+    starPositions[i * 3 + 2] = r * Math.cos(phi);
+}
+const starGeo = new THREE.BufferGeometry();
+starGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+const starMat = new THREE.PointsMaterial({ color: 0x8888ff, size: 2.5, sizeAttenuation: true });
+const stars = new THREE.Points(starGeo, starMat);
+scene.add(stars);
+
+// Planet definitions
+const planetData = [
+    { name: 'Mercury', orbitRadius: 2.5, radius: 0.45, color: 0x999999, speed: 1.0 },
+    { name: 'Venus', orbitRadius: 4.6, radius: 0.7, color: 0xe8c56d, speed: 0.7 },
+    { name: 'Earth', orbitRadius: 6.8, radius: 0.75, color: 0x4488ff, speed: 0.55 },
+    { name: 'Mars', orbitRadius: 9.1, radius: 0.55, color: 0xcc5533, speed: 0.45 },
+    { name: 'Jupiter', orbitRadius: 11.3, radius: 2.0, color: 0xddaa77, speed: 0.3 },
+    { name: 'Saturn', orbitRadius: 13.6, radius: 1.8, color: 0xeedd99, speed: 0.22 },
+    { name: 'Uranus', orbitRadius: 15.8, radius: 1.1, color: 0x88ccee, speed: 0.15 },
+    { name: 'Neptune', orbitRadius: 18, radius: 1.0, color: 0x4466dd, speed: 0.1 }
+];
+
+const planets = [];
+
+planetData.forEach((data, index) => {
+    // Orbit line
+    const orbitPoints = [];
+    for (let i = 0; i <= 128; i++) {
+        const angle = (i / 128) * Math.PI * 2;
+        orbitPoints.push(new THREE.Vector3(
+            Math.cos(angle) * data.orbitRadius,
+            0,
+            Math.sin(angle) * data.orbitRadius
+        ));
+    }
+    const orbitGeo = new THREE.BufferGeometry().setFromPoints(orbitPoints);
+    const orbitMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.12 });
+    const orbitLine = new THREE.Line(orbitGeo, orbitMat);
+    scene.add(orbitLine);
+
+    // Planet mesh
+    const planetGeo = new THREE.SphereGeometry(data.radius, 24, 24);
+    const planetMat = new THREE.MeshStandardMaterial({ color: data.color, roughness: 0.7, metalness: 0.1 });
+    const planetMesh = new THREE.Mesh(planetGeo, planetMat);
+
+    // Saturn ring
+    if (data.name === 'Saturn') {
+        const ringGeo = new THREE.RingGeometry(data.radius * 1.4, data.radius * 2.2, 64);
+        const ringMat = new THREE.MeshStandardMaterial({
+            color: 0xccbb77,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.7,
+            roughness: 0.8
+        });
+        const ring = new THREE.Mesh(ringGeo, ringMat);
+        ring.rotation.x = Math.PI / 2.3;
+        planetMesh.add(ring);
+    }
+
+    // Earth's moon
+    let moon = null;
+    if (data.name === 'Earth') {
+        const moonGeo = new THREE.SphereGeometry(0.12, 12, 12);
+        const moonMat = new THREE.MeshStandardMaterial({ color: 0xbbbbbb, roughness: 0.9 });
+        moon = new THREE.Mesh(moonGeo, moonMat);
+        planetMesh.add(moon);
+    }
+
+    scene.add(planetMesh);
+    planets.push({
+        mesh: planetMesh,
+        moon: moon,
+        orbitRadius: data.orbitRadius,
+        speed: data.speed,
+        angle: Math.random() * Math.PI * 2,
+        moonAngle: 0
+    });
+});
+
+// Animation
+const clock = new THREE.Clock();
+let cameraAngle = 0;
+
+function animate() {
+    requestAnimationFrame(animate);
+    const dt = clock.getDelta();
+
+    // Slow camera orbit
+    cameraAngle += dt * 0.05;
+    const camRadius = 24;
+    const camHeight = 14;
+    camera.position.set(
+        Math.cos(cameraAngle) * camRadius,
+        camHeight,
+        Math.sin(cameraAngle) * camRadius
+    );
+    camera.lookAt(0, 0, 0);
+
+    // Update planets
+    planets.forEach(p => {
+        p.angle += dt * p.speed * 4.0;
+        p.mesh.position.set(
+            Math.cos(p.angle) * p.orbitRadius,
+            0,
+            Math.sin(p.angle) * p.orbitRadius
+        );
+
+        // Moon orbit
+        if (p.moon) {
+            p.moonAngle += dt * 3.0;
+            p.moon.position.set(
+                Math.cos(p.moonAngle) * 1.0,
+                0.1,
+                Math.sin(p.moonAngle) * 1.0
+            );
+        }
+    });
+
+    renderer.render(scene, camera);
+}
+
+animate();
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>

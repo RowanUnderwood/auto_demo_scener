@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Boids</title>
+<style>
+body { margin: 0; overflow: hidden; }
+canvas { display: block; }
+</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const NUM_BOIDS = 200;
+const BOUNDS = 10;
+const SEP_SQ = 1.0;
+const ALI_SQ = 9.0;
+const COH_SQ = 25.0;
+const MAX_SPEED = 3.0;
+const MIN_SPEED = 0.5;
+const SEP_FORCE = 0.04;
+const ALI_FORCE = 0.05;
+const COH_FORCE = 0.008;
+
+const positions = new Float32Array(NUM_BOIDS * 3);
+const velocities = new Float32Array(NUM_BOIDS * 3);
+
+for (let i = 0; i < NUM_BOIDS; i++) {
+    positions[i*3]   = (Math.random() - 0.5) * 2 * BOUNDS;
+    positions[i*3+1] = (Math.random() - 0.5) * 2 * BOUNDS;
+    positions[i*3+2] = (Math.random() - 0.5) * 2 * BOUNDS;
+    velocities[i*3]   = (Math.random() - 0.5) * 2;
+    velocities[i*3+1] = (Math.random() - 0.5) * 2;
+    velocities[i*3+2] = (Math.random() - 0.5) * 2;
+}
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 200);
+camera.position.set(0, 8, 28);
+camera.lookAt(0, 0, 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setClearColor(0x060618);
+document.body.appendChild(renderer.domElement);
+
+const coneGeo = new THREE.ConeGeometry(0.15, 0.55, 6);
+const coneMat = new THREE.MeshBasicMaterial();
+const mesh = new THREE.InstancedMesh(coneGeo, coneMat, NUM_BOIDS);
+mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(NUM_BOIDS * 3), 3);
+mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
+scene.add(mesh);
+
+const wireGeo = new THREE.BoxGeometry(BOUNDS * 2, BOUNDS * 2, BOUNDS * 2);
+const wireMat = new THREE.MeshBasicMaterial({ color: 0x2a3a5a, wireframe: true, transparent: true, opacity: 0.25 });
+scene.add(new THREE.Mesh(wireGeo, wireMat));
+
+const slowColor = new THREE.Color(0x1a0a4e);
+const fastColor = new THREE.Color(0x00ffff);
+const tmpColor = new THREE.Color();
+const tmpMat = new THREE.Matrix4();
+const tmpQuat = new THREE.Quaternion();
+const tmpPos = new THREE.Vector3();
+const tmpScale = new THREE.Vector3(1, 1, 1);
+const UP = new THREE.Vector3(0, 1, 0);
+const velDir = new THREE.Vector3();
+
+function animate() {
+    requestAnimationFrame(animate);
+
+    for (let i = 0; i < NUM_BOIDS; i++) {
+        const px = positions[i*3], py = positions[i*3+1], pz = positions[i*3+2];
+        const vx = velocities[i*3], vy = velocities[i*3+1], vz = velocities[i*3+2];
+
+        let sx = 0, sy = 0, sz = 0;
+        let ax = 0, ay = 0, az = 0, ac = 0;
+        let cx = 0, cy = 0, cz = 0, cc = 0;
+
+        for (let j = 0; j < NUM_BOIDS; j++) {
+            if (i === j) continue;
+            const dx = px - positions[j*3];
+            const dy = py - positions[j*3+1];
+            const dz = pz - positions[j*3+2];
+            const dSq = dx*dx + dy*dy + dz*dz;
+
+            if (dSq < SEP_SQ) {
+                sx += dx; sy += dy; sz += dz;
+            }
+            if (dSq < ALI_SQ) {
+                ax += velocities[j*3];
+                ay += velocities[j*3+1];
+                az += velocities[j*3+2];
+                ac++;
+            }
+            if (dSq < COH_SQ) {
+                cx += positions[j*3];
+                cy += positions[j*3+1];
+                cz += positions[j*3+2];
+                cc++;
+            }
+        }
+
+        velocities[i*3]   += sx * SEP_FORCE;
+        velocities[i*3+1] += sy * SEP_FORCE;
+        velocities[i*3+2] += sz * SEP_FORCE;
+
+        if (ac > 0) {
+            velocities[i*3]   += (ax / ac - vx) * ALI_FORCE;
+            velocities[i*3+1] += (ay / ac - vy) * ALI_FORCE;
+            velocities[i*3+2] += (az / ac - vz) * ALI_FORCE;
+        }
+
+        if (cc > 0) {
+            velocities[i*3]   += (cx / cc - px) * COH_FORCE;
+            velocities[i*3+1] += (cy / cc - py) * COH_FORCE;
+            velocities[i*3+2] += (cz / cc - pz) * COH_FORCE;
+        }
+
+        const spdSq = velocities[i*3]*velocities[i*3] + velocities[i*3+1]*velocities[i*3+1] + velocities[i*3+2]*velocities[i*3+2];
+        if (spdSq > MAX_SPEED * MAX_SPEED) {
+            const s = MAX_SPEED / Math.sqrt(spdSq);
+            velocities[i*3] *= s; velocities[i*3+1] *= s; velocities[i*3+2] *= s;
+        } else if (spdSq < MIN_SPEED * MIN_SPEED && spdSq > 1e-8) {
+            const s = MIN_SPEED / Math.sqrt(spdSq);
+            velocities[i*3] *= s; velocities[i*3+1] *= s; velocities[i*3+2] *= s;
+        }
+
+        positions[i*3]   += velocities[i*3];
+        positions[i*3+1] += velocities[i*3+1];
+        positions[i*3+2] += velocities[i*3+2];
+
+        if (positions[i*3] > BOUNDS) positions[i*3] -= BOUNDS * 2;
+        else if (positions[i*3] < -BOUNDS) positions[i*3] += BOUNDS * 2;
+        if (positions[i*3+1] > BOUNDS) positions[i*3+1] -= BOUNDS * 2;
+        else if (positions[i*3+1] < -BOUNDS) positions[i*3+1] += BOUNDS * 2;
+        if (positions[i*3+2] > BOUNDS) positions[i*3+2] -= BOUNDS * 2;
+        else if (positions[i*3+2] < -BOUNDS) positions[i*3+2] += BOUNDS * 2;
+    }
+
+    for (let i = 0; i < NUM_BOIDS; i++) {
+        const vx = velocities[i*3], vy = velocities[i*3+1], vz = velocities[i*3+2];
+        const speed = Math.sqrt(vx*vx + vy*vy + vz*vz);
+
+        if (speed > 0.001) {
+            velDir.set(vx / speed, vy / speed, vz / speed);
+            tmpQuat.setFromUnitVectors(UP, velDir);
+        } else {
+            tmpQuat.identity();
+        }
+
+        tmpPos.set(positions[i*3], positions[i*3+1], positions[i*3+2]);
+        tmpMat.compose(tmpPos, tmpQuat, tmpScale);
+        mesh.setMatrixAt(i, tmpMat);
+
+        const t = Math.min(speed / MAX_SPEED, 1.0);
+        tmpColor.copy(slowColor).lerp(fastColor, t);
+        mesh.setColorAt(i, tmpColor);
+    }
+
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.instanceColor.needsUpdate = true;
+
+    renderer.render(scene, camera);
+}
+
+animate();
+
+window.addEventListener('resize', () => {
+    camera.aspect = innerWidth / innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

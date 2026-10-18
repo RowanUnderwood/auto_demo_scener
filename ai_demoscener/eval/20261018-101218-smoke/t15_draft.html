@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Boids</title>
+<style>
+  body { margin: 0; overflow: hidden; }
+</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0a2e);
+
+const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 300);
+camera.position.set(0, 18, 45);
+camera.lookAt(0, 0, 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+const CUBE_HALF = 15;
+
+const cubeGeo = new THREE.BoxGeometry(CUBE_HALF * 2, CUBE_HALF * 2, CUBE_HALF * 2);
+const cubeMat = new THREE.MeshBasicMaterial({ color: 0x1a1a5e, wireframe: true, transparent: true, opacity: 0.25 });
+scene.add(new THREE.Mesh(cubeGeo, cubeMat));
+
+const N = 200;
+const pos = new Float32Array(N * 3);
+const vel = new Float32Array(N * 3);
+
+for (let i = 0; i < N; i++) {
+  pos[i*3]   = (Math.random() - 0.5) * CUBE_HALF * 1.8;
+  pos[i*3+1] = (Math.random() - 0.5) * CUBE_HALF * 1.8;
+  pos[i*3+2] = (Math.random() - 0.5) * CUBE_HALF * 1.8;
+  vel[i*3]   = (Math.random() - 0.5) * 3;
+  vel[i*3+1] = (Math.random() - 0.5) * 3;
+  vel[i*3+2] = (Math.random() - 0.5) * 3;
+}
+
+const coneGeo = new THREE.ConeGeometry(0.3, 1.2, 5);
+const coneMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+const mesh = new THREE.InstancedMesh(coneGeo, coneMat, N);
+mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+scene.add(mesh);
+
+const SEP_SQ  = 1.0;
+const ALI_SQ  = 9.0;
+const COH_SQ  = 25.0;
+const W_SEP   = 0.06;
+const W_ALI   = 0.04;
+const W_COH   = 0.015;
+const MAX_SPD = 5.0;
+const MIN_SPD = 1.0;
+const MAX_SQ  = MAX_SPD * MAX_SPD;
+const MIN_SQ  = MIN_SPD * MIN_SPD;
+const DT      = 0.016;
+
+const UP = new THREE.Vector3(0, 1, 0);
+const _v = new THREE.Vector3();
+const _q = new THREE.Quaternion();
+const _m = new THREE.Matrix4();
+const _c = new THREE.Color();
+const _p = new THREE.Vector3();
+const _s = new THREE.Vector3(1, 1, 1);
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  for (let i = 0; i < N; i++) {
+    const px = pos[i*3], py = pos[i*3+1], pz = pos[i*3+2];
+    const vx = vel[i*3], vy = vel[i*3+1], vz = vel[i*3+2];
+
+    let sx = 0, sy = 0, sz = 0;
+    let ax = 0, ay = 0, az = 0;
+    let cx = 0, cy = 0, cz = 0;
+    let sc = 0, ac = 0, cc = 0;
+
+    for (let j = 0; j < N; j++) {
+      if (j === i) continue;
+      const dx = pos[j*3]   - px;
+      const dy = pos[j*3+1] - py;
+      const dz = pos[j*3+2] - pz;
+      const d2 = dx*dx + dy*dy + dz*dz;
+
+      if (d2 < SEP_SQ && d2 > 1e-4) {
+        sx -= dx / d2;
+        sy -= dy / d2;
+        sz -= dz / d2;
+        sc++;
+      }
+      if (d2 < ALI_SQ) {
+        ax += vel[j*3];
+        ay += vel[j*3+1];
+        az += vel[j*3+2];
+        ac++;
+      }
+      if (d2 < COH_SQ) {
+        cx += pos[j*3];
+        cy += pos[j*3+1];
+        cz += pos[j*3+2];
+        cc++;
+      }
+    }
+
+    let axx = 0, ayy = 0, azz = 0;
+    if (sc > 0) { axx += W_SEP * sx; ayy += W_SEP * sy; azz += W_SEP * sz; }
+    if (ac > 0) { axx += W_ALI * (ax/ac - vx); ayy += W_ALI * (ay/ac - vy); azz += W_ALI * (az/ac - vz); }
+    if (cc > 0) { axx += W_COH * (cx/cc - px); ayy += W_COH * (cy/cc - py); azz += W_COH * (cz/cc - pz); }
+
+    vel[i*3]   = vx + axx;
+    vel[i*3+1] = vy + ayy;
+    vel[i*3+2] = vz + azz;
+
+    const s2 = vel[i*3]*vel[i*3] + vel[i*3+1]*vel[i*3+1] + vel[i*3+2]*vel[i*3+2];
+    if (s2 > MAX_SQ) {
+      const f = MAX_SPD / Math.sqrt(s2);
+      vel[i*3] *= f; vel[i*3+1] *= f; vel[i*3+2] *= f;
+    } else if (s2 < MIN_SQ && s2 > 1e-4) {
+      const f = MIN_SPD / Math.sqrt(s2);
+      vel[i*3] *= f; vel[i*3+1] *= f; vel[i*3+2] *= f;
+    }
+  }
+
+  for (let i = 0; i < N; i++) {
+    pos[i*3]   += vel[i*3]   * DT;
+    pos[i*3+1] += vel[i*3+1] * DT;
+    pos[i*3+2] += vel[i*3+2] * DT;
+
+    if (pos[i*3]   >  CUBE_HALF) pos[i*3]   -= CUBE_HALF * 2;
+    if (pos[i*3]   < -CUBE_HALF) pos[i*3]   += CUBE_HALF * 2;
+    if (pos[i*3+1] >  CUBE_HALF) pos[i*3+1] -= CUBE_HALF * 2;
+    if (pos[i*3+1] < -CUBE_HALF) pos[i*3+1] += CUBE_HALF * 2;
+    if (pos[i*3+2] >  CUBE_HALF) pos[i*3+2] -= CUBE_HALF * 2;
+    if (pos[i*3+2] < -CUBE_HALF) pos[i*3+2] += CUBE_HALF * 2;
+
+    _v.set(vel[i*3], vel[i*3+1], vel[i*3+2]).normalize();
+    _q.setFromUnitVectors(UP, _v);
+
+    _p.set(pos[i*3], pos[i*3+1], pos[i*3+2]);
+    _m.compose(_p, _q, _s);
+    mesh.setMatrixAt(i, _m);
+
+    const spd = Math.sqrt(vel[i*3]*vel[i*3] + vel[i*3+1]*vel[i*3+1] + vel[i*3+2]*vel[i*3+2]);
+    const t = Math.max(0, Math.min(1, (spd - MIN_SPD) / (MAX_SPD - MIN_SPD)));
+    _c.setRGB(
+      0.15 * (1 - t),
+      0.0  + 1.0 * t,
+      0.45 + 0.55 * t
+    );
+    mesh.setColorAt(i, _c);
+  }
+
+  mesh.instanceMatrix.needsUpdate = true;
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+
+  renderer.render(scene, camera);
+}
+
+animate();
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

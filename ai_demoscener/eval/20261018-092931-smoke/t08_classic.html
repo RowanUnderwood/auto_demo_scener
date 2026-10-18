@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Solar System</title>
+<style>
+body{margin:0;overflow:hidden;background:#000}
+canvas{display:block}
+</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 1000);
+camera.position.set(0, 25, 45);
+camera.lookAt(0, 0, 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(devicePixelRatio);
+document.body.appendChild(renderer.domElement);
+
+// Ambient for fill light
+scene.add(new THREE.AmbientLight(0x333333, 0.4));
+
+// Sun
+const sunGeo = new THREE.SphereGeometry(2, 48, 48);
+const sunMat = new THREE.MeshBasicMaterial({ color: 0xffdd33 });
+const sun = new THREE.Mesh(sunGeo, sunMat);
+scene.add(sun);
+const sunLight = new THREE.PointLight(0xffffff, 1.8, 200, 1);
+sun.add(sunLight);
+
+// Planet definitions
+const planetDefs = [
+  { name:'Mercury', orbit:  4, radius: 0.30, color: 0x9e8e7e, speed: 0.80 },
+  { name:'Venus',   orbit:  7.7, radius: 0.50, color: 0xe8c87a, speed: 0.60 },
+  { name:'Earth',   orbit: 11.4, radius: 0.50, color: 0x4488cc, speed: 0.50 },
+  { name:'Mars',    orbit: 15.1, radius: 0.35, color: 0xcc5533, speed: 0.40 },
+  { name:'Jupiter', orbit: 18.9, radius: 1.50, color: 0xcc9966, speed: 0.22 },
+  { name:'Saturn',  orbit: 22.6, radius: 1.20, color: 0xddbb77, speed: 0.18 },
+  { name:'Uranus',  orbit: 26.3, radius: 0.80, color: 0x88ccdd, speed: 0.13 },
+  { name:'Neptune', orbit: 30,  radius: 0.75, color: 0x4466dd, speed: 0.10 }
+];
+
+const bodies = [];
+
+planetDefs.forEach(def => {
+  // Orbit line
+  const pts = [];
+  for (let i = 0; i <= 128; i++) {
+    const a = (i / 128) * Math.PI * 2;
+    pts.push(new THREE.Vector3(Math.cos(a) * def.orbit, 0, Math.sin(a) * def.orbit));
+  }
+  const lineGeo = new THREE.BufferGeometry().setFromPoints(pts);
+  const lineMat = new THREE.LineBasicMaterial({ color: 0x555555, transparent: true, opacity: 0.25 });
+  scene.add(new THREE.Line(lineGeo, lineMat));
+
+  // Planet mesh
+  const geo = new THREE.SphereGeometry(def.radius, 32, 32);
+  const mat = new THREE.MeshStandardMaterial({ color: def.color, roughness: 0.7, metalness: 0.1 });
+  const mesh = new THREE.Mesh(geo, mat);
+  scene.add(mesh);
+
+  // Saturn ring
+  if (def.name === 'Saturn') {
+    const ringGeo = new THREE.RingGeometry(def.radius * 1.4, def.radius * 2.3, 64);
+    const ringMat = new THREE.MeshStandardMaterial({
+      color: 0xc9a84c, side: THREE.DoubleSide, transparent: true, opacity: 0.65
+    });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.rotation.x = Math.PI / 2.4;
+    mesh.add(ring);
+  }
+
+  // Earth's moon
+  let moon = null;
+  if (def.name === 'Earth') {
+    moon = new THREE.Mesh(
+      new THREE.SphereGeometry(0.12, 16, 16),
+      new THREE.MeshStandardMaterial({ color: 0xaaaaaa, roughness: 0.9 })
+    );
+    scene.add(moon);
+  }
+
+  bodies.push({
+    def, mesh, moon,
+    angle: Math.random() * Math.PI * 2,
+    moonAngle: Math.random() * Math.PI * 2
+  });
+});
+
+// Stars
+const starCount = 2000;
+const starPos = new Float32Array(starCount * 3);
+for (let i = 0; i < starCount; i++) {
+  const r = 150 + Math.random() * 250;
+  const theta = Math.random() * Math.PI * 2;
+  const phi = Math.acos(2 * Math.random() - 1);
+  starPos[i*3]   = r * Math.sin(phi) * Math.cos(theta);
+  starPos[i*3+1] = r * Math.cos(phi);
+  starPos[i*3+2] = r * Math.sin(phi) * Math.sin(theta);
+}
+const starGeo = new THREE.BufferGeometry();
+starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.6, sizeAttenuation: true });
+scene.add(new THREE.Points(starGeo, starMat));
+
+// Animation
+let camAngle = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  // Slow camera orbit
+  camAngle += 0.0008;
+  camera.position.set(
+    Math.sin(camAngle) * 48,
+    25,
+    Math.cos(camAngle) * 48
+  );
+  camera.lookAt(0, 0, 0);
+
+  // Rotate sun slowly
+  sun.rotation.y += 0.002;
+
+  // Animate planets
+  bodies.forEach(b => {
+    b.angle += b.def.speed * 0.008;
+    b.mesh.position.set(
+      Math.cos(b.angle) * b.def.orbit,
+      0,
+      Math.sin(b.angle) * b.def.orbit
+    );
+    b.mesh.rotation.y += 0.01;
+
+    if (b.moon) {
+      b.moonAngle += 0.035;
+      const mr = 1.2;
+      b.moon.position.set(
+        b.mesh.position.x + Math.cos(b.moonAngle) * mr,
+        0,
+        b.mesh.position.z + Math.sin(b.moonAngle) * mr
+      );
+    }
+  });
+
+  renderer.render(scene, camera);
+}
+animate();
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

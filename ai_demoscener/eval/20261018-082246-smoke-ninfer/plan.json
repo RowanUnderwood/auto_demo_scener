@@ -1,0 +1,91 @@
+{
+ "run_id": "20261018-082246-smoke-ninfer",
+ "name": "smoke-ninfer",
+ "created": "2026-10-18T08:22:46",
+ "provider": "ninfer",
+ "model": "qwen3.8-27b",
+ "arms": [
+  {
+   "name": "classic",
+   "overrides": {
+    "generation_strategy": "classic"
+   }
+  },
+  {
+   "name": "classic_matched",
+   "overrides": {
+    "generation_strategy": "classic",
+    "validation": {
+     "max_repair_attempts": 6
+    }
+   }
+  },
+  {
+   "name": "iterative",
+   "overrides": {
+    "generation_strategy": "iterative",
+    "iterative": {
+     "visual_review": false
+    }
+   }
+  },
+  {
+   "name": "iterative_visual",
+   "overrides": {
+    "generation_strategy": "iterative",
+    "iterative": {
+     "visual_review": true
+    }
+   }
+  }
+ ],
+ "trials": [
+  {
+   "mode": "stock",
+   "effect": "Plasma",
+   "category": "shader effect",
+   "id": "t01",
+   "repeat": 1
+  },
+  {
+   "mode": "stock",
+   "effect": "Solar System",
+   "category": "3D scene",
+   "id": "t02",
+   "repeat": 1
+  },
+  {
+   "mode": "stock",
+   "effect": "Boids Flocking",
+   "category": "motion-heavy",
+   "id": "t03",
+   "repeat": 1
+  },
+  {
+   "mode": "stock",
+   "effect": "Auto-Play Tetris",
+   "category": "complex stateful",
+   "id": "t04",
+   "repeat": 1
+  },
+  {
+   "mode": "creative",
+   "effect": "creative",
+   "category": "creative",
+   "id": "t05",
+   "repeat": 1
+  },
+  {
+   "mode": "update",
+   "effect": "update",
+   "category": "archive update",
+   "source": "2026-05-10_procedural_terrain_flythrough_59f6_v4.html",
+   "id": "t06",
+   "repeat": 1
+  }
+ ],
+ "next": 6,
+ "status": "done",
+ "resume_boot_mode": "generate",
+ "notes": []
+}

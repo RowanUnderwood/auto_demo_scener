@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Abyssal Bloom</title>
+<style>html,body{margin:0;padding:0;background:#000;overflow:hidden;width:100vw;height:100vh}canvas{display:block;}</style>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160/build/three.module.js"}}</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script type="module">
+import * as THREE from 'three';
+
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({canvas, antialias:false});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,1.5));
+renderer.setSize(window.innerWidth, window.innerHeight);
+
+const bgScene = new THREE.Scene();
+const bgCam = new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+const bgMat = new THREE.ShaderMaterial({
+  uniforms:{ u_time:{value:0}, u_res:{value:new THREE.Vector2(1,1)} },
+  vertexShader:`varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy,0.0,1.0); }`,
+  fragmentShader:`
+precision highp float;
+varying vec2 vUv;
+uniform float u_time;
+uniform vec2 u_res;
+
+float h21(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
+float n2(vec2 p){
+  vec2 i=floor(p), f=fract(p);
+  f=f*f*(3.0-2.0*f);
+  float a=h21(i), b=h21(i+vec2(1,0)), c=h21(i+vec2(0,1)), d=h21(i+vec2(1,1));
+  return mix(mix(a,b,f.x), mix(c,d,f.x), f.y);
+}
+float fbm3(vec3 p){
+  float s=0.0, a=0.5;
+  for(int i=0;i<4;i++){ s+=a*n2(p.xy+p.z*3.7); p=p*2.01+vec3(2.7,1.3,0.9); a*=0.5; }
+  return s;
+}
+float smin(float a,float b,float k){
+  float h=clamp(0.5+0.5*(b-a)/k,0.0,1.0);
+  return mix(b,a,h)-k*h*(1.0-h);
+}
+
+float blob(vec3 p, float t){
+  float d=1e9;
+  for(int i=0;i<5;i++){
+    float fi=float(i);
+    float ph=fi*1.37+0.5;
+    float r=0.42+0.15*sin(t*0.8+fi*1.2);
+    vec3 c=vec3(
+      sin(t*0.31+ph)*0.9 + cos(t*0.19+ph*1.3)*0.5,
+      cos(t*0.27+ph*0.8)*0.75 + sin(t*0.15+ph)*0.4,
+      sin(t*0.21+ph*1.1)*0.6
+    );
+    d=smin(d, length(p-c)-r, 0.9);
+  }
+  d += 0.018*fbm3(p*5.0+t*0.4)*2.0-0.018;
+  d += 0.009*sin(p.x*12.0+t*1.1)*sin(p.y*11.0-t*0.7)*sin(p.z*10.0+t*0.5);
+  return d;
+}
+
+vec3 calcN(vec3 p, float t){
+  vec2 e=vec2(0.01,0.0);
+  return normalize(
+    e.xyy*blob(p+e.xyy,t)+e.yyx*blob(p+e.yyx,t)+
+    e.yxy*blob(p+e.yxy,t)+e.xxx*blob(p+e.xxx,t)
+  );
+}
+
+vec3 deepsea(vec2 uv, float t, float asp){
+  vec2 p=(uv-0.5)*vec2(asp,1.0);
+  float r=length(p);
+  float ang=atan(p.y,p.x);
+  float rays=0.0;
+  for(int i=0;i<5;i++){
+    float fi=float(i);
+    float rx=ang+0.35*fi-0.7;
+    rays+=pow(max(0.0,cos(rx*3.0+t*0.12)),8.0)*exp(-p.y*1.8-0.5)*exp(-r*0.8)*0.3;
+  }
+  float ca=0.0;
+  for(int i=0;i<3;i++){
+    float fi=float(i);
+    float f=2.0+fi*1.5;
+    vec2 q=p*f+vec2(sin(t*0.2+fi*2.1),cos(t*0.15-fi*1.4))*1.5;
+    ca+=pow(0.5+0.5*sin(q.x+cos(q.y*0.7+t*0.1)),3.0)*pow(0.55,fi)*exp(-r*0.5);
+  }
+  float dust=fbm3(vec3(p*2.0,t*0.04))*0.3;
+  vec3 cDeep=vec3(0.003,0.012,0.025);
+  vec3 cMid=vec3(0.01,0.05,0.09);
+  vec3 cRay=vec3(0.08,0.22,0.32);
+  vec3 col=mix(cDeep,cMid,smoothstep(0.0,0.6,1.0-r));
+  col+=cRay*(rays+ca*0.4+dust*0.15);
+  for(int i=0;i<3;i++){
+    float fi=float(i);
+    vec2 sp=vec2(sin(t*0.1+fi*2.5)*0.5, cos(t*0.08+fi*1.7)*0.35);
+    float d2=length(p-sp);
+    col+=vec3(0.9,0.5,0.15)*exp(-d2*8.0)*(0.3+0.2*sin(t*0.5+fi*2.0))*0.12;
+  }
+  return col;
+}
+
+void main(){
+  float aspect=u_res.x/u_res.y;
+  float t=u_time;
+  vec2 uv=vUv;
+  vec2 p=(uv-0.5)*vec2(aspect,1.0);
+  vec3 ro=vec3(0.0,0.0,4.5);
+  vec3 rd=normalize(vec3(p,-1.2));
+  float march=0.0;
+  bool hit=false;
+  for(int i=0;i<72;i++){
+    float d=blob(ro+rd*march,t);
+    if(d<0.0012){ hit=true; break; }
+    march+=d*0.8;
+    if(march>16.0) break;
+  }
+  vec3 col;
+  if(hit){
+    vec3 pos=ro+rd*march;
+    vec3 n=calcN(pos,t);
+    float fres=pow(1.0-clamp(dot(n,-rd),0.0,1.0),2.8);
+    float sss=pow(max(0.0,1.0+dot(n, normalize(vec3(0.3,0.8,0.5)))),3.0);
+    vec3 sssCol=vec3(1.0,0.55,0.12)*sss*0.8;
+    float inner=1.0-fres;
+    vec3 coreGlow=vec3(0.95,0.35,0.08)*inner*inner*1.2;
+    float caustic=0.0;
+    for(int i=0;i<3;i++){
+      float fi=float(i);
+      float f=4.0+fi*2.5;
+      vec2 q=pos.xz*f+vec2(sin(t*(0.7+fi*0.3)+fi*1.2), cos(t*(0.5+fi*0.2)-fi*2.0));
+      caustic+=pow(0.5+0.5*sin(q.x+cos(q.y*0.5+t*0.2)),4.0)*pow(0.5,fi);
+    }
+    vec3 causticCol=vec3(1.0,0.75,0.3)*caustic*0.7;
+    vec3 rim=vec3(1.0,0.45,0.55)*fres*fres*0.6;
+    float detail=fbm3(pos*8.0+t*0.1)*0.15;
+    vec3 base=vec3(0.85,0.4,0.1)+detail;
+    col=base*0.3+sssCol+coreGlow+causticCol+rim;
+    vec3 bg=deepsea(uv,t,aspect);
+    col=mix(col, bg, pow(fres,5.0)*0.4);
+  } else {
+    col=deepsea(uv,t,aspect);
+  }
+  float vig=smoothstep(1.5,0.3,length(p));
+  col*=mix(0.4,1.0,vig);
+  col+=col*col*0.4;
+  gl_FragColor=vec4(col,1.0);
+}
+`
+});
+bgScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2,2), bgMat));
+
+// ---- FOREGROUND: flow-field plankton particles ----
+const fgScene = new THREE.Scene();
+const fgCam = new THREE.OrthographicCamera(-1,1,1,-1,-10,10);
+
+const NP=900;
+const pPos=new Float32Array(NP*3);
+const pPhase=new Float32Array(NP);
+const pSpeed=new Float32Array(NP);
+const pCol=new Float32Array(NP*3);
+function seedP(i){
+  pPos[i*3]=(Math.random()-0.5)*2.4;
+  pPos[i*3+1]=(Math.random()-0.5)*1.8;
+  pPos[i*3+2]=(Math.random()-0.5)*0.3;
+  pPhase[i]=Math.random()*Math.PI*2;
+  pSpeed[i]=0.03+Math.random()*0.08;
+}
+for(let i=0;i<NP;i++){
+  seedP(i);
+  const hue=0.05+Math.random()*0.12;
+  const lightness=0.4+Math.random()*0.35;
+  const c=new THREE.Color().setHSL(hue, 0.7+Math.random()*0.3, lightness);
+  pCol[i*3]=c.r; pCol[i*3+1]=c.g; pCol[i*3+2]=c.b;
+}
+const pGeo=new THREE.BufferGeometry();
+pGeo.setAttribute('position', new THREE.BufferAttribute(pPos,3));
+pGeo.setAttribute('color', new THREE.BufferAttribute(pCol,3));
+
+const spr=document.createElement('canvas');
+spr.width=48; spr.height=48;
+const sctx=spr.getContext('2d');
+const g=sctx.createRadialGradient(24,24,0,24,24,24);
+g.addColorStop(0,'rgba(255,220,150,1)');
+g.addColorStop(0.3,'rgba(255,180,80,0.5)');
+g.addColorStop(0.7,'rgba(200,100,40,0.15)');
+g.addColorStop(1,'rgba(100,50,20,0)');
+sctx.fillStyle=g; sctx.fillRect(0,0,48,48);
+const sprTex=new THREE.CanvasTexture(spr);
+const pMat=new THREE.PointsMaterial({
+  map:sprTex, size:4, transparent:true,
+  blending:THREE.AdditiveBlending, depthWrite:false, depthTest:false,
+  vertexColors:true, sizeAttenuation:false
+});
+const pts=new THREE.Points(pGeo, pMat);
+pts.renderOrder=1;
+fgScene.add(pts);
+
+// ---- Curved text ribbon ----
+const txt=`ABYSSAL BLOOM /// BIOLUMINESCENT DREAMS /// GLOWING IN THE DEEP DARK /// ABBYSSAL GARDENS IN FULL BLOOM /// PRESS F TO DIVE DEEPER /// THE LIGHT LIVES IN THE DARKNESS /// `;
+const scCv=document.createElement('canvas');
+scCv.width=4096; scCv.height=128;
+const scCv2=scCv.getContext('2d');
+const scTex=new THREE.CanvasTexture(scCv);
+scTex.wrapS=THREE.RepeatWrapping;
+scTex.minFilter=THREE.LinearFilter;
+function redraw(){
+  scCv2.fillStyle='#000';
+  scCv2.fillRect(0,0,scCv.width,scCv.height);
+  scCv2.font='bold 38px "Courier New", monospace';
+  scCv2.textBaseline='middle';
+  scCv2.shadowColor='rgba(255,160,50,0.8)';
+  scCv2.shadowBlur=8;
+  scCv2.fillStyle='#ffb040';
+  scCv2.fillText(txt, 12, 64);
+  scTex.needsUpdate=true;
+}
+redraw();
+
+const scMat=new THREE.ShaderMaterial({
+  uniforms:{ u_time:{value:0}, u_tex:{value:scTex} },
+  vertexShader:`varying vec2 vUv; uniform float u_time;
+  void main(){
+    vUv=uv;
+    vec3 p=position;
+    p.y += sin(p.x*1.8 + u_time*1.5)*0.07;
+    p.y += sin(p.x*4.5 - u_time*2.3)*0.02;
+    p.z += sin(p.x*3.0 + u_time*0.8)*0.04;
+    gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.0);
+  }`,
+  fragmentShader:`varying vec2 vUv; uniform sampler2D u_tex; uniform float u_time;
+  void main(){
+    vec2 t=vec2(vUv.x + u_time*0.035, vUv.y);
+    vec4 c=texture2D(u_tex,t);
+    float pulse=0.85+0.15*sin(u_time*1.2+vUv.x*8.0);
+    gl_FragColor=vec4(c.rgb*pulse, c.a);
+  }`,
+  transparent:true, blending:THREE.AdditiveBlending, depthWrite:false, depthTest:false
+});
+const scPlane=new THREE.Mesh(new THREE.PlaneGeometry(3.2,0.2,256,8), scMat);
+scPlane.position.y=-0.74;
+scPlane.renderOrder=2;
+fgScene.add(scPlane);
+
+// ---- Second text ribbon at top, reversed ----
+const txt2=`/// THE DEEP REMEMBERS EVERY LIGHT /// BIOLUME MEETS BYTE MEET /// `;
+const scCv2b=document.createElement('canvas');
+scCv2b.width=4096; scCv2b.height=96;
+const scCv3=scCv2b.getContext('2d');
+const scTex2=new THREE.CanvasTexture(scCv2b);
+scTex2.wrapS=THREE.RepeatWrapping;
+scTex2.minFilter=THREE.LinearFilter;
+scCv3.fillStyle='#000';
+scCv3.fillRect(0,0,scCv2b.width,scCv2b.height);
+scCv3.font='bold 30px "Courier New", monospace';
+scCv3.textBaseline='middle';
+scCv3.shadowColor='rgba(255,120,60,0.6)';
+scCv3.shadowBlur=6;
+scCv3.fillStyle='#ff8040';
+scCv3.fillText(txt2, 12, 48);
+scTex2.needsUpdate=true;
+
+const scMat2=new THREE.ShaderMaterial({
+  uniforms:{ u_time:{value:0}, u_tex:{value:scTex2} },
+  vertexShader:`varying vec2 vUv; uniform float u_time;
+  void main(){
+    vUv=uv;
+    vec3 p=position;
+    p.y += sin(p.x*2.5 - u_time*1.1)*0.04;
+    gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.0);
+  }`,
+  fragmentShader:`varying vec2 vUv; uniform sampler2D u_tex; uniform float u_time;
+  void main(){
+    vec2 t=vec2(1.0 - vUv.x - u_time*0.025, vUv.y);
+    vec4 c=texture2D(u_tex,t);
+    float pulse=0.8+0.2*sin(u_time*0.9+vUv.x*6.0);
+    gl_FragColor=vec4(c.rgb*pulse*0.7, c.a*0.7);
+  }`,
+  transparent:true, blending:THREE.AdditiveBlending, depthWrite:false, depthTest:false
+});
+const scPlane2=new THREE.Mesh(new THREE.PlaneGeometry(2.8,0.16,200,4), scMat2);
+scPlane2.position.y=0.78;
+scPlane2.renderOrder=2;
+fgScene.add(scPlane2);
+
+// ---- JS 2D value noise (mirrors the GLSL n2) ----
+function h21js(px, py) {
+  const s = Math.sin(px * 127.1 + py * 311.7) * 43758.5453;
+  return s - Math.floor(s);
+}
+function n2js(px, py) {
+  const ix = Math.floor(px), iy = Math.floor(py);
+  let fx = px - ix, fy = py - iy;
+  fx = fx * fx * (3 - 2 * fx);
+  fy = fy * fy * (3 - 2 * fy);
+  const a = h21js(ix, iy);
+  const b = h21js(ix + 1, iy);
+  const c = h21js(ix, iy + 1);
+  const d = h21js(ix + 1, iy + 1);
+  const ab = a + (b - a) * fx;
+  const cd = c + (d - c) * fx;
+  return ab + (cd - ab) * fy;
+}
+
+function resize(){
+  const w=window.innerWidth, h=window.innerHeight;
+  renderer.setSize(w,h);
+  bgMat.uniforms.u_res.value.set(w,h);
+}
+resize();
+window.addEventListener('resize', resize);
+
+let last=performance.now();
+function tick(){
+  const now=performance.now();
+  const dt=Math.min((now-last)/1000, 0.05);
+  last=now;
+  const t=now/1000;
+  for(let i=0;i<NP;i++){
+    const ph=pPhase[i];
+    const spd=pSpeed[i];
+    const x=pPos[i*3], y=pPos[i*3+1];
+    const ang=n2js(x*1.5+t*0.05, y*1.5)*Math.PI*2 + ph*0.3;
+    pPos[i*3]+=Math.cos(ang)*spd*dt;
+    pPos[i*3+1]+=Math.sin(ang)*spd*dt + Math.sin(t*0.5+ph)*0.002;
+    pPos[i*3+2]+=Math.sin(t*0.3+ph)*0.001;
+    if(Math.abs(pPos[i*3])>1.5||Math.abs(pPos[i*3+1])>1.2||Math.abs(pPos[i*3+2])>0.4) seedP(i);
+  }
+  pGeo.attributes.position.needsUpdate=true;
+  bgMat.uniforms.u_time.value=t;
+  scMat.uniforms.u_time.value=t;
+  scMat2.uniforms.u_time.value=t;
+  renderer.autoClear=true;
+  renderer.render(bgScene,bgCam);
+  renderer.autoClear=false;
+  renderer.render(fgScene,fgCam);
+}
+(function loop(){ requestAnimationFrame(loop); tick(); })();
+</script>
+</body>
+</html>

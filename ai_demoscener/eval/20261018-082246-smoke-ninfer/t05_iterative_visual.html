@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body { margin: 0; overflow: hidden; background: #000; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.1, 200);
+camera.position.set(0, 0, 5.5);
+camera.lookAt(0, 0, 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setClearColor(0x000008);
+document.body.appendChild(renderer.domElement);
+
+// ─── Möbius Strip Surface ───
+const R = 2.8, W = 0.6, SX = 1.3;
+const SU = 256, SV = 24;
+
+function mobiusPt(u, v, out) {
+  const h = u * 0.5;
+  const r = R + v * Math.cos(h);
+  out.x = r * Math.cos(u) * SX;
+  out.y = r * Math.sin(u);
+  out.z = v * Math.sin(h);
+  return out;
+}
+
+const pos = [], nrm = [], uv = [], idx = [];
+const pA = new THREE.Vector3(), pB = new THREE.Vector3(), pC = new THREE.Vector3();
+const duV = new THREE.Vector3(), dvV = new THREE.Vector3(), nV = new THREE.Vector3();
+
+for (let i = 0; i <= SU; i++) {
+  const u = (i / SU) * Math.PI * 2;
+  for (let j = 0; j <= SV; j++) {
+    const v = (j / SV - 0.5) * 2 * W;
+    mobiusPt(u, v, pA);
+    pos.push(pA.x, pA.y, pA.z);
+    uv.push(i / SU, j / SV);
+    mobiusPt(u + 0.001, v, pB);
+    mobiusPt(u, v + 0.001, pC);
+    duV.subVectors(pB, pA);
+    dvV.subVectors(pC, pA);
+    nV.crossVectors(duV, dvV).normalize();
+    nrm.push(nV.x, nV.y, nV.z);
+  }
+}
+for (let i = 0; i < SU; i++) {
+  for (let j = 0; j < SV; j++) {
+    const a = i * (SV + 1) + j, b = a + SV + 1;
+    idx.push(a, b, a + 1, a + 1, b, b + 1);
+  }
+}
+const surfGeo = new THREE.BufferGeometry();
+surfGeo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+surfGeo.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+surfGeo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+surfGeo.setIndex(idx);
+
+const stripMat = new THREE.ShaderMaterial({
+  uniforms: { uTime: { value: 0 } },
+  vertexShader: `
+    varying vec2 vUv; varying vec3 vN; varying vec3 vWP;
+    void main(){
+      vUv=uv; vN=normalize(normalMatrix*normal);
+      vWP=(modelMatrix*vec4(position,1.0)).xyz;
+      gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);
+    }`,
+  fragmentShader: `
+    uniform float uTime;
+    varying vec2 vUv; varying vec3 vN; varying vec3 vWP;
+    void main(){
+      vec3 V=normalize(cameraPosition-vWP);
+      vec3 N=normalize(vN);
+      float fres=pow(1.0-abs(dot(V,N)),2.5);
+      float phase=dot(V,N)*4.0+vUv.x*12.566+uTime*0.4;
+      vec3 irid=0.5+0.5*cos(6.2832*(phase+vec3(0.0,0.33,0.67)));
+             vec3 base=vec3(0.06,0.09,0.18);
+       vec3 col=mix(base,irid*0.9,fres*0.85+0.15);
+       col+=vec3(0.04,0.06,0.12);
+      float edge=smoothstep(0.25,0.0,abs(vUv.y-0.5));
+      col+=vec3(0.05,0.2,0.4)*edge*0.4;
+      float pulse=sin(vUv.x*6.2832*3.0-uTime*1.5)*0.5+0.5;
+      col+=vec3(0.02,0.08,0.15)*pulse*edge;
+      float scan=sin(vUv.y*80.0+uTime*3.0)*0.02;
+      col+=scan;
+      gl_FragColor=vec4(col,0.92);
+    }`,
+  transparent: true,
+  side: THREE.DoubleSide,
+  depthWrite: true
+});
+const strip = new THREE.Mesh(surfGeo, stripMat);
+scene.add(strip);
+
+const wire = new THREE.Mesh(surfGeo, new THREE.MeshBasicMaterial({
+  color: 0x1133aa, wireframe: true, transparent: true, opacity: 0.08
+}));
+scene.add(wire);
+
+// ─── Edge Particles (the single boundary curve) ───
+// Edge: x=(R+W*cos(t/2))*cos(t), y=(R+W*cos(t/2))*sin(t), z=W*sin(t/2), t∈[0,4π]
+const NE = 1200;
+const ePos = new Float32Array(NE * 3);
+const eCol = new Float32Array(NE * 3);
+const eOff = new Float32Array(NE);
+const eSpd = new Float32Array(NE);
+const eRad = new Float32Array(NE);
+const eAng = new Float32Array(NE);
+for (let i = 0; i < NE; i++) {
+  eOff[i] = Math.random() * Math.PI * 4;
+  eSpd[i] = 0.25 + Math.random() * 0.35;
+  eRad[i] = (Math.random() - 0.5) * 0.12;
+  eAng[i] = Math.random() * Math.PI * 2;
+}
+const eGeo = new THREE.BufferGeometry();
+eGeo.setAttribute('position', new THREE.BufferAttribute(ePos, 3));
+eGeo.setAttribute('color', new THREE.BufferAttribute(eCol, 3));
+const eMat = new THREE.PointsMaterial({
+  size: 0.035, vertexColors: true, blending: THREE.AdditiveBlending,
+  transparent: true, depthWrite: false, sizeAttenuation: true
+});
+scene.add(new THREE.Points(eGeo, eMat));
+
+// ─── Centerline Particles (inner circle) ───
+const NC = 500;
+const cPos = new Float32Array(NC * 3);
+const cCol = new Float32Array(NC * 3);
+const cOff = new Float32Array(NC);
+const cSpd = new Float32Array(NC);
+for (let i = 0; i < NC; i++) {
+  cOff[i] = Math.random() * Math.PI * 2;
+  cSpd[i] = 0.15 + Math.random() * 0.2;
+}
+const cGeo = new THREE.BufferGeometry();
+cGeo.setAttribute('position', new THREE.BufferAttribute(cPos, 3));
+cGeo.setAttribute('color', new THREE.BufferAttribute(cCol, 3));
+const cMat = new THREE.PointsMaterial({
+  size: 0.025, vertexColors: true, blending: THREE.AdditiveBlending,
+  transparent: true, depthWrite: false, sizeAttenuation: true
+});
+scene.add(new THREE.Points(cGeo, cMat));
+
+// ─── Data Pulse (bright sweeping wave on edge) ───
+const NP = 60;
+const pPos = new Float32Array(NP * 3);
+const pCol = new Float32Array(NP * 3);
+const pGeo = new THREE.BufferGeometry();
+pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+pGeo.setAttribute('color', new THREE.BufferAttribute(pCol, 3));
+const pMat = new THREE.PointsMaterial({
+  size: 0.08, vertexColors: true, blending: THREE.AdditiveBlending,
+  transparent: true, depthWrite: false, sizeAttenuation: true
+});
+scene.add(new THREE.Points(pGeo, pMat));
+
+// ─── Background Stars ───
+const NS = 1500;
+const sPos = new Float32Array(NS * 3);
+for (let i = 0; i < NS; i++) {
+  const th = Math.random() * Math.PI * 2;
+  const ph = Math.acos(2 * Math.random() - 1);
+  const r = 40 + Math.random() * 60;
+  sPos[i*3]   = r * Math.sin(ph) * Math.cos(th);
+  sPos[i*3+1] = r * Math.sin(ph) * Math.sin(th);
+  sPos[i*3+2] = r * Math.cos(ph);
+}
+const sGeo = new THREE.BufferGeometry();
+sGeo.setAttribute('position', new THREE.BufferAttribute(sPos, 3));
+scene.add(new THREE.Points(sGeo, new THREE.PointsMaterial({
+  color: 0x6677cc, size: 0.08, sizeAttenuation: true, transparent: true, opacity: 0.5
+})));
+
+// ─── Animation ───
+const clock = new THREE.Clock();
+const tmpV = new THREE.Vector3();
+const tmpC = new THREE.Color();
+const rotX = new THREE.Vector3(1, 0, 0);
+const rotY = new THREE.Vector3(0, 1, 0);
+
+function edgePt(t, out) {
+  const h = t * 0.5;
+  const r = R + W * Math.cos(h);
+  out.x = r * Math.cos(t) * SX;
+  out.y = r * Math.sin(t);
+  out.z = W * Math.sin(h);
+  return out;
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+  stripMat.uniforms.uTime.value = t;
+
+  const rx = t * 0.12, ry = t * 0.18;
+  strip.rotation.set(rx, ry, 0);
+  wire.rotation.copy(strip.rotation);
+
+  // Breathing scale
+  const breathe = 1.0 + 0.03 * Math.sin(t * 0.5);
+  strip.scale.setScalar(breathe);
+  wire.scale.setScalar(breathe);
+
+  // Update edge particles
+  for (let i = 0; i < NE; i++) {
+    const phase = (eOff[i] + t * eSpd[i]) % (Math.PI * 4);
+    edgePt(phase, tmpV);
+    // Slight radial offset for spread
+    const spread = eRad[i] * Math.sin(t * 0.7 + eAng[i]);
+    tmpV.x += spread * Math.cos(phase);
+    tmpV.y += spread * Math.sin(phase);
+    tmpV.z += spread * 0.5;
+    tmpV.applyAxisAngle(rotX, rx).applyAxisAngle(rotY, ry).multiplyScalar(breathe);
+    ePos[i*3] = tmpV.x; ePos[i*3+1] = tmpV.y; ePos[i*3+2] = tmpV.z;
+    const hue = 0.5 + 0.3 * Math.sin(phase * 0.5 + t * 0.3);
+    tmpC.setHSL(hue, 1.0, 0.55);
+    eCol[i*3] = tmpC.r; eCol[i*3+1] = tmpC.g; eCol[i*3+2] = tmpC.b;
+  }
+  eGeo.attributes.position.needsUpdate = true;
+  eGeo.attributes.color.needsUpdate = true;
+
+  // Update centerline particles
+  for (let i = 0; i < NC; i++) {
+    const a = (cOff[i] + t * cSpd[i]) % (Math.PI * 2);
+    tmpV.set(R * Math.cos(a) * SX, R * Math.sin(a), 0);
+    tmpV.applyAxisAngle(rotX, rx).applyAxisAngle(rotY, ry).multiplyScalar(breathe);
+    cPos[i*3] = tmpV.x; cPos[i*3+1] = tmpV.y; cPos[i*3+2] = tmpV.z;
+    const hue = 0.55 + 0.08 * Math.sin(t * 0.4 + i * 0.05);
+    tmpC.setHSL(hue, 0.7, 0.35);
+    cCol[i*3] = tmpC.r; cCol[i*3+1] = tmpC.g; cCol[i*3+2] = tmpC.b;
+  }
+  cGeo.attributes.position.needsUpdate = true;
+  cGeo.attributes.color.needsUpdate = true;
+
+  // Data pulse: a bright wave sweeping around the edge
+  const pulsePhase = (t * 0.8) % (Math.PI * 4);
+  for (let i = 0; i < NP; i++) {
+    const spread = (i / NP - 0.5) * 0.6;
+    const phase = (pulsePhase + spread) % (Math.PI * 4);
+    edgePt(phase, tmpV);
+    tmpV.applyAxisAngle(rotX, rx).applyAxisAngle(rotY, ry).multiplyScalar(breathe);
+    pPos[i*3] = tmpV.x; pPos[i*3+1] = tmpV.y; pPos[i*3+2] = tmpV.z;
+    const dist = Math.abs((i / NP - 0.5) * 0.6);
+    const bright = Math.exp(-dist * dist * 30.0);
+    tmpC.setRGB(bright * 1.5, bright * 0.9, bright * 1.2);
+    pCol[i*3] = Math.min(tmpC.r, 1); pCol[i*3+1] = Math.min(tmpC.g, 1); pCol[i*3+2] = Math.min(tmpC.b, 1);
+  }
+  pGeo.attributes.position.needsUpdate = true;
+  pGeo.attributes.color.needsUpdate = true;
+
+  renderer.render(scene, camera);
+}
+animate();
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>
