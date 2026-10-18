@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+body { margin: 0; overflow: hidden; background: #030308; }
+canvas { display: block; }
+</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const renderer = new THREE.WebGLRenderer({ antialias: false });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x030308);
+renderer.autoClear = false;
+document.body.appendChild(renderer.domElement);
+renderer.clear();
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 300);
+camera.position.set(0, 0, 14);
+camera.lookAt(0, 0, 0);
+
+const fadeScene = new THREE.Scene();
+const fadeCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const fadeMat = new THREE.MeshBasicMaterial({
+    color: 0x030308,
+    transparent: true,
+    opacity: 0.035,
+    depthWrite: false,
+    depthTest: false
+});
+fadeScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), fadeMat));
+
+function makeSprite() {
+    const c = document.createElement('canvas');
+    c.width = 64; c.height = 64;
+    const ctx = c.getContext('2d');
+    const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    g.addColorStop(0, 'rgba(255,255,255,1)');
+    g.addColorStop(0.15, 'rgba(255,255,255,0.85)');
+    g.addColorStop(0.4, 'rgba(255,255,255,0.4)');
+    g.addColorStop(0.7, 'rgba(255,255,255,0.1)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 64, 64);
+    return new THREE.CanvasTexture(c);
+}
+
+const MAX = 8000;
+const positions = new Float32Array(MAX * 3);
+const colors = new Float32Array(MAX * 3);
+const pAlive = new Uint8Array(MAX);
+const pAge = new Float32Array(MAX);
+const pMaxAge = new Float32Array(MAX);
+const pVx = new Float32Array(MAX);
+const pVy = new Float32Array(MAX);
+const pVz = new Float32Array(MAX);
+const pR = new Float32Array(MAX);
+const pG = new Float32Array(MAX);
+const pB = new Float32Array(MAX);
+const pSize = new Float32Array(MAX);
+let nextIdx = 0;
+
+const geo = new THREE.BufferGeometry();
+geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+const sizes = new Float32Array(MAX);
+geo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+const pMat = new THREE.PointsMaterial({
+    size: 0.22,
+    map: makeSprite(),
+    vertexColors: true,
+    blending: THREE.AdditiveBlending,
+    transparent: true,
+    depthWrite: false,
+    sizeAttenuation: true
+});
+const points = new THREE.Points(geo, pMat);
+scene.add(points);
+
+const emitterColors = [
+    new THREE.Color(0xff6a2a),
+    new THREE.Color(0xffc850),
+    new THREE.Color(0xe83080),
+    new THREE.Color(0x40c0ff),
+    new THREE.Color(0x9060ff),
+    new THREE.Color(0xffe090),
+    new THREE.Color(0x30ffb0)
+];
+
+const emitters = [];
+for (let i = 0; i < 7; i++) {
+    emitters.push({
+        radius: 1.8 + i * 0.5,
+        speed: 0.3 + i * 0.12,
+        phase: (i / 7) * Math.PI * 2,
+        tiltX: 0.2 + i * 0.3,
+        tiltZ: 0.1 + i * 0.25,
+        freqA: 1 + (i % 3) * 0.7,
+        freqB: 2 + (i % 2) * 1.3,
+        acc: 0
+    });
+}
+
+function emitterPos(em, t, out) {
+    const a = em.phase + t * em.speed;
+    const x = Math.sin(a * em.freqA) * em.radius;
+    const y = Math.cos(a * em.freqB + em.tiltX) * em.radius * 0.5;
+    const z = Math.cos(a) * em.radius;
+    const cx = Math.cos(em.tiltZ), sx = Math.sin(em.tiltZ);
+    const cy = Math.cos(em.tiltX * 0.5), sy = Math.sin(em.tiltX * 0.5);
+    out.x = cx * x - sx * z;
+    out.z = sx * x + cx * z;
+    out.y = cy * y - sy * out.z;
+    out.z = sy * y + cy * out.z;
+}
+
+const tmpPos = new THREE.Vector3();
+
+function spawn(px, py, pz, r, g, b) {
+    const i = nextIdx;
+    nextIdx = (nextIdx + 1) % MAX;
+    pAlive[i] = 1;
+    pAge[i] = 0;
+    pMaxAge[i] = 3.5 + Math.random() * 6.5;
+    pVx[i] = (Math.random() - 0.5) * 1.2;
+    pVy[i] = (Math.random() - 0.5) * 1.2;
+    pVz[i] = (Math.random() - 0.5) * 1.2;
+    pR[i] = r; pG[i] = g; pB[i] = b;
+    pSize[i] = 0.5 + Math.random() * 1.5;
+    positions[i * 3] = px + (Math.random() - 0.5) * 0.2;
+    positions[i * 3 + 1] = py + (Math.random() - 0.5) * 0.2;
+    positions[i * 3 + 2] = pz + (Math.random() - 0.5) * 0.2;
+    colors[i * 3] = r;
+    colors[i * 3 + 1] = g;
+    colors[i * 3 + 2] = b;
+}
+
+const SPAWN_RATE = 60;
+const FREQ = 0.9;
+
+let lastTime = performance.now() * 0.001;
+let globalTime = 0;
+
+function animate() {
+    requestAnimationFrame(animate);
+    const now = performance.now() * 0.001;
+    const dt = Math.min(now - lastTime, 0.05);
+    lastTime = now;
+    globalTime = now;
+
+    for (let e = 0; e < 7; e++) {
+        const em = emitters[e];
+        em.acc += SPAWN_RATE * dt;
+        while (em.acc >= 1) {
+            em.acc -= 1;
+            emitterPos(em, now, tmpPos);
+            const c = emitterColors[e];
+            const jitter = 0.15;
+            spawn(
+                tmpPos.x, tmpPos.y, tmpPos.z,
+                c.r + (Math.random() - 0.5) * jitter,
+                c.g + (Math.random() - 0.5) * jitter,
+                c.b + (Math.random() - 0.5) * jitter
+            );
+        }
+    }
+
+    const t = now * 0.7;
+    for (let i = 0; i < MAX; i++) {
+        if (!pAlive[i]) {
+            colors[i * 3] = 0;
+            colors[i * 3 + 1] = 0;
+            colors[i * 3 + 2] = 0;
+            continue;
+        }
+        pAge[i] += dt;
+        if (pAge[i] >= pMaxAge[i]) {
+            pAlive[i] = 0;
+            colors[i * 3] = 0;
+            colors[i * 3 + 1] = 0;
+            colors[i * 3 + 2] = 0;
+            continue;
+        }
+
+        const x = positions[i * 3];
+        const y = positions[i * 3 + 1];
+        const z = positions[i * 3 + 2];
+
+        const f1 = Math.sin((x + z) * FREQ + t * 1.1);
+        const f2 = Math.sin((y + x) * FREQ * 1.3 + t * 0.8);
+        const f3 = Math.sin((z + y) * FREQ * 0.8 + t * 1.4);
+        const f4 = Math.cos(x * FREQ * 1.5 - t * 0.9);
+        const f5 = Math.cos(y * FREQ * 1.2 + t * 1.2);
+        const f6 = Math.cos(z * FREQ * 1.1 - t * 0.7);
+
+        const cvx = f1 + f4 * 0.6;
+        const cvy = f2 + f5 * 0.6;
+        const cvz = f3 + f6 * 0.6;
+
+        const decay = Math.exp(-dt * 0.6);
+        pVx[i] = pVx[i] * decay + cvx * (1 - decay) * 3.0;
+        pVy[i] = pVy[i] * decay + cvy * (1 - decay) * 3.0;
+        pVz[i] = pVz[i] * decay + cvz * (1 - decay) * 3.0;
+
+        positions[i * 3] += pVx[i] * dt;
+        positions[i * 3 + 1] += pVy[i] * dt;
+        positions[i * 3 + 2] += pVz[i] * dt;
+
+        const life = 1 - pAge[i] / pMaxAge[i];
+        const fade = life * life * life;
+        colors[i * 3] = pR[i] * fade;
+        colors[i * 3 + 1] = pG[i] * fade;
+        colors[i * 3 + 2] = pB[i] * fade;
+    }
+
+    geo.attributes.position.needsUpdate = true;
+    geo.attributes.color.needsUpdate = true;
+
+    const camAngle = globalTime * 0.12;
+    camera.position.x = Math.sin(camAngle) * 14;
+    camera.position.z = Math.cos(camAngle) * 14;
+    camera.position.y = Math.sin(globalTime * 0.07) * 3;
+    camera.lookAt(0, 0, 0);
+    camera.updateProjectionMatrix();
+
+    renderer.clearDepth();
+    renderer.render(fadeScene, fadeCamera);
+    renderer.render(scene, camera);
+}
+
+animate();
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>

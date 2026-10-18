@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>HEXCAVE - original demoscene tunnel</title>
+<style>
+  html,body{margin:0;padding:0;background:#000;overflow:hidden;}
+  canvas{position:absolute;left:0;top:0;width:100%;height:100%;display:block;}
+</style>
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js"}}</script>
+<script type="module">
+import { WebGLRenderer, Scene, OrthographicCamera, PlaneGeometry, Mesh, ShaderMaterial, Vector2 } from 'three';
+
+const glCanvas = document.createElement('canvas');
+const ovCanvas = document.createElement('canvas');
+document.body.appendChild(glCanvas);
+document.body.appendChild(ovCanvas);
+
+const renderer = new WebGLRenderer({ canvas: glCanvas, antialias: false });
+const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+renderer.setPixelRatio(dpr);
+
+const scene = new Scene();
+const camera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+const VERT = `
+varying vec2 vUv;
+void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }
+`;
+
+const FRAG = `
+precision highp float;
+uniform float u_time;
+uniform vec2 u_res;
+varying vec2 vUv;
+
+vec2 rot2(vec2 p, float a){ float s=sin(a), c=cos(a); return vec2(p.x*c-p.y*s, p.x*s+p.y*c); }
+
+float hexSD(vec2 p, float R){
+  float d = p.y;
+  d = max(d, -p.y);
+  d = max(d, 0.8660254*p.x + 0.5*p.y);
+  d = max(d, -0.8660254*p.x + 0.5*p.y);
+  d = max(d, 0.8660254*p.x - 0.5*p.y);
+  d = max(d, -0.8660254*p.x - 0.5*p.y);
+  return d - R;
+}
+
+float wallDist(vec3 p){
+  vec2 xy = rot2(p.xy, p.z*0.28);
+  float R = 0.82 + 0.16*sin(p.z*0.5);
+  float d = -hexSD(xy, R);
+  d -= 0.05*(0.5+0.5*sin(p.z*8.0));
+  return d;
+}
+
+vec3 gnorm(vec3 p){
+  vec3 a = vec3( 1.0,-1.0,-1.0);
+  vec3 b = vec3(-1.0, 1.0,-1.0);
+  vec3 c = vec3(-1.0,-1.0, 1.0);
+  vec3 d = vec3( 1.0, 1.0, 1.0);
+  float h = 0.012;
+  return normalize( a*wallDist(p + a*h) + b*wallDist(p + b*h) + c*wallDist(p + c*h) + d*wallDist(p + d*h) );
+}
+
+float ifr(float x){ float f = fract(x); return min(f, 1.0-f); }
+vec3 pal(float x){ return 0.5+0.5*cos(6.28318*(x+vec3(0.0,0.33,0.67))); }
+
+void main(){
+  vec2 q = (gl_FragCoord.xy - 0.5*u_res)/min(u_res.x, u_res.y);
+  float tm = u_time;
+
+  vec3 ro = vec3(0.14*sin(tm*0.7), 0.11*cos(tm*0.53), 0.0);
+  vec3 rd = normalize(vec3(q, 1.3));
+  float yaw  = 0.30*sin(tm*0.40);
+  float pit  = 0.20*sin(tm*0.31+1.3);
+  float roll = 0.22*sin(tm*0.23);
+  rd.xy = rot2(rd.xy, roll);
+  rd.xz = rot2(rd.xz, yaw);
+  rd.yz = rot2(rd.yz, pit);
+  ro.xz = rot2(ro.xz, yaw);
+  ro.yz = rot2(ro.yz, pit);
+
+  float t = 0.0;
+  for(int i=0;i<96;i++){
+    float d = wallDist(ro + rd*t);
+    if(d < 0.001) break;
+    t += d*0.85;
+    if(t > 24.0) break;
+  }
+
+  vec3 p = ro + rd*t;
+  vec3 n = gnorm(p);
+
+  float u = atan(p.y, p.x)/6.28318 + 0.5;
+  float v = p.z;
+
+  float dif = max(dot(n, -rd), 0.0);
+  float spe = pow(max(dot(reflect(rd, n), -rd), 0.0), 40.0);
+
+  vec3 base  = pal(v*0.035 + u*0.25 + tm*0.045);
+  float rib    = smoothstep(0.05, 0.0, ifr(v*0.5));
+  float stripe = smoothstep(0.03, 0.0, ifr(u*12.0));
+  vec3 glow = pal(v*0.02 + tm*0.06 + 0.15);
+
+  vec3 col = base*(0.12 + 1.05*dif);
+  col += glow*rib*1.7*(0.35+dif);
+  col += vec3(0.5,0.55,0.7)*stripe*0.15*dif;
+  col += vec3(0.9,0.95,1.0)*spe*1.2;
+
+  float fog = 1.0 - exp(-0.09*t);
+  col = mix(col, pal(tm*0.03)*0.06, fog);
+  col *= 1.0 - 0.45*dot(q,q);
+  col = col/(1.0 + col*0.35);
+  gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+}
+`;
+
+const uniforms = {
+  u_time: { value: 0 },
+  u_res:  { value: new Vector2(1, 1) }
+};
+const quad = new Mesh(new PlaneGeometry(2, 2),
+  new ShaderMaterial({ uniforms: uniforms, vertexShader: VERT, fragmentShader: FRAG }));
+scene.add(quad);
+
+const octx = ovCanvas.getContext('2d');
+const ovDpr = Math.min(window.devicePixelRatio || 1, 2);
+
+let CW = 0, CH = 0;
+function resize(){
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w, h);
+  uniforms.u_res.value.set(Math.round(w*dpr), Math.round(h*dpr));
+  CW = w; CH = h;
+  ovCanvas.width  = Math.round(w*ovDpr);
+  ovCanvas.height = Math.round(h*ovDpr);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// pre-rendered bobbing star sprite
+function makeStar(size){
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const g = c.getContext('2d');
+  const cx = size*0.5, R = size*0.42, r = size*0.16;
+  const grd = g.createRadialGradient(cx, cx, 0, cx, cx, size*0.5);
+  grd.addColorStop(0, 'rgba(255,240,200,0.9)');
+  grd.addColorStop(0.35, 'rgba(255,190,120,0.35)');
+  grd.addColorStop(1, 'rgba(255,150,80,0)');
+  g.fillStyle = grd;
+  g.fillRect(0, 0, size, size);
+  g.beginPath();
+  for(let i=0;i<10;i++){
+    const ang = -Math.PI/2 + i*Math.PI/5;
+    const rad = (i%2===0) ? R : r;
+    const x = cx + Math.cos(ang)*rad, y = cx + Math.sin(ang)*rad;
+    if(i===0) g.moveTo(x,y); else g.lineTo(x,y);
+  }
+  g.closePath();
+  const sg = g.createLinearGradient(0, cx-R, 0, cx+R);
+  sg.addColorStop(0, '#ffffff');
+  sg.addColorStop(0.5, '#ffd970');
+  sg.addColorStop(1, '#ff8030');
+  g.fillStyle = sg;
+  g.fill();
+  return c;
+}
+const starSprite = makeStar(96);
+
+const SCROLL = "HELLO WORLD *** WELCOME TO HEXCAVE *** AN ORIGINAL DEMOSCENE TUNNEL RAYMARCHED IN ONE FRAGMENT SHADER *** CODE & GRAPHICS BY THE MODEL *** KEEP THE SCROLLING GOING *** ";
+const starsCfg = [
+  { ph: 0.0, sx: 0.34, sy: 0.20, wx: 1.10, wy: 0.70 },
+  { ph: 1.3, sx: 0.22, sy: 0.12, wx: 0.73, wy: 1.30 },
+  { ph: 2.6, sx: 0.30, sy: 0.09, wx: 1.45, wy: 0.90 },
+  { ph: 3.9, sx: 0.15, sy: 0.24, wx: 0.90, wy: 1.55 },
+  { ph: 5.1, sx: 0.26, sy: 0.15, wx: 1.25, wy: 1.10 },
+  { ph: 6.0, sx: 0.38, sy: 0.07, wx: 0.60, wy: 1.80 }
+];
+
+function drawOverlay(tm){
+  octx.setTransform(ovDpr, 0, 0, ovDpr, 0, 0);
+  octx.clearRect(0, 0, CW, CH);
+
+  // copper raster bar (sine-wave band with cycling horizontal gradient)
+  const bandY = CH*0.66, amp = 26, bandH = 26;
+  octx.beginPath();
+  for(let x=0; x<=CW; x+=4){
+    const y = bandY + Math.sin(x*0.015 + tm*2.2)*amp;
+    if(x===0) octx.moveTo(x, y); else octx.lineTo(x, y);
+  }
+  for(let x=CW; x>=0; x-=4){
+    const y = bandY + Math.sin(x*0.015 + tm*2.2)*amp + bandH;
+    octx.lineTo(x, y);
+  }
+  octx.closePath();
+  const cg = octx.createLinearGradient(0, 0, CW, 0);
+  for(let i=0;i<=8;i++){
+    cg.addColorStop(i/8, 'hsl(' + ((tm*90 + i*45) % 360) + ',85%,60%)');
+  }
+  octx.fillStyle = cg;
+  octx.fill();
+
+  // bobbing star sprites
+  octx.globalCompositeOperation = 'lighter';
+  for(const s of starsCfg){
+    const x = CW*0.5 + Math.sin(tm*s.wx + s.ph)*CW*s.sx;
+    const y = CH*0.32 + Math.cos(tm*s.wy + s.ph)*CH*s.sy;
+    const sz = 64 + Math.sin(tm*1.7 + s.ph)*10;
+    octx.drawImage(starSprite, x - sz/2, y - sz/2, sz, sz);
+  }
+  octx.globalCompositeOperation = 'source-over';
+
+  // bobbing logo
+  const ly = 62 + Math.sin(tm*1.7)*10;
+  octx.font = 'bold 46px sans-serif';
+  octx.textAlign = 'center';
+  const lg = octx.createLinearGradient(0, ly-26, 0, ly+14);
+  lg.addColorStop(0, '#ffffff');
+  lg.addColorStop(0.5, '#ffd060');
+  lg.addColorStop(1, '#e05020');
+  octx.fillStyle = 'rgba(0,0,0,0.6)';
+  octx.fillText('HEXCAVE', CW*0.5 + 3, ly + 4);
+  octx.fillStyle = lg;
+  octx.fillText('HEXCAVE', CW*0.5, ly);
+  octx.textAlign = 'left';
+
+  // sine-wave scroller
+  const charW = 26, baseY = CH - 64;
+  const scrollPos = tm * 55;
+  const first = Math.floor(scrollPos / charW);
+  const count = Math.ceil(CW / charW) + 2;
+  octx.font = 'bold 30px sans-serif';
+  for(let i=0;i<count;i++){
+    const idx = ((first + i) % SCROLL.length + SCROLL.length) % SCROLL.length;
+    const ch = SCROLL.charAt(idx);
+    if(ch === ' ') continue;
+    const x = i*charW - (scrollPos - first*charW);
+    const y = baseY + Math.sin(i*0.35 - tm*4.5)*15;
+    const hue = (tm*120 + i*9) % 360;
+    octx.fillStyle = 'rgba(0,0,0,0.55)';
+    octx.fillText(ch, x + 2, y + 3);
+    octx.fillStyle = 'hsl(' + hue + ',85%,62%)';
+    octx.fillText(ch, x, y);
+  }
+}
+
+const t0 = performance.now();
+function frame(){
+  const tm = (performance.now() - t0)/1000;
+  uniforms.u_time.value = tm;
+  renderer.render(scene, camera);
+  drawOverlay(tm);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

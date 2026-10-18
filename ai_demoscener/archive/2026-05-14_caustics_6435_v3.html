@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=0.9">
+<title>Ember Voronoi</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { overflow: hidden; background: #0a0302; }
+canvas { display: block; width: 100vw; height: 100vh; }
+</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const scene = new THREE.Scene();
+const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+const vertexShader = `
+varying vec2 v_uv;
+void main() {
+    v_uv = uv;
+    gl_Position = vec4(position, 1.0);
+}`;
+
+const fragmentShader = `
+precision highp float;
+
+uniform float u_time;
+varying vec2 v_uv;
+
+float voronoiLayer(vec2 uv, float scale, float seed) {
+    vec2 p = uv * scale;
+    vec2 base = floor(p);
+    vec2 f = fract(p);
+
+    float minDist = 1.0;
+
+    for (int yOff = -1; yOff <= 1; yOff++) {
+        for (int xOff = -1; xOff <= 1; xOff++) {
+            vec2 neighbor = vec2(float(xOff), float(yOff));
+            vec2 cell = base + neighbor;
+
+            float t = u_time;
+            float sx = sin(cell.x * 2.3 + cell.y * 1.7 + t * 0.4 + seed)
+                     + 0.5 * cos(cell.y * 3.1 + t * 0.25 + seed * 0.7);
+            float sy = cos(cell.y * 1.9 - cell.x * 2.7 + t * 0.35 + seed)
+                     + 0.5 * sin(cell.x * 2.9 + t * 0.2 + seed * 1.3);
+            vec2 move = vec2(sx, sy) * 0.32;
+
+            vec2 point = cell + 0.5 + move;
+            vec2 diff = p - point;
+            float dist = length(diff);
+            minDist = min(minDist, dist);
+        }
+    }
+
+    return minDist / scale;
+}
+
+void main() {
+    vec2 uv = v_uv;
+    float t = u_time;
+
+    // Organic swirl perturbation
+    float angle = sin(t * 0.15) * 0.4;
+    float ca = cos(angle), sa = sin(angle);
+    mat2 rot = mat2(ca, -sa, sa, ca);
+    vec2 centered = uv - 0.5;
+    centered = rot * centered;
+
+    float warpFreq = 4.2;
+    float amp1 = 0.08;
+    float amp2 = 0.05;
+    vec2 pUv = centered + 0.5;
+    pUv += vec2(
+        sin(centered.y * warpFreq * 5.1 + t * 0.6) * amp1
+            + sin(centered.x * 2.1 + t * 0.13) * amp2,
+        cos(centered.x * warpFreq * 4.7 + t * 0.45) * amp1
+            + cos(centered.y * 3.3 + t * 0.17 + 2.0) * amp2
+    );
+
+    // 4 layers, progressively finer
+    float d0 = voronoiLayer(pUv, 4.0, 0.0);
+    float d1 = voronoiLayer(pUv, 7.5, 11.0);
+    float d2 = voronoiLayer(pUv, 12.0, 23.0);
+    float d3 = voronoiLayer(pUv, 18.0, 37.0);
+
+    float w0 = pow(max(1.0 - d0, 0.0), 50.0);
+    float w1 = pow(max(1.0 - d1, 0.0), 50.0);
+    float w2 = pow(max(1.0 - d2, 0.0), 50.0);
+    float w3 = pow(max(1.0 - d3, 0.0), 50.0);
+
+    float acc = (w0 * 0.35 + w1 * 0.30 + w2 * 0.20 + w3 * 0.15);
+
+    // Edge glow from mid layer
+    float edge = pow(max(1.0 - d2, 0.0), 10.0);
+    float edge2 = pow(max(1.0 - d1, 0.0), 14.0);
+
+    // Ember palette
+    vec3 colA = vec3(0.04, 0.01, 0.005);
+    vec3 colB = vec3(0.35, 0.08, 0.02);
+    vec3 colC = vec3(0.85, 0.3, 0.06);
+    vec3 colD = vec3(1.0, 0.75, 0.2);
+    vec3 colE = vec3(1.0, 0.97, 0.85);
+
+    vec3 col = mix(colA, colB, smoothstep(0.0, 0.25, acc));
+    col = mix(col, colC, smoothstep(0.25, 0.55, acc));
+    col = mix(col, colD, smoothstep(0.55, 0.8, acc));
+    col = mix(col, colE, smoothstep(0.8, 1.0, acc));
+
+    // Additive edge glow
+    col += vec3(1.0, 0.45, 0.1) * edge * 0.2;
+    col += vec3(0.9, 0.2, 0.05) * edge2 * 0.12;
+
+    // Subtle pulsing ambient
+    float pulse = 0.5 + 0.5 * sin(t * 0.3);
+    col += colA * pulse * 0.3;
+
+    // Chromatic edge shift
+    float ca2 = 0.5 + 0.5 * sin(uv.x * 20.0 + t * 2.0);
+    col.r += 0.02 * ca2 * (1.0 - acc);
+
+    // Radial vignette - stronger
+    float vig = 1.0 - 0.7 * length(uv - 0.5);
+    vig = vig * vig;
+    vig = smoothstep(0.0, 1.0, vig);
+    col *= vig;
+
+    // Gentle film grain
+    float grain = fract(sin(dot(uv * 400.0 + t, vec2(12.9898, 78.233))) * 43758.5453);
+    col += (grain - 0.5) * 0.025;
+
+    // Warm tone map
+    col = col / (col + 0.4);
+
+    // Gamma-ish
+    col = pow(max(col, vec3(0.0)), vec3(0.85));
+
+    gl_FragColor = vec4(col, 1.0);
+}`;
+
+const uniforms = {
+    u_time: { value: 0.0 }
+};
+
+const geometry = new THREE.PlaneGeometry(2, 2);
+const material = new THREE.ShaderMaterial({
+    vertexShader,
+    fragmentShader,
+    uniforms
+});
+
+const mesh = new THREE.Mesh(geometry, material);
+scene.add(mesh);
+
+const clock = new THREE.Clock();
+
+function animate() {
+    requestAnimationFrame(animate);
+    uniforms.u_time.value = clock.getElapsedTime();
+    renderer.render(scene, camera);
+}
+
+animate();
+
+window.addEventListener('resize', () => {
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+});
+</script>
+</body>
+</html>

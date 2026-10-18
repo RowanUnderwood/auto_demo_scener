@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Bioluminescent Abyss</title>
+<style>html,body{margin:0;padding:0;background:#000;overflow:hidden;}canvas{display:block;}</style>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}
+</script>
+<script type="module">
+import {
+  Scene, OrthographicCamera, PlaneGeometry, Mesh, ShaderMaterial, WebGLRenderer
+} from 'three';
+
+const renderer = new WebGLRenderer();
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+const scene = new Scene();
+const camera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+const uniforms = {
+  uTime:   { value: 0 },
+  uAspect: { value: window.innerWidth / window.innerHeight }
+};
+
+const frag = [
+"precision highp float;",
+"varying vec2 vUv;",
+"uniform float uTime;",
+"uniform float uAspect;",
+"",
+"float smin(float a, float b, float k){",
+"  float h = clamp(0.5 + 0.5*(b - a)/k, 0.0, 1.0);",
+"  return mix(b, a, h) - k*h*(1.0 - h);",
+"}",
+"",
+"vec3 irid(float t){",
+"  return 0.5 + 0.5*cos(6.2831853*(t + vec3(0.0, 0.35, 0.72)));",
+"}",
+"",
+"vec3 gDrift;",
+"float gPu;",
+"vec3 pc[8];",
+"vec2 tA[5];",
+"vec2 tZ[5];",
+"vec2 tC;",
+"",
+"vec3 pCenter(float i){",
+"  float rx = fract(sin(i*89.3)*437.1);",
+"  float ry = fract(sin(i*13.9)*173.7);",
+"  float rz = fract(sin(i*23.7)*913.3);",
+"  return vec3((rx - 0.5)*6.5, -4.5 + mod(ry*6.0 + uTime*0.55 + i*0.71, 9.0), (rz - 0.5)*5.5);",
+"}",
+"",
+"float dJelly(vec3 p){",
+"  vec3 c = p - gDrift;",
+"  float d = length(c - vec3(0.0, 0.35, 0.0)) - 0.85*gPu;",
+"  d = smin(d, length(c - vec3(0.0, -0.35, 0.0)) - 0.6*gPu, 0.9);",
+"  d = smin(d, length(c - vec3( 0.5, 0.1, 0.22)) - 0.33*gPu, 0.9);",
+"  d = smin(d, length(c - vec3(-0.5, 0.1, 0.22)) - 0.33*gPu, 0.9);",
+"  d = smin(d, length(c - vec3( 0.28, 0.1, -0.42)) - 0.33*gPu, 0.9);",
+"  d = smin(d, length(c - vec3(-0.28, 0.1, -0.42)) - 0.33*gPu, 0.9);",
+"  return d;",
+"}",
+"",
+"float dTent(vec3 p, int k){",
+"  vec3 c = p - gDrift;",
+"  float y1 = -0.25, y0 = -3.7;",
+"  float ty = clamp(c.y, y0, y1);",
+"  float amp = 0.10 + (1.0 - (ty - y0)/(y1 - y0))*0.22;",
+"  float cx = (tA[k].x*tC.x + tA[k].y*tC.y)*amp;",
+"  float cz = (tZ[k].x*tC.x - tZ[k].y*tC.y)*amp;",
+"  vec3 q = vec3(c.x - cx, c.y - ty, c.z - cz);",
+"  return length(q) - 0.09;",
+"}",
+"",
+"float dParticles(vec3 p){",
+"  float d = 1e9;",
+"  for(int i = 0; i < 8; i++) d = min(d, length(p - pc[i]) - 0.055);",
+"  return d;",
+"}",
+"",
+"float dTotal(vec3 p){",
+"  float d = dJelly(p);",
+"  for(int k = 0; k < 5; k++) d = min(d, dTent(p, k));",
+"  d = min(d, dParticles(p));",
+"  return d;",
+"}",
+"",
+"void main(){",
+"  vec2 p2 = (vUv - 0.5)*vec2(uAspect, 1.0);",
+"",
+"  gDrift = vec3(sin(uTime*0.25)*0.5, sin(uTime*0.42)*0.25 - 0.3, cos(uTime*0.3)*0.4);",
+"  gPu = 1.0 + sin(uTime*1.1)*0.14;",
+"  for(int i = 0; i < 8; i++) pc[i] = pCenter(float(i));",
+"  for(int k = 0; k < 5; k++){",
+"    float ph = uTime*0.8 + float(k)*0.8;",
+"    tA[k] = vec2(cos(ph), sin(ph));",
+"    float az = ph*0.7 + float(k)*0.45;",
+"    tZ[k] = vec2(cos(az), sin(az));",
+"  }",
+"",
+"  vec3 ro = vec3(0.0, 0.0, 4.6);",
+"  ro.y += sin(uTime*0.35)*0.18;",
+"  ro.x += cos(uTime*0.27)*0.12;",
+"  vec3 rd = normalize(vec3(p2, -1.5));",
+"",
+"  float dist = 0.0;",
+"  float mType = -1.0;",
+"  float glow = 0.0;",
+"",
+"  for(int i = 0; i < 52; i++){",
+"    vec3 p = ro + rd*dist;",
+"    float dJ = dJelly(p);",
+"    float y1 = -0.25, y0 = -3.7;",
+"    float ty = clamp((p - gDrift).y, y0, y1);",
+"    tC = vec2(cos(ty*1.35), sin(ty*1.35));",
+"    float dT = 1e9;",
+"    for(int k = 0; k < 5; k++) dT = min(dT, dTent(p, k));",
+"    float dP = dParticles(p);",
+"    glow += 0.004/(abs(dJ) + 0.04);",
+"    glow += 0.0025/(abs(dT) + 0.05);",
+"    glow += 0.003/(abs(dP) + 0.06);",
+"    float dm = min(dJ, min(dT, dP));",
+"    if(dm < 0.001){",
+"      if(dJ <= dT && dJ <= dP) mType = 0.0;",
+"      else if(dT <= dP) mType = 1.0;",
+"      else mType = 2.0;",
+"      break;",
+"    }",
+"    dist += dm*0.82;",
+"    if(dist > 14.0) break;",
+"  }",
+"",
+"  vec3 col;",
+"  if(mType < 0.0){",
+"    float y = vUv.y;",
+"    col = mix(vec3(0.0, 0.012, 0.03), vec3(0.02, 0.002, 0.06), y);",
+"    float c1 = 0.5 + 0.5*sin(vUv.x*7.0 + sin(vUv.y*5.0 + uTime*0.6)*1.4 + uTime*0.65);",
+"    float c2 = 0.5 + 0.5*sin(vUv.y*6.0 + sin(vUv.x*6.0 - uTime*0.5)*1.4 + uTime*0.5);",
+"    float caust = pow(max(c1*c2, 0.0), 4.0);",
+"    col += caust*vec3(0.0, 0.022, 0.06)*(1.0 - 0.55*abs(y - 0.85));",
+"  } else {",
+"    vec3 p = ro + rd*dist;",
+"    vec2 e = vec2(0.0012, 0.0);",
+"    vec3 n = normalize(vec3(",
+"      dTotal(p + e.xyy) - dTotal(p - e.xyy),",
+"      dTotal(p + e.yxy) - dTotal(p - e.yxy),",
+"      dTotal(p + e.yyx) - dTotal(p - e.yyx)",
+"    ));",
+"    float fres = pow(1.0 - max(dot(n, -rd), 0.0), 2.6);",
+"    float hue = uTime*0.045;",
+"    if(mType < 0.5){",
+"      vec3 base = irid(0.35 + hue + fres*0.25 + dot(n, vec3(0.0, 1.0, 0.0))*0.15);",
+"      col = base*0.5 + fres*vec3(0.25, 0.65, 1.0)*1.5;",
+"      col += fres*fres*vec3(0.35, 0.2, 0.9)*1.4;",
+"      float pulse = 0.5 + 0.5*sin(uTime*1.1);",
+"      col *= (0.7 + 0.5*pulse);",
+"    } else if(mType < 1.5){",
+"      col = mix(vec3(0.04, 0.14, 0.24), vec3(0.1, 0.55, 0.75), fres)*0.85;",
+"      col += fres*fres*vec3(0.0, 0.4, 0.7);",
+"    } else {",
+"      col = vec3(0.8, 0.95, 1.0);",
+"    }",
+"    float fog = 1.0 - exp(-dist*0.08);",
+"    col = mix(col, vec3(0.0, 0.02, 0.05), fog*0.5);",
+"  }",
+"",
+"  vec3 glowCol = 0.5 + 0.5*cos(6.2831853*(uTime*0.05 + vec3(0.55, 0.0, 0.3)));",
+"  col += clamp(glow, 0.0, 3.0)*0.045*glowCol;",
+"",
+"  float vig = smoothstep(1.55, 0.5, length(p2));",
+"  col *= (0.3 + 0.7*vig);",
+"",
+"  gl_FragColor = vec4(col, 1.0);",
+"}"
+].join("\n");
+
+const vertex = "varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position, 1.0); }";
+
+const material = new ShaderMaterial({ uniforms, vertexShader: vertex, fragmentShader: frag });
+scene.add(new Mesh(new PlaneGeometry(2, 2), material));
+
+window.addEventListener('resize', () => {
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  uniforms.uAspect.value = window.innerWidth / window.innerHeight;
+});
+
+const start = performance.now();
+function animate(){
+  uniforms.uTime.value = (performance.now() - start) / 1000;
+  renderer.render(scene, camera);
+  requestAnimationFrame(animate);
+}
+animate();
+</script>
+</body>
+</html>

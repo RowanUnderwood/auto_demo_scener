@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html>
+<head><title>Cryophase — Bioluminescent Crystal Reef</title><style>*{margin:0}body{overflow:hidden;background:#000}</style></head>
+<body>
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js"}}</script>
+<script type="module">
+import * as THREE from 'three';
+const renderer = new THREE.WebGLRenderer({antialias:false});
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+document.body.appendChild(renderer.domElement);
+
+const quadMat = new THREE.ShaderMaterial({
+  uniforms:{ uTime:{value:0}, uAspect:{value:window.innerWidth/window.innerHeight} },
+  vertexShader:`varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position,1.0); }`,
+  fragmentShader:`
+varying vec2 vUv;
+uniform float uTime;
+uniform float uAspect;
+
+float hash21(vec2 p){ p=fract(p*vec2(233.34,856.23)+0.71); return fract(p.x*p.y*12.9898); }
+float noise2D(vec2 p){
+  vec2 i=floor(p), f=fract(p);
+  float a=hash21(i), b=hash21(i+vec2(1.,0.)), c=hash21(i+vec2(0.,1.)), d=hash21(i+vec2(1.,1.));
+  return mix(mix(a,b,f.x),mix(c,d,f.x),f.y);
+}
+float fbm(vec2 p){ float v=0.0,a=0.5; for(int i=0;i<5;i++){ v+=a*noise2D(p); p=p*2.03+vec2(1.7,-1.3); a*=0.5;} return v; }
+float smin(float a,float b,float k){ float h=clamp(0.5+0.5*(b-a)/k,0.0,1.0); return mix(b,a,h)-k*h*(1.0-h); }
+float sdBox(vec3 p, vec3 b){ vec3 q=abs(p)-b; return length(max(q,0.0))+min(max(q.x,max(q.y,q.z)),0.0); }
+vec3 palette(float x){ return 0.5+0.5*cos(6.28318*(x+vec3(0.55,0.78,0.35))); }
+
+const float FLOOR=-1.2;
+const float CS=2.2;
+
+float crystalSDF(vec3 p,float t){
+  vec3 q=p;
+  q.xz=mod(p.xz,CS)-CS*0.5;
+  vec2 cell=floor(p.xz/CS);
+  float hsh=hash21(cell+17.0);
+  float h=max(0.25, 1.2+0.75*sin(t*0.25+hsh*6.283)+0.4*sin(t*0.13+hsh*11.0));
+  float rot=hsh*3.14159+t*0.08+cell.x*0.3;
+  vec3 qr=q; qr.y=p.y-FLOOR-h;
+  qr.xz=mat2(cos(rot),-sin(rot),sin(rot),cos(rot))*qr.xz;
+  float b1=sdBox(qr,vec3(0.30+0.14*hsh,h,0.30+0.14*hsh));
+  vec3 qr2=qr;
+  float a45=0.7854+hsh*0.4;
+  qr2.xz=mat2(cos(a45),-sin(a45),sin(a45),cos(a45))*qr2.xz;
+  float b2=sdBox(qr2,vec3(0.26,h*0.6+0.15,0.26));
+  return smin(b1,b2,0.12);
+}
+float slabSDF(vec3 p){ return length(max(abs(p-vec3(0.0,FLOOR,0.0))-vec3(60.0,0.04,60.0),0.0)); }
+float sceneSDF(vec3 p,float t){ return min(crystalSDF(p,t),slabSDF(p)); }
+
+float caustics(vec2 q,float t){
+  float v=0.0;
+  for(int i=0;i<3;i++){
+    float fi=float(i);
+    vec2 w=q*(1.0+fi*0.37)+vec2(sin(t*(0.4+fi*0.13)+fi*2.0),cos(t*(0.35-fi*0.11)-fi));
+    float d=abs(sin(w.x*1.7+t*0.2*fi+fi*1.1)+sin(w.y*1.5-t*0.3-fi));
+    v+=pow(1.0-0.5*d,50.0)*0.42;
+  }
+  return v;
+}
+float spores(vec2 u,float t){
+  float v=0.0;
+  for(int i=0;i<3;i++){
+    float fi=float(i);
+    vec2 g=u*(3.5+fi*1.7);
+    g+=vec2(sin(t*(0.15+fi*0.05))*0.6+u.y*0.12, t*(0.13-fi*0.03));
+    vec2 gi=floor(g),gf=fract(g);
+    float h=hash21(gi+fi*31.0);
+    if(h>0.72){
+      vec2 c=vec2(hash21(gi+vec2(3.1,7.7)+fi*11.0),hash21(gi+vec2(9.3,2.5)+fi*17.0));
+      c=0.25+0.5*c;
+      float d=length(gf-c);
+      float tw=0.5+0.5*sin(t*2.6+h*40.0);
+      v+=smoothstep(0.13,0.0,d)*(h-0.72)*5.0*tw;
+    }
+  }
+  return v;
+}
+
+void main(){
+  float t=uTime;
+  vec2 uv=vUv;
+  vec2 p2=(uv-0.5)*vec2(uAspect,1.0);
+
+  float ca=t*0.12;
+  vec3 ro=vec3(sin(ca)*3.5, 1.55+sin(t*0.17)*0.4, 5.5+cos(ca)*1.0);
+  vec3 ta=vec3(0.0,-0.4,0.0);
+  vec3 fw=normalize(ta-ro);
+  vec3 rt=normalize(cross(fw,vec3(0.0,1.0,0.0)));
+  vec3 up=cross(rt,fw);
+  vec3 rd=normalize(p2.x*rt+p2.y*up+1.3*fw);
+
+  vec2 skyU=uv+vec2(0.5+sin(t*0.05)*0.15,0.0);
+  float neb=fbm(skyU*3.0+t*0.03);
+  float neb2=fbm(skyU*6.5-t*0.04);
+  vec3 bg=vec3(0.012,0.02,0.05);
+  bg+=vec3(0.06,0.0,0.14)*pow(neb,2.0)*1.8;
+  bg+=vec3(0.0,0.09,0.18)*pow(neb2,2.5)*2.6;
+  float sh=hash21(floor(uv*220.0)+vec2(t*0.001,0.0));
+  bg+=vec3(0.6,0.7,0.95)*smoothstep(0.9955,1.0,sh)*smoothstep(0.4,0.9,uv.y);
+
+  vec3 col=bg;
+
+  float total=0.0; float hit=0.0; vec3 P=vec3(0.0);
+  for(int i=0;i<80;i++){
+    P=ro+rd*total;
+    float sc=sceneSDF(P,t);
+    if(sc<0.001 && total>0.02){ hit=1.0; break; }
+    total+=sc*0.92;
+    if(total>30.0) break;
+  }
+
+  if(hit>0.5){
+    vec3 n=normalize(vec3(
+      sceneSDF(P+vec3(0.003,0.0,0.0),t)-sceneSDF(P-vec3(0.003,0.0,0.0),t),
+      sceneSDF(P+vec3(0.0,0.003,0.0),t)-sceneSDF(P-vec3(0.0,0.003,0.0),t),
+      sceneSDF(P+vec3(0.0,0.0,0.003),t)-sceneSDF(P-vec3(0.0,0.0,0.003),t)));
+    bool isFloor = P.y < FLOOR+0.06;
+    if(isFloor){
+      float c=caustics(P.xz,t);
+      vec3 fc=vec3(0.015,0.025,0.05)+vec3(0.25,0.65,0.9)*c*0.85+vec3(0.55,0.85,1.0)*pow(c,3.0);
+      fc+=vec3(0.1,0.15,0.25)*smoothstep(0.0,0.5,c);
+      col=mix(col,fc,smoothstep(30.0,4.0,total));
+    } else {
+      vec2 lc=mod(P.xz,CS)-CS*0.5;
+      vec2 cell=floor(P.xz/CS);
+      float hsh=hash21(cell+17.0);
+      float h=max(0.25,1.2+0.75*sin(t*0.25+hsh*6.283)+0.4*sin(t*0.13+hsh*11.0));
+      float eY=clamp((P.y-FLOOR)/(2.0*h),0.0,1.0);
+      float lcd=length(lc);
+      float glow=exp(-lcd*lcd*16.0)*(0.45+0.65*exp(-pow(1.0-eY,2.0)*5.5));
+      float pulse=0.7+0.3*sin(t*1.15+hsh*6.283);
+      vec3 emC=palette(hsh*0.75+0.15*sin(t*0.2)+eY*0.3);
+      float diff=max(dot(n,normalize(vec3(-0.4,0.8,0.5))),0.0);
+      float fres=pow(1.0-max(dot(n,-rd),0.0),3.0);
+      float spec=pow(max(dot(reflect(rd,n),normalize(vec3(-0.4,0.8,0.5))),0.0),30.0);
+      vec3 base=vec3(0.03,0.07,0.13)*(0.35+diff*0.8);
+      vec3 cc=base+vec3(0.15,0.45,0.85)*fres*0.7+vec3(1.0)*spec*0.5+emC*glow*pulse*1.5;
+      col=mix(col,cc,smoothstep(30.0,5.0,total));
+    }
+  }
+
+  col+=vec3(0.5,0.8,1.0)*spores(uv,t)*0.95;
+  col*=smoothstep(1.35,0.4,length(p2)*1.15);
+  col=pow(max(col,vec3(0.0)),vec3(0.4545));
+  gl_FragColor=vec4(col,1.0);
+}`
+});
+
+const scene=new THREE.Scene();
+const cam=new THREE.OrthographicCamera(-1,1,1,-1,-1,1);
+scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2,2), quadMat));
+
+const clock=new THREE.Clock();
+(function anim(){
+  quadMat.uniforms.uTime.value=clock.getElapsedTime();
+  renderer.render(scene,cam);
+  requestAnimationFrame(anim);
+})();
+
+window.addEventListener('resize',()=>{
+  renderer.setSize(window.innerWidth,window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+  quadMat.uniforms.uAspect.value=window.innerWidth/window.innerHeight;
+});
+</script>
+</body>
+</html>

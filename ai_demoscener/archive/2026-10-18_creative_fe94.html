@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Prism Tide Orbs</title>
+<style>html,body{margin:0;padding:0;background:#000;overflow:hidden;width:100vw;height:100vh}canvas{display:block;}</style>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160/build/three.module.js"}}</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script type="module">
+import * as THREE from 'three';
+
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({canvas, antialias:false});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,1.5));
+renderer.setSize(window.innerWidth, window.innerHeight);
+
+// ---- BACKGROUND: raymarched oil-slick orbs over a nebula ----
+const bgScene = new THREE.Scene();
+const bgCam = new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+const bgMat = new THREE.ShaderMaterial({
+  uniforms:{ u_time:{value:0}, u_res:{value:new THREE.Vector2(1,1)} },
+  vertexShader:`varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy,0.0,1.0); }`,
+  fragmentShader:`
+precision highp float;
+varying vec2 vUv;
+uniform float u_time;
+uniform vec2 u_res;
+
+float h21(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
+float n2(vec2 p){
+  vec2 i=floor(p), f=fract(p);
+  float a=h21(i), b=h21(i+vec2(1,0)), c=h21(i+vec2(0,1)), d=h21(i+vec2(1,1));
+  return mix(mix(a,b,f.x), mix(c,d,f.x), f.y);
+}
+float fbm2(vec2 p){
+  float s=0.0, a=0.5;
+  for(int i=0;i<4;i++){ s+=a*n2(p); p=p*2.03+vec2(1.3,0.7); a*=0.5; }
+  return s;
+}
+float smin(float a,float b,float k){
+  float h=clamp(0.5+0.5*(b-a)/k,0.0,1.0);
+  return mix(b,a,h)-k*h*(1.0-h);
+}
+vec3 pal(float x, vec3 d){ return vec3(0.5)+vec3(0.5)*cos(6.283*(x+d)); }
+
+float blob(vec3 p, float t){
+  float d=1e9;
+  for(int i=0;i<6;i++){
+    float fi=float(i);
+    float ph=fi*1.07;
+    float ox=sin(t*0.35+ph)*1.08 + cos(t*0.2+ph)*0.72;
+    float oy=cos(t*0.3+ph)*1.05 + sin(t*0.17+ph)*0.55;
+    float oz=sin(t*0.22+ph)*0.85;
+    vec3 c=vec3(ox,oy,oz);
+    float r=0.38+0.13*sin(t*1.15+fi*0.91);
+    d=smin(d, length(p-c)-r, 0.75);
+  }
+  d += 0.012*sin(p.x*9.0+t*0.7)*sin(p.y*9.0-t*0.5)*sin(p.z*9.0+t*0.3);
+  return d;
+}
+vec3 calcN(vec3 p,float t){
+  vec2 e=vec2(0.008,0.0);
+  return normalize(
+    e.xyy*blob(p+e.xyy,t)+e.yyx*blob(p+e.yyx,t)+
+    e.yxy*blob(p+e.yxy,t)+e.xxx*blob(p+e.xxx,t)
+  );
+}
+vec3 neb(vec2 uv,float t,float asp){
+  vec2 p=(uv-0.5)*vec2(asp,1.0);
+  float r=length(p);
+  float a=atan(p.y,p.x);
+  float arms=pow(0.5+0.5*cos(3.0*a+log(max(r,0.001))*6.0+t*0.15), 5.0);
+  float dust=fbm2(p*3.0+t*0.03);
+  float core=exp(-r*3.5);
+  float v=max(0.0, arms*exp(-r*1.2)*0.85 + (dust-0.5)*0.35 + core*1.3);
+  vec3 c0=vec3(0.015,0.008,0.04);
+  vec3 c1=vec3(0.13,0.03,0.28);
+  vec3 c2=vec3(0.88,0.17,0.55);
+  vec3 c3=vec3(1.0,0.92,0.95);
+  vec3 col=mix(c0,c1,smoothstep(0.0,0.18,v));
+  col=mix(col,c2,smoothstep(0.18,0.45,v));
+  col=mix(col,c3,smoothstep(0.6,1.0,v));
+  return col;
+}
+
+void main(){
+  float aspect=u_res.x/u_res.y;
+  float t=u_time;
+  vec2 uv=vUv;
+  vec2 p=(uv-0.5)*vec2(aspect,1.0);
+  vec3 ro=vec3(0.0,0.0,5.2);
+  vec3 rd=normalize(vec3(p,-1.4));
+  float march=0.0;
+  bool hit=false;
+  for(int i=0;i<64;i++){
+    float d=blob(ro+rd*march,t);
+    if(d<0.001){ hit=true; break; }
+    march+=d*0.82;
+    if(march>14.0) break;
+  }
+  vec3 col;
+  if(hit){
+    vec3 pos=ro+rd*march;
+    vec3 n=calcN(pos,t);
+    float fres=pow(1.0-clamp(dot(n,-rd),0.0,1.0),2.2);
+    // thin-film iridescence: fresnel + surface-height modulation
+    float h=fbm2(pos.xz*1.4 + t*0.05) + 0.25*sin(pos.y*3.0+t*0.3);
+    float film=0.22+fres*0.75+h*0.35+dot(n, normalize(vec3(0.25,0.75,0.8)))*0.12;
+    vec3 irid=pal(film, vec3(0.0,0.33,0.67));
+    // caustic shimmer on the wet-looking surface
+    float ca=0.0;
+    for(int i=0;i<3;i++){
+      float fi=float(i);
+      float f=3.2+fi*2.1;
+      vec2 q=pos.xz*f+vec2(sin(t*(0.55+fi*0.2)+fi), cos(t*(0.4+fi*0.15)-fi*1.7));
+      ca += pow(0.5+0.5*sin(q.x+cos(q.y*0.6+t*0.15)), 3.5)*pow(0.6, fi);
+    }
+    irid += vec3(ca*0.6, ca*0.75, ca*1.0)*0.55;
+    // fresnel rim (cool)
+    irid += fres*fres*vec3(0.5,0.7,1.15)*0.4;
+    // slight nebula transmission at grazing angles
+    vec3 nb=neb(uv,t,aspect);
+    col=mix(irid, nb, pow(fres,4.5)*0.55);
+  } else {
+    col=neb(uv,t,aspect);
+  }
+  float vig=smoothstep(1.35,0.35,length(p));
+  col*=mix(0.35,1.0,vig);
+  gl_FragColor=vec4(col,1.0);
+}
+`
+});
+bgScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2,2), bgMat));
+
+// ---- FOREGROUND: sparkles + sine-warped scroller, drawn additively on top ----
+const fgScene = new THREE.Scene();
+const fgCam = new THREE.OrthographicCamera(-1,1,1,-1,-10,10);
+
+const NP=500;
+const pPos=new Float32Array(NP*3);
+const pVel=new Float32Array(NP*3);
+const pCol=new Float32Array(NP*3);
+function seedP(i){
+  const a=Math.random()*Math.PI*2;
+  const r=0.05+Math.random()*0.45;
+  pPos[i*3]=Math.cos(a)*r;
+  pPos[i*3+1]=Math.sin(a)*r;
+  pPos[i*3+2]=0;
+  const va=Math.random()*Math.PI*2;
+  const vs=0.15+Math.random()*0.35;
+  pVel[i*3]=Math.cos(va)*vs;
+  pVel[i*3+1]=Math.sin(va)*vs;
+  pVel[i*3+2]=0;
+}
+for(let i=0;i<NP;i++){
+  seedP(i);
+  const hue=Math.random();
+  const c=new THREE.Color().setHSL(hue, 0.85, 0.65);
+  pCol[i*3]=c.r; pCol[i*3+1]=c.g; pCol[i*3+2]=c.b;
+}
+const pGeo=new THREE.BufferGeometry();
+pGeo.setAttribute('position', new THREE.BufferAttribute(pPos,3));
+pGeo.setAttribute('color', new THREE.BufferAttribute(pCol,3));
+const spr=document.createElement('canvas');
+spr.width=64; spr.height=64;
+const sctx=spr.getContext('2d');
+const g=sctx.createRadialGradient(32,32,0,32,32,32);
+g.addColorStop(0,'rgba(255,255,255,1)');
+g.addColorStop(0.25,'rgba(255,230,255,0.45)');
+g.addColorStop(1,'rgba(255,180,255,0)');
+sctx.fillStyle=g; sctx.fillRect(0,0,64,64);
+const sprTex=new THREE.CanvasTexture(spr);
+const pMat=new THREE.PointsMaterial({
+  map:sprTex, size:5, transparent:true,
+  blending:THREE.AdditiveBlending, depthWrite:false, depthTest:false,
+  vertexColors:true, sizeAttenuation:false
+});
+const pts=new THREE.Points(pGeo, pMat);
+pts.renderOrder=1;
+fgScene.add(pts);
+
+const txt=`PRISM TIDE ORBS /// GREETZ TO ELECTRIC MONKS, ANSI ASYLUM, HOLOGRAM HEARTS, FUTURE CRACKERS, THE CODE DREAMERS /// OIL SLICK MEETS NEBULA MEETS CAUSTICS /// ONE SHADER OF SWEET SWEET NOTHING /// PRESS F TO KEEP DREAMING /// `;
+const scCv=document.createElement('canvas');
+scCv.width=4096; scCv.height=128;
+const scCv2=scCv.getContext('2d');
+const scTex=new THREE.CanvasTexture(scCv);
+scTex.wrapS=THREE.RepeatWrapping;
+scTex.minFilter=THREE.LinearFilter;
+function redraw(){
+  scCv2.fillStyle='#000';
+  scCv2.fillRect(0,0,scCv.width,scCv.height);
+  scCv2.font='bold 42px "Courier New", monospace';
+  scCv2.textBaseline='middle';
+  scCv2.fillStyle='#7ffeff';
+  scCv2.fillText(txt, 12, 64);
+  scTex.needsUpdate=true;
+}
+redraw();
+const scMat=new THREE.ShaderMaterial({
+  uniforms:{ u_time:{value:0}, u_tex:{value:scTex} },
+  vertexShader:`varying vec2 vUv; uniform float u_time;
+  void main(){
+    vUv=uv;
+    vec3 p=position;
+    p.y += sin(p.x*2.4 + u_time*2.2)*0.055;
+    p.y += sin(p.x*6.0 - u_time*3.1)*0.012;
+    gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.0);
+  }`,
+  fragmentShader:`varying vec2 vUv; uniform sampler2D u_tex; uniform float u_time;
+  void main(){
+    vec2 t=vec2(vUv.x + u_time*0.05, vUv.y);
+    vec4 c=texture2D(u_tex,t);
+    gl_FragColor=vec4(c.rgb,c.a);
+  }`,
+  transparent:true, blending:THREE.AdditiveBlending, depthWrite:false, depthTest:false
+});
+const scPlane=new THREE.Mesh(new THREE.PlaneGeometry(3,0.24,200,6), scMat);
+scPlane.position.y=-0.72;
+scPlane.renderOrder=2;
+fgScene.add(scPlane);
+
+function resize(){
+  const w=window.innerWidth, h=window.innerHeight;
+  renderer.setSize(w,h);
+  bgMat.uniforms.u_res.value.set(w,h);
+}
+resize();
+window.addEventListener('resize', resize);
+
+let last=performance.now();
+function tick(){
+  const now=performance.now();
+  const dt=Math.min((now-last)/1000, 0.05);
+  last=now;
+  const t=now/1000;
+  for(let i=0;i<NP;i++){
+    pPos[i*3]+=pVel[i*3]*dt;
+    pPos[i*3+1]+=pVel[i*3+1]*dt;
+    if(pPos[i*3]>1.4||pPos[i*3]<-1.4||pPos[i*3+1]>1.2||pPos[i*3+1]<-1.2) seedP(i);
+  }
+  pGeo.attributes.position.needsUpdate=true;
+  bgMat.uniforms.u_time.value=t;
+  scMat.uniforms.u_time.value=t;
+  renderer.autoClear=true;
+  renderer.render(bgScene,bgCam);
+  renderer.autoClear=false;
+  renderer.render(fgScene,fgCam);
+}
+(function loop(){ requestAnimationFrame(loop); tick(); })();
+</script>
+</body>
+</html>

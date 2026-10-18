@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Harmonic Tides</title>
+<style>*{margin:0;padding:0;}canvas{display:block;}</style>
+</head>
+<body>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import {EffectComposer} from 'three/addons/postprocessing/EffectComposer.js';
+import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
+import {ShaderPass} from 'three/addons/postprocessing/ShaderPass.js';
+import {UnrealBloomPass} from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+const canvas = document.createElement('canvas');
+document.body.appendChild(canvas);
+
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+
+const scene = new THREE.Scene();
+const camera = new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+const quad = new THREE.PlaneGeometry(2,2);
+
+const NUM = 12;
+
+const frag = `
+precision highp float;
+uniform float uTime;
+uniform vec2 uRes;
+
+vec2 hash2(vec2 p){
+  p = vec2(dot(p,vec2(127.1,311.7)),dot(p,vec2(269.5,183.3)));
+  return fract(sin(p)*43758.5453);
+}
+float noise2(vec2 p){
+  vec2 i=floor(p), f=fract(p);
+  vec2 o1=hash2(i), o2=hash2(i+vec2(1.0,0.0)), o3=hash2(i+vec2(0.0,1.0)), o4=hash2(i+vec2(1.0,1.0));
+  return mix(mix(o1.x,o2.x,f.x),mix(o3.x,o4.x,f.x),f.y);
+}
+float fbm(vec2 p){
+  float v=0.0, a=0.5;
+  for(int i=0;i<4;i++){ v+=a*noise2(p); p*=2.07; a*=0.5; }
+  return v;
+}
+vec3 bioPal(float v){
+  vec3 deep  = vec3(0.01,0.03,0.10);
+  vec3 mid   = vec3(0.0,0.30,0.50);
+  vec3 bright= vec3(0.15,0.85,1.0);
+  vec3 peak  = vec3(1.0,1.0,1.0);
+  vec3 neg   = vec3(0.55,0.02,0.40);
+  float s=clamp(v,-1.0,1.0);
+  if(s<0.0){
+    float t2=-s;
+    vec3 c=mix(deep,neg,smoothstep(0.0,0.35,t2)*smoothstep(1.0,0.35,t2));
+    c+=peak*smoothstep(0.8,1.0,t2)*0.3;
+    return c;
+  } else {
+    float t2=s;
+    vec3 c=mix(deep,mid,smoothstep(0.0,0.25,t2));
+    c=mix(c,bright,smoothstep(0.3,0.62,t2));
+    c=mix(c,peak,smoothstep(0.72,0.95,t2));
+    return c;
+  }
+}
+vec3 hueCol(float h){
+  return 0.5+0.5*cos(6.28318*(h+vec3(0.0,0.33,0.67)));
+}
+
+void main(){
+  float t=uTime;
+  vec2 uv=gl_FragCoord.xy/uRes;
+  float aspect=uRes.x/uRes.y;
+  vec2 p=(uv-0.5)*vec2(aspect,1.0);
+  p+=vec2(sin(t*0.06)*0.12,cos(t*0.04)*0.08);
+
+  float wave=0.0;
+  vec3 glowCol=vec3(0.0);
+
+  for(int i=0;i<${NUM};i++){
+    float fi=float(i);
+    float angle=fi*0.5236+t*0.08+sin(t*0.03+fi*0.7)*0.3;
+    float orbR=0.35+0.25*sin(fi*1.3+t*0.05);
+    vec2 ci=vec2(cos(angle)*orbR, sin(angle)*orbR*0.85);
+
+    float freq=7.0+5.0*sin(fi*1.23+0.5);
+    float r=length(p-ci);
+    float w=sin(r*freq-t*freq*0.22-fi*1.5708)*exp(-r*0.40);
+    wave+=w;
+
+    float pulse=0.5+0.5*sin(t*2.5+fi*1.0472);
+    float glow=0.015/(r*r+0.003)*(0.6+0.4*pulse);
+    float h=fi/float(${NUM})*0.7+0.75;
+    vec3 sc=hueCol(h);
+    glowCol+=glow*sc;
+
+    float ringPhase=mod(t*freq*0.22+fi*1.5708, 6.2832);
+    float ringR=ringPhase/6.2832*2.8;
+    float ring=smoothstep(0.05,0.0,abs(r-ringR))*(1.0-ringR/2.8)*0.6;
+    glowCol+=ring*sc;
+
+    float core=smoothstep(0.025,0.0,r)*(0.65+0.35*pulse);
+    glowCol+=core*vec3(1.0,0.98,0.92)*2.5;
+  }
+
+  wave*=0.20;
+  float depth=fbm(p*3.5+t*0.12)*0.12;
+  float interference=wave+depth*0.4;
+
+  vec3 col=bioPal(interference);
+  col+=glowCol*0.12;
+
+  float vig=1.0-smoothstep(0.35,1.0,length(p));
+  col*=vig*0.8+0.2;
+
+  float caust=fbm(p*7.0+t*0.35+vec2(t*0.02,0.0))*0.05;
+  col+=caust*vec3(0.0,0.08,0.10);
+
+  col*=1.0-smoothstep(1.2,1.6,length(p))*0.4;
+
+  gl_FragColor=vec4(col,1.0);
+}
+`;
+
+const vert = `
+varying vec2 vUv;
+void main(){vUv=uv;gl_Position=vec4(position,1.0);}
+`;
+
+const mat = new THREE.ShaderMaterial({
+  uniforms:{
+    uTime:{value:0},
+    uRes:{value:new THREE.Vector2(window.innerWidth,window.innerHeight)}
+  },
+  vertexShader: vert,
+  fragmentShader: frag
+});
+const mesh = new THREE.Mesh(quad, mat);
+scene.add(mesh);
+
+let composer;
+try {
+  composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth,window.innerHeight), 0.9, 0.45, 0.2);
+  composer.addPass(bloom);
+  composer.setSize(window.innerWidth, window.innerHeight);
+} catch(e){ composer=null; }
+
+window.addEventListener('resize',()=>{
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  mat.uniforms.uRes.value.set(window.innerWidth, window.innerHeight);
+  if(composer){ composer.setSize(window.innerWidth, window.innerHeight); }
+});
+
+const clock = new THREE.Clock();
+function animate(){
+  const t = clock.getElapsedTime();
+  mat.uniforms.uTime.value = t;
+  if(composer) composer.render();
+  else renderer.render(scene,camera);
+  requestAnimationFrame(animate);
+}
+animate();
+</script>
+</body>
+</html>

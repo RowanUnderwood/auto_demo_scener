@@ -3571,5 +3571,219 @@
     "model": "qwen3.8-flash-next-coder-iq1_m",
     "title": "Silk Pendulums On Rails",
     "description": "Colorful pendulums trace silk threads between two dark rails."
+  },
+  "2026-10-18_creative_59b1.html": {
+    "created": "2026-10-18T06:40:52.871247",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen3.8-flash-next-coder-iq1_m",
+    "title": "Hexagonal Tunnel Dreamscape",
+    "description": "Raymarched hexagonal corridors pulsate with spectral light and dancing stars.",
+    "strategy": "iterative",
+    "session": {
+      "outcome": "finished",
+      "turns": 2,
+      "tool_calls": 2,
+      "revisions": 3,
+      "final_revision": 3,
+      "interaction": "native_tools"
+    }
+  },
+  "2026-10-18_creative_ae2e.html": {
+    "created": "2026-10-18T06:43:38.123310",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen3.8-flash-next-coder-iq1_m",
+    "title": "Bioluminescent Mycelium Bloom",
+    "description": "Glowing filaments spread through dark voids, blooming in spectral hues.",
+    "strategy": "iterative",
+    "session": {
+      "outcome": "finished",
+      "turns": 4,
+      "tool_calls": 11,
+      "revisions": 12,
+      "final_revision": 12,
+      "interaction": "native_tools"
+    }
+  },
+  "2026-05-15_gravity_well_grid_5f57_v3.html": {
+    "created": "2026-10-18T06:44:39.541288",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3.8-flash-next-coder-iq1_m",
+    "title": "Bathymetric Flux Field",
+    "description": "Isobaric contours ripple beneath drifting cursor wells.",
+    "strategy": "iterative",
+    "session": {
+      "outcome": "first_draft_ok",
+      "turns": 0,
+      "tool_calls": 0,
+      "revisions": 1,
+      "final_revision": 1,
+      "interaction": "native_tools"
+    }
+  },
+  "2026-09-05_flurry_plasma_tendrils_e393_v2.html": {
+    "created": "2026-10-18T06:45:34.476288",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3.8-flash-next-coder-iq1_m",
+    "title": "Radiant Orbit Trails",
+    "description": "Luminous sparks trace hypnotic paths through deep, fading darkness.",
+    "strategy": "iterative",
+    "session": {
+      "outcome": "first_draft_ok",
+      "turns": 0,
+      "tool_calls": 0,
+      "revisions": 1,
+      "final_revision": 1,
+      "interaction": "native_tools"
+    }
+  },
+  "2026-10-18_creative_fa42.html": {
+    "created": "2026-10-18T06:47:50.946305",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen3.8-flash-next-coder-iq1_m",
+    "title": "Bioluminescent Crystal Reef",
+    "description": "Glowing crystals pulse beneath drifting spores in the dark.",
+    "strategy": "iterative",
+    "session": {
+      "outcome": "first_draft_ok",
+      "turns": 0,
+      "tool_calls": 0,
+      "revisions": 1,
+      "final_revision": 1,
+      "interaction": "native_tools"
+    }
+  },
+  "2026-10-18_creative_fe94.html": {
+    "created": "2026-10-18T06:50:22.008896",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen3.8-flash-next-coder-iq1_m",
+    "title": "Prism Tide Orbs",
+    "description": "Iridescent orbs drift through a nebula, shimmering with caustic light.",
+    "strategy": "iterative",
+    "session": {
+      "outcome": "finished",
+      "turns": 1,
+      "tool_calls": 1,
+      "revisions": 2,
+      "final_revision": 2,
+      "interaction": "native_tools"
+    }
+  },
+  "2026-05-10_wormhole_c39c_v4.html": {
+    "created": "2026-10-18T06:51:32.301639",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3.8-flash-next-coder-iq1_m",
+    "title": "Neon Tunnel Flight",
+    "description": "Glowing stripes and particles guide you through a pulsating cybernetic corridor.",
+    "strategy": "iterative",
+    "session": {
+      "outcome": "finished",
+      "turns": 2,
+      "tool_calls": 5,
+      "revisions": 6,
+      "final_revision": 6,
+      "interaction": "native_tools"
+    }
+  },
+  "2026-05-14_caustics_6435_v3.html": {
+    "created": "2026-10-18T06:52:20.967727",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3.8-flash-next-coder-iq1_m",
+    "title": "Ember Voronoi",
+    "description": "Glowing shards pulse like embers within shifting dark cells.",
+    "strategy": "iterative",
+    "session": {
+      "outcome": "first_draft_ok",
+      "turns": 0,
+      "tool_calls": 0,
+      "revisions": 1,
+      "final_revision": 1,
+      "interaction": "native_tools"
+    }
+  },
+  "2026-10-18_creative_a983.html": {
+    "created": "2026-10-18T06:54:57.695215",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen3.8-flash-next-coder-iq1_m",
+    "title": "Bioluminescent Abyss",
+    "description": "Pulsing jellyfish drift through dark, iridescent waters.",
+    "strategy": "iterative",
+    "session": {
+      "outcome": "finished",
+      "turns": 1,
+      "tool_calls": 1,
+      "revisions": 2,
+      "final_revision": 2,
+      "interaction": "native_tools"
+    }
+  },
+  "2026-10-18_creative_3d6d.html": {
+    "created": "2026-10-18T06:56:56.371470",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen3.8-flash-next-coder-iq1_m",
+    "title": "Abyssal Circuit Streams",
+    "description": "Luminous data flows pulse through dark tunnel corridors.",
+    "strategy": "iterative",
+    "session": {
+      "outcome": "finished",
+      "turns": 1,
+      "tool_calls": 2,
+      "revisions": 3,
+      "final_revision": 3,
+      "interaction": "native_tools"
+    }
+  },
+  "2026-10-18_creative_9a0e.html": {
+    "created": "2026-10-18T06:58:36.636411",
+    "mode": "creative",
+    "effect": "creative",
+    "passed_validation": true,
+    "model": "qwen3.8-flash-next-coder-iq1_m",
+    "title": "Bioluminescent Harmonic Tides",
+    "description": "Glowing orbs ripple through deep waters, casting caustic light shadows.",
+    "strategy": "iterative",
+    "session": {
+      "outcome": "finished",
+      "turns": 1,
+      "tool_calls": 1,
+      "revisions": 2,
+      "final_revision": 2,
+      "interaction": "native_tools"
+    }
+  },
+  "2026-05-17_creative_4d9e_v3.html": {
+    "created": "2026-10-18T07:00:00.218537",
+    "mode": "update",
+    "effect": "update",
+    "passed_validation": true,
+    "model": "qwen3.8-flash-next-coder-iq1_m",
+    "strategy": "iterative",
+    "session": {
+      "outcome": "finished",
+      "turns": 1,
+      "tool_calls": 6,
+      "revisions": 7,
+      "final_revision": 7,
+      "interaction": "native_tools"
+    }
   }
 }

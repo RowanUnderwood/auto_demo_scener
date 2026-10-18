@@ -3,7 +3,7 @@
     "crashes": 0,
     "blanks": 3,
     "total": 3,
-    "runs": 29,
+    "runs": 34,
     "deletions": 0,
     "last_fail": "2026-10-18T05:26:40.163106",
     "by_model": {
@@ -17,7 +17,7 @@
         "crashes": 0,
         "blanks": 2,
         "total": 2,
-        "runs": 4
+        "runs": 9
       }
     }
   },
@@ -73,7 +73,7 @@
     "crashes": 0,
     "blanks": 3,
     "total": 3,
-    "runs": 28,
+    "runs": 35,
     "deletions": 1,
     "last_fail": "2026-10-18T06:19:20.857927",
     "by_model": {
@@ -87,7 +87,7 @@
         "crashes": 0,
         "blanks": 2,
         "total": 2,
-        "runs": 5,
+        "runs": 12,
         "deletions": 1
       }
     }

@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CIRCUITS OF THE ABYSS // by PHOSPHOR DEMO</title>
+<style>html,body{margin:0;padding:0;background:#000;overflow:hidden}canvas{display:block;position:fixed;inset:0}</style>
+</head>
+<body>
+<canvas id="out"></canvas>
+<div style="position:fixed;left:14px;bottom:12px;font:11px monospace;color:#7ff;color:#9ff;opacity:0.55;pointer-events:none;user-select:none;letter-spacing:0.12em">CIRCUITS OF THE ABYSS &nbsp;&middot; a Clifford attractor threaded through a living circuit tunnel &middot; greetz to PHOSPHOR DEMO</div>
+<script type="importmap">
+{"import":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x000000, 1);
+document.body.replaceChild(renderer.domElement, document.getElementById('out'));
+
+// ================== LAYER 1: living circuit tunnel ==================
+const sceneT = new THREE.Scene();
+const camT   = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const aspect = { value: window.innerWidth / window.innerHeight };
+const tU     = { value: 0.0 };
+
+const tunnelMat = new THREE.ShaderMaterial({
+  uniforms: { t: tU, aspect: aspect },
+  vertexShader: `
+    varying vec2 vUv;
+    void main(){ vUv = position.xy*0.5+0.5; gl_Position = vec4(position,1.0); }
+  `,
+  fragmentShader: `
+varying vec2 vUv;
+uniform float t; uniform float aspect;
+
+float hash11(float p){ return fract(sin(p*91.3458)*47453.13); }
+float hash21(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+float hash31(vec2 p, float s){ return fract(sin(dot(p,vec2(127.1,311.7)) + s*13.1)*43758.5453); }
+
+void main(){
+  vec2 p = (vUv - 0.5) * vec2(aspect, 1.0);
+  float r = length(p);
+  float ang = atan(p.y, p.x);
+
+  float tuv_x = ang / 6.28318530718 * 16.0;
+  float tuv_y = 1.0 / max(r, 0.001) + t * 0.85;
+  vec2 tuv = vec2(tuv_x, tuv_y);
+
+  vec2 cell = floor(tuv);
+  vec2 fc   = fract(tuv);
+  float h   = hash21(cell);
+
+  float pl = sin(tuv_x*1.15 + t*0.42) + sin(tuv_y*0.28 + t*0.65) + sin(r*6.0 + t*1.1) + sin(r*13.0 - t*0.35);
+  vec3 plasma = 0.5 + 0.5*cos(6.28318*(pl*0.22 + vec3(0.55,0.78,0.98) + vec3(0.0,0.18,0.55)));
+  plasma = pow(plasma, vec3(2.2,1.6,1.1)) * 0.22;
+
+  float gx = smoothstep(0.024, 0.0, min(fc.x, 1.0-fc.x));
+  float gy = smoothstep(0.024, 0.0, min(fc.y, 1.0-fc.y));
+  float lines = max(gx, gy);
+  float linesThin = max(smoothstep(0.008,0.0,min(fc.x,1.0-fc.x)), smoothstep(0.008,0.0,min(fc.y,1.0-fc.y)));
+
+  float nact = step(0.62, h);
+  float node = (1.0 - smoothstep(0.06, 0.10, length(fc - 0.5))) * nact;
+
+  float dx = abs(fc.x - 0.5);
+  float dy = abs(fc.y - 0.5);
+  float connMask = step(0.22, h) * step(h, 0.62);
+  float conn = smoothstep(0.038, 0.0, min(dx, dy)) * step(0.07, max(dx, dy)) * connMask;
+  float connThin = smoothstep(0.012, 0.0, min(dx, dy)) * step(0.09, max(dx, dy)) * connMask;
+
+  float pulse = 0.5 + 0.5*sin(t*2.4 + h*15.0);
+  float flick = step(0.55, hash31(cell, floor(t*6.0)));
+  float lit = 0.35 + 0.65*pulse*flick;
+
+  vec3 circuit =
+    vec3(0.02,0.55,0.95)*lines*lit*0.55 +
+    vec3(0.55,0.95,1.0)*linesThin*lit*0.9 +
+    vec3(1.0,0.25,0.95)*node*(0.55+0.45*pulse) +
+    vec3(0.10,1.0,0.78)*conn*lit*0.7 +
+    vec3(0.95,1.0,0.80)*connThin*lit;
+
+  float dataSpark = step(0.965, hash31(cell, floor(t*9.0+h*3.0))) * node;
+  circuit += vec3(1.0,0.95,1.0)*dataSpark*1.4;
+
+  vec3 col = plasma + circuit;
+  col *= 1.0/max(r, 0.001) * 0.11;
+  col *= smoothstep(1.0, 0.14, r);
+  col = 1.0 - exp(-col*1.55);
+  float v = smoothstep(1.05, 0.55, r);
+  col *= v*0.4 + 0.6;
+  gl_FragColor = vec4(col, 1.0);
+}
+`
+});
+
+const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), tunnelMat);
+sceneT.add(quad);
+
+// ================== LAYER 2: Clifford attractor streams ==================
+const sceneP = new THREE.Scene();
+const camP   = new THREE.PerspectiveCamera(75, aspect.value, 0.1, 220);
+camP.position.set(0, 0, 0);
+
+const N = 4200;
+const pos = new Float32Array(N * 3);
+const col = new Float32Array(N * 3);
+const aX  = new Float32Array(N);
+const aY  = new Float32Array(N);
+const seed = new Float32Array(N);
+
+for (let i = 0; i < N; i++) {
+  aX[i] = (Math.random() - 0.5) * 2;
+  aY[i] = (Math.random() - 0.5) * 2;
+  seed[i] = Math.random();
+  pos[i*3+0] = aX[i] * 14;
+  pos[i*3+1] = aY[i] * 14;
+  pos[i*3+2] = -Math.random() * 110 - 4;
+  col[i*3+0] = 0.1; col[i*3+1] = 0.9; col[i*3+2] = 0.9;
+}
+
+const geom = new THREE.BufferGeometry();
+geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+geom.setAttribute('color',    new THREE.BufferAttribute(col, 3));
+
+const sprCanvas = document.createElement('canvas');
+sprCanvas.width = sprCanvas.height = 64;
+const sctx = sprCanvas.getContext('2d');
+const grd = sctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+grd.addColorStop(0.00, 'rgba(255,255,255,1)');
+grd.addColorStop(0.18, 'rgba(255,255,255,0.62)');
+grd.addColorStop(0.45, 'rgba(255,255,255,0.18)');
+grd.addColorStop(1.00, 'rgba(255,255,255,0)');
+sctx.fillStyle = grd;
+sctx.fillRect(0, 0, 64, 64);
+const sprTex = new THREE.CanvasTexture(sprCanvas);
+sprTex.minFilter = sprTex.magFilter = THREE.LinearFilter;
+
+const ptsMat = new THREE.PointsMaterial({
+  size: 0.32,
+  sizeAttenuation: true,
+  map: sprTex,
+  vertexColors: true,
+  blending: THREE.AdditiveBlending,
+  transparent: true,
+  depthWrite: false
+});
+const pts = new THREE.Points(geom, ptsMat);
+sceneP.add(pts);
+
+const tmpColor = new THREE.Color();
+
+// ================== resize + loop ==================
+function onResize(){
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w, h);
+  aspect.value = w / h;
+  camP.aspect = w / h;
+  camP.updateProjectionMatrix();
+}
+window.addEventListener('resize', onResize);
+
+const clock = new THREE.Clock();
+const CA = -1.4, CB = 1.6, CC = 1.0, CD = 0.7;
+const SCALE = 14;
+
+function frame(){
+  const t = clock.getElapsedTime();
+  tU.value = t;
+
+  for (let i = 0; i < N; i++) {
+    const x = aX[i], y = aY[i];
+    const nx = Math.sin(CA*y) + CC*Math.cos(CA*x);
+    const ny = Math.sin(CB*x) + CD*Math.cos(CB*y);
+    aX[i] = nx; aY[i] = ny;
+
+    const idx = i*3;
+    pos[idx]   = nx * SCALE;
+    pos[idx+1] = ny * SCALE;
+    pos[idx+2] += 0.34;
+
+    if (pos[idx+2] > 0.3) {
+      pos[idx+2] = -110 - Math.random() * 22;
+      aX[i] = (Math.random() - 0.5) * 2;
+      aY[i] = (Math.random() - 0.5) * 2;
+      seed[i] = Math.random();
+    }
+
+    const zNorm = 1.0 - Math.max(0, (pos[idx+2] + 110) / 110);
+    const hue = 0.52 + 0.46 * (0.5 + 0.5 * Math.sin(nx * 1.6 + ny * 1.2 + t * 0.55));
+    const light = 0.42 + 0.30 * zNorm + 0.14 * seed[i];
+    tmpColor.setHSL(hue % 1.0, 1.0, Math.min(0.78, light));
+    col[idx]   = tmpColor.r;
+    col[idx+1] = tmpColor.g;
+    col[idx+2] = tmpColor.b;
+  }
+  geom.attributes.position.needsUpdate = true;
+  geom.attributes.color.needsUpdate = true;
+
+  renderer.render(sceneT, camT);
+  renderer.autoClear = false;
+  renderer.clearDepth();
+  renderer.render(sceneP, camP);
+  renderer.autoClear = true;
+
+  requestAnimationFrame(frame);
+}
+frame();
+</script>
+</body>
+</html>

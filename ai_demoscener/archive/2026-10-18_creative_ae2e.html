@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>LUMENROOT // bioluminescent mycelium</title>
+<style>html,body{margin:0;height:100%;width:100%;overflow:hidden;background:#000;}</style>
+</head>
+<body>
+<script type="module">
+import * as THREE from 'https://unpkg.com/three@0.150.0/build/three.module.js';
+
+/* ============================ LUMENROOT ============================
+   A brand-new demoscene effect: a bioluminescent mycelium network that
+   grows outward through the void, node by glowing node, spreading
+   luminous filaments and drifting spores. When it reaches its final
+   generation it blooms, holds, dims, and reseeds from a fresh spore.
+   A classic sine-wave greetz scroller floats at the bottom.
+   ================================================================ */
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
+renderer.setClearColor(0x03030a, 1);
+renderer.autoClear = false;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x03030a, 0.0042);
+
+const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 400);
+
+const clock = new THREE.Clock();
+
+/* ---------- growth / network data ---------- */
+const MAX_NODES = 2600;
+let nodes, nodeGen, nodeReveal, sortedNodeIdx, segPairs, maxReveal;
+
+function randVec(){ return new THREE.Vector3((Math.random()*2-1),(Math.random()*2-1),(Math.random()*2-1)); }
+
+function generate(){
+  nodes = []; nodeGen = []; nodeReveal = []; segPairs = [];
+  const queue = [];
+  const rootDir = new THREE.Vector3(Math.random()*2-1, Math.random()*0.6+0.4, Math.random()*2-1).normalize();
+
+  nodes.push(new THREE.Vector3(0,0,0)); nodeGen.push(0); nodeReveal.push(0);
+  const dirs = [rootDir.clone()];
+  queue.push(0);
+
+  while(queue.length && nodes.length < MAX_NODES){
+    const idx = queue.shift();
+    const p = nodes[idx];
+    const g = nodeGen[idx];
+    const parentDir = dirs[idx];
+    const kids = (Math.random() < 0.75) ? (2 + (Math.random()<0.5?1:0)) : 1;
+    for(let k=0;k<kids && nodes.length<MAX_NODES;k++){
+      const outward = p.clone(); const ol = outward.length(); if(ol>0.001) outward.multiplyScalar(1/ol);
+      let d = parentDir.clone().multiplyScalar(0.7)
+              .add(randVec().multiplyScalar(0.6))
+              .add(outward.multiplyScalar(0.35));
+      if(d.lengthSq() < 1e-4) d = randVec();
+      d.normalize();
+      const spread = 1.0 / (1 + g*0.05);
+      const len = (0.9 + Math.random()*1.7) * spread;
+      const cpos = p.clone().add(d.clone().multiplyScalar(len));
+      const crev = nodeReveal[idx] + len;
+      const ci = nodes.length;
+      nodes.push(cpos); nodeGen.push(g+1); nodeReveal.push(crev);
+      dirs.push(d);
+      segPairs.push({ child: ci, from: idx, t: crev });
+      if(g < 22 && Math.random() < 0.94) queue.push(ci);
+    }
+  }
+
+  // sort segments by reveal time so we can progressively draw them
+  segPairs.sort((a,b)=>a.t-b.t);
+  maxReveal = nodeReveal.reduce((m,v)=>v>m?v:m,0);
+  sortedNodeIdx = Array.from(nodeReveal.map((r,i)=>({r,i})).sort((a,b)=>a.r-b.r).map(o=>o.i));
+
+  const linePos = new Float32Array(segPairs.length*2*3);
+  const lineCol = new Float32Array(segPairs.length*2*3);
+  const c0 = new THREE.Color(), c1 = new THREE.Color();
+  for(let s=0;s<segPairs.length;s++){
+    const sp = segPairs[s]; const a = nodes[sp.from], b = nodes[sp.child];
+    const gi = nodeGen[sp.child]; const t = Math.min(1, gi/20);
+    c0.setHSL(0.5 + t*0.36, 0.9, 0.42 + (1-t)*0.2);
+    c1.setHSL(0.5 + t*0.36, 0.95, 0.62);
+    for(const [v,c] of [[a,c0],[b,c1]]){
+      const o=s*6 + (v===b?3:0);
+      linePos[o]=v.x; linePos[o+1]=v.y; linePos[o+2]=v.z;
+      lineCol[o]=c.r; lineCol[o+1]=c.g; lineCol[o+2]=c.b;
+    }
+  }
+
+  const lg = new THREE.BufferGeometry();
+  lg.setAttribute('position', new THREE.BufferAttribute(linePos,3));
+  lg.setAttribute('color', new THREE.BufferAttribute(lineCol,3));
+  const lm = new THREE.LineBasicMaterial({ vertexColors:true, blending:THREE.AdditiveBlending, transparent:true, depthWrite:false });
+  lines = new THREE.LineSegments(lg, lm);
+
+  // nodes: instanced glowing spheres
+  const ngeo = new THREE.SphereGeometry(0.32, 8, 8);
+  const nmat = new THREE.MeshBasicMaterial({ color:0xffffff, blending:THREE.AdditiveBlending, transparent:true, depthWrite:false });
+  nmesh = new THREE.InstancedMesh(ngeo, nmat, MAX_NODES);
+  const nc = new THREE.Color();
+  for(let i=0;i<nodes.length;i++){
+    const t = Math.min(1, nodeGen[i]/20);
+    nc.setHSL(0.52 + t*0.34, 0.95, 0.62 + (1-t)*0.22);
+    nmesh.setColorAt(i, nc);
+  }
+  nmesh.instanceColor.needsUpdate = true;
+
+  // spores drifting around nodes
+  SPORE_N = 520;
+  sporeNode = new Int32Array(SPORE_N);
+  sporeAng = new Float32Array(SPORE_N);
+  sporeRad = new Float32Array(SPORE_N);
+  sporeOrb = new Float32Array(SPORE_N);
+  sporeSpeed = new Float32Array(SPORE_N);
+  for(let i=0;i<SPORE_N;i++){
+    sporeNode[i]=Math.floor(Math.random()*nodes.length);
+    sporeAng[i]=Math.random()*6.283;
+    sporeRad[i]=0.4+Math.random()*1.4;
+    sporeOrb[i]=Math.random()*6.283;
+    sporeSpeed[i]=0.4+Math.random()*1.2;
+  }
+  const sg = new THREE.BufferGeometry();
+  sporePos = new Float32Array(SPORE_N*3);
+  sporeCol = new Float32Array(SPORE_N*3);
+  sg.setAttribute('position', new THREE.BufferAttribute(sporePos,3));
+  sg.setAttribute('color', new THREE.BufferAttribute(sporeCol,3));
+  const sm = new THREE.PointsMaterial({ size:2.6, sizeAttenuation:true, vertexColors:true, blending:THREE.AdditiveBlending, transparent:true, depthWrite:false, map: makeSprite() });
+  spores = new THREE.Points(sg, sm);
+
+  lines && scene.remove(lines);
+  nmesh && scene.remove(nmesh);
+  spores && scene.remove(spores);
+  scene.add(lines); scene.add(nmesh); scene.add(spores);
+}
+
+let lines, nmesh, spores, SPORE_N, sporeNode, sporeAng, sporeRad, sporeOrb, sporeSpeed, sporePos, sporeCol;
+generate();
+
+function makeSprite(){
+  const c=document.createElement('canvas'); c.width=c.height=64;
+  const x=c.getContext('2d');
+  const g=x.createRadialGradient(32,32,0,32,32,32);
+  g.addColorStop(0,'rgba(255,255,255,1)');g.addColorStop(0.25,'rgba(180,255,255,0.6)');g.addColorStop(1,'rgba(0,0,0,0)');
+  x.fillStyle=g;x.fillRect(0,0,64,64);
+  const t=new THREE.CanvasTexture(c); t.needsUpdate=true; return t;
+}
+
+/* ---------- starfield backdrop ---------- */
+const stars = (()=>{
+  const g=new THREE.BufferGeometry(); const n=1500; const p=new Float32Array(n*3);
+  for(let i=0;i<n;i++){ const r=180+Math.random()*120; const u=Math.random()*6.283,v=Math.random()*6.283;
+    p[i*3]=r*Math.sin(v)*Math.cos(u); p[i*3+1]=r*Math.cos(v); p[i*3+2]=r*Math.sin(v)*Math.sin(u);}
+  g.setAttribute('position',new THREE.BufferAttribute(p,3));
+  return new THREE.Points(g,new THREE.PointsMaterial({color:0x99bbee,size:1.8,sizeAttenuation:true,transparent:true,blending:THREE.AdditiveBlending,depthWrite:false}));
+})(); scene.add(stars);
+
+/* ---------- sine greetz scroller ---------- */
+const scCanvas=document.createElement('canvas'); scCanvas.width=2048; scCanvas.height=128;
+const scCtx=scCanvas.getContext('2d');
+const scTex=new THREE.CanvasTexture(scCanvas); scTex.needsUpdate=true;
+const greetz = `*** L U M E N R O O T *** --- THE ELECTRIC MONKS --- FUTURE CRACKERS --- ANSI ASYLUM --- PHOSPHOR DREAMS --- SPORE COLLECTIVE --- NIGHT ENGINE --- GREETZ TO EVERY CREATURE THAT GLOWS IN THE DARK --- A MYCELIUM DOES NOT SLEEP --- IT ONLY BLOOMS --- KEEP THE LIGHTS LOW --- `;
+const scGeo=new THREE.PlaneGeometry(120, 12, 200, 4);
+const scMat=new THREE.ShaderMaterial({
+  uniforms:{ map:{value:scTex}, uTime:{value:0} },
+  vertexShader:`uniform float uTime; varying vec2 vUv; void main(){ vUv=uv; vec3 p=position; p.y += sin(position.x*0.25 + uTime*2.0)*1.2;
+    gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.0); }`,
+  fragmentShader:`varying vec2 vUv; uniform sampler2D map; uniform float uTime;
+  void main(){ float x=fract(vUv.x + uTime*0.015); vec4 t=texture2D(map,vec2(x,vUv.y));
+    float scan=0.85+0.15*sin(vUv.y*120.0);
+    gl_FragColor=vec4(t.rgb*scan, t.a); }`,
+     transparent:true, blending:THREE.AdditiveBlending, depthWrite:false, depthTest:false, side:THREE.DoubleSide
+});
+const scroller=new THREE.Mesh(scGeo,scMat);
+
+function drawScroller(time){
+  scCtx.fillStyle='#000'; scCtx.fillRect(0,0,scCanvas.width,scCanvas.height);
+  const fs=64; scCtx.font=`bold ${fs}px monospace`;
+  const total = fs*0.62;
+  const off = (time*180) % (greetz.length*total);
+  const yb = scCanvas.height*0.62;
+  for(let i=0;i<greetz.length;i++){
+    const px = i*total - off;
+    if(px<-fs||px>scCanvas.width+fs) continue;
+    const hue=(time*40 + i*6)%360;
+    const yy = yb + Math.sin(time*3 + i*0.4)*10;
+    scCtx.fillStyle=`hsl(${hue},100%,65%)`;
+    scCtx.fillText(greetz[i], px, yy);
+  }
+  scTex.needsUpdate=true;
+}
+
+/* ---------- main loop ---------- */
+const GROW_SPEED = 5.5;
+let revealProgress = 0;
+let phase = 'grow';
+let phaseTimer = 0;
+let dim = 1.0;
+let nmat0 = nmesh.material;
+
+function resize(){
+  const w=window.innerWidth,h=window.innerHeight;
+  renderer.setSize(w,h);
+  camera.aspect=w/h; camera.updateProjectionMatrix();
+  scroller.position.set(0,-26,60); scroller.scale.setScalar(1);
+}
+resize();
+window.addEventListener('resize',resize);
+
+function animate(){
+  const dt = Math.min(0.05, clock.getDelta());
+  const t = clock.elapsedTime;
+
+  // camera slow orbit
+  const R = 40;
+  const a = t*0.12;
+  camera.position.set(Math.sin(a)*R, Math.sin(t*0.07)*16, Math.cos(a)*R);
+  camera.lookAt(0,0,0);
+
+  // phase state machine
+  if(phase==='grow'){
+    revealProgress += GROW_SPEED*dt;
+    if(revealProgress >= maxReveal){ phase='bloom'; phaseTimer=0; }
+  } else if(phase==='bloom'){
+    phaseTimer+=dt; dim = 1 + Math.sin(phaseTimer*4)*0.35;
+    if(phaseTimer>3.5){ phase='dim'; phaseTimer=0; }
+  } else {
+    phaseTimer+=dt; dim = Math.max(0, 1 - phaseTimer*1.6);
+    if(phaseTimer>1.6){ revealProgress=0; phase='grow'; generate(); dim=0; }
+  }
+
+  // progressive filaments
+  let drawn=0;
+  for(let s=0;s<segPairs.length;s++){ if(segPairs[s].t<=revealProgress) drawn++; else break; }
+  lines.geometry.setDrawRange(0, drawn*2);
+  lines.material.opacity = dim;
+
+  // nodes pop-in
+  const m = new THREE.Matrix4();
+  const cnt = nodes.length;
+  for(let k=0;k<cnt;k++){
+    let sc = 0;
+    if(nodeReveal[k] <= revealProgress){
+      const pop = Math.min(1,(revealProgress-nodeReveal[k])/1.4);
+      sc = pop*(0.9 + Math.sin(t*3 + nodeGen[k])*0.2);
+    }
+    m.identity();
+    m.elements[0]=sc; m.elements[5]=sc; m.elements[10]=sc;
+    m.elements[12]=nodes[k].x; m.elements[13]=nodes[k].y; m.elements[14]=nodes[k].z;
+    nmesh.setMatrixAt(k,m);
+  }
+  nmesh.count = cnt;
+  nmesh.material.opacity = dim;
+  nmesh.instanceMatrix.needsUpdate=true;
+
+  // spores
+  for(let i=0;i<SPORE_N;i++){
+    const ni=sporeNode[i];
+    if(nodeReveal[ni] > revealProgress){ sporeCol[i*3]=sporeCol[i*3+1]=sporeCol[i*3+2]=0; continue; }
+    sporeAng[i]+=sporeSpeed[i]*dt;
+    const base=nodes[ni];
+    const r=sporeRad[i];
+    const x=base.x + Math.cos(sporeAng[i])*r;
+    const y=base.y + Math.sin(sporeAng[i])*r + Math.sin(t*0.6+i)*0.4;
+    const z=base.z + Math.sin(sporeAng[i]+sporeOrb[i])*r;
+    sporePos[i*3]=x; sporePos[i*3+1]=y; sporePos[i*3+2]=z;
+    const br=(0.4+0.5*Math.sin(t*2+i))*dim;
+    const tt=Math.min(1,nodeGen[ni]/20);
+    sporeCol[i*3]=(0.5+tt)*br; sporeCol[i*3+1]=(1-tt)*br; sporeCol[i*3+2]=br;
+  }
+  spores.geometry.attributes.position.needsUpdate=true;
+  spores.geometry.attributes.color.needsUpdate=true;
+
+  drawScroller(t);
+
+  // scroller rides the camera so it sits consistently across the view
+  const fwd = new THREE.Vector3();
+  camera.getWorldDirection(fwd);
+  scroller.position.copy(camera.position).addScaledVector(fwd,52);
+  scroller.quaternion.copy(camera.quaternion);
+  scroller.rotateY(Math.PI);
+  renderer.clear();
+  renderer.render(scene,camera);
+  renderer.render(scScene,camera); // scroller on top
+}
+
+const scScene=new THREE.Scene(); scScene.add(scroller);
+
+function loop(){ animate(); requestAnimationFrame(loop); }
+loop();
+</script>
+</body>
+</html>
